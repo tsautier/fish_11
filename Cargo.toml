@@ -1,0 +1,3 @@
+[workspace]
+members = ["fish_11_dll", "fish_11_cli", "fish_11_inject"]
+resolver = "2"

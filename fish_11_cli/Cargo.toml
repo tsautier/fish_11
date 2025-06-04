@@ -1,0 +1,11 @@
+[package]
+name = "fish_11_cli"
+version = "11.25.0"
+edition = "2021"
+description = "FiSH_11 - secure encryption for mIRC : CLI tool"
+license = "GPL v3.0"
+authors = ["GuY"]
+
+[dependencies]
+libloading = "0.8"
+winapi = { version = "0.3", features = ["winuser", "windef", "libloaderapi"] }

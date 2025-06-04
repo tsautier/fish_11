@@ -1,0 +1,68 @@
+[package]
+name = "fish_11"
+version = "11.25.0"
+edition = "2021"
+description = "FiSH_11 - secure encryption for mIRC : the core library"
+license = "GPL v3.0"
+build = "build.rs"
+authors = ["GuY"]
+
+[lib]
+name = "fish_11"
+# We are building a DLL
+crate-type = ["cdylib"]
+
+[dependencies]
+# Windows
+winapi = { version = "0.3", features = ["windef", "winuser", "libloaderapi"] }
+lazy_static = "1.4"
+once_cell = "1.19.0"
+directories = "6.0.0"
+# An implementation of elliptic curve Diffie-Hellman key exchange over Curve25519.
+x25519-dalek = { version = "2", features = ["static_secrets", "getrandom"] }
+chacha20poly1305 = "0.10"
+crypto = "0.5.1"
+
+# TODO : bump all the versions
+rand = "0.8"                                     #Hard to bump to 0.9
+sha2 = "0.10"
+base64 = "0.21.7"                                #Hard to bump to 0.22.1
+configparser = "3.1.0"
+log = { version = "0.4.26", features = ["std"] }
+chrono = "0.4.40"
+ini = "1.3.0"
+
+# Security enhancements
+subtle = "2.5"
+secrecy = "0.8"
+hkdf = "0.12"
+lru_time_cache = "0.11"
+zeroize = "1.6"
+#scopeguard = "1.2"
+curve25519-dalek = "4.1.3"
+hex = "0.4.3"
+regex = "1.11.1"
+
+[build-dependencies]
+vergen = { version = "8.2.1", features = ["build", "cargo", "rustc", "si"] }
+
+[dev-dependencies]
+tempfile = "3.0"
+
+[package.metadata.cargo-post]
+post-build = [
+    "mt.exe",
+    "-manifest",
+    "fish_11.dll.manifest",
+    "-outputresource:target/debug/fish_11.dll;2",
+]
+
+[profile.release]
+debug = 1
+opt-level = 3
+codegen-units = 1
+lto = "thin"
+panic = "abort"
+
+[profile.release.package."*"]
+codegen-units = 1
