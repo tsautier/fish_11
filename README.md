@@ -1,4 +1,4 @@
-# FiSH_11 - Secure encryption for mIRC
+# FiSH_11 - Secure encryption for IRC & mIRC
 
 FiSH_11 is a modernized implementation of the classic FiSH_10 IRC encryption tool, completely rewritten in Rust with modern cryptographic algorithms and enhanced security features :
 
