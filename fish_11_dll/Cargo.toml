@@ -34,17 +34,16 @@ ini = "1.3.0"
 
 # Security enhancements
 subtle = "2.5"
-secrecy = "0.8"
+secrecy = "0.8"     #Hard to bump to 0.10.3
 hkdf = "0.12"
 lru_time_cache = "0.11"
 zeroize = "1.6"
-#scopeguard = "1.2"
 curve25519-dalek = "4.1.3"
 hex = "0.4.3"
 regex = "1.11.1"
 
 [build-dependencies]
-vergen = { version = "8.2.1", features = ["build", "cargo", "rustc", "si"] }
+vergen = { version = "8.3.2", features = ["build", "cargo", "rustc", "si"] }  #Hard to bumpd to 9.0.6
 
 [dev-dependencies]
 tempfile = "3.0"
