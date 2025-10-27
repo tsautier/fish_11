@@ -28,7 +28,9 @@ const MAX_CIPHERTEXT_SIZE: usize = MAX_MESSAGE_SIZE + 16 + 12; // message + auth
 lazy_static::lazy_static! {
     static ref NONCE_CACHE: Mutex<LruCache<[u8; 12], ()>> = Mutex::new(
         LruCache::with_expiry_duration_and_capacity(
-            chrono::Duration::hours(1).to_std().unwrap(),
+            chrono::Duration::hours(1)
+                .to_std()
+                .expect("Duration of 1 hour should always be convertible to std::time::Duration"),
             1000
         )
     );
@@ -170,7 +172,7 @@ pub fn encrypt_message(key: &[u8; 32], message: &str, recipient: Option<&str>) -
 
     // Anti-replay protection - check and register the nonce
     {
-        let mut cache = NONCE_CACHE.lock().unwrap();
+        let mut cache = NONCE_CACHE.lock().expect("NONCE_CACHE mutex should not be poisoned");
         if cache.contains_key(&nonce_bytes) {
             return Err(FishError::CryptoError("Nonce reuse detected".to_string()));
         }
@@ -241,7 +243,7 @@ pub fn decrypt_message(key: &[u8; 32], encrypted_data: &str) -> Result<String> {
         let mut nonce_array = [0u8; 12];
         nonce_array.copy_from_slice(nonce);
 
-        let mut cache = NONCE_CACHE.lock().unwrap();
+        let mut cache = NONCE_CACHE.lock().expect("NONCE_CACHE mutex should not be poisoned");
         if cache.contains_key(&nonce_array) {
             return Err(FishError::CryptoError("Potential replay attack detected".to_string()));
         }

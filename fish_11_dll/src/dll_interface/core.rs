@@ -42,7 +42,7 @@ static _INIT_ONCE: std::sync::Once = std::sync::Once::new();
 /// For external use, prefer the module-level get_buffer_size() function
 pub(crate) fn get_buffer_size_basic() -> usize {
     // Single lock acquisition
-    let guard = LOAD_INFO.lock().unwrap();
+    let guard = LOAD_INFO.lock().expect("LOAD_INFO mutex should not be poisoned");
 
     guard
         .as_ref()
@@ -158,7 +158,7 @@ pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
             unicode_mode = (*load).m_unicode != 0;
 
             // Store the LOADINFO
-            let mut global_info = LOAD_INFO.lock().unwrap();
+            let mut global_info = LOAD_INFO.lock().expect("LOAD_INFO mutex should not be poisoned");
             *global_info = Some(*load);
 
             // Log structured configuration using standard log macros
@@ -211,7 +211,7 @@ pub extern "stdcall" fn UnloadDll(_timeout: c_int) -> c_int {
 
     // Clean up resources
     {
-        let mut state = LOAD_INFO.lock().unwrap();
+        let mut state = LOAD_INFO.lock().expect("LOAD_INFO mutex should not be poisoned");
         log::debug!("Cleaning up LOAD_INFO resources");
         *state = None;
     }

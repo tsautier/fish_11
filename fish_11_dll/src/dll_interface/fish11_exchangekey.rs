@@ -328,8 +328,8 @@ pub extern "stdcall" fn FiSH11_ExchangeKey(
         return MIRC_COMMAND;
     }
 
-    // Unwrap the result, but we don't need to assign it since it's already MIRC_COMMAND
-    let _ = result.unwrap();
+    // Result is already MIRC_COMMAND, no need to unwrap
+    // The catch_unwind above ensures we don't panic here
 
     log_info!("FiSH11_ExchangeKey[{}]: function completed", trace_id);
     crate::logging::log_function_exit::<i32>("FiSH11_ExchangeKey", Some(MIRC_COMMAND));

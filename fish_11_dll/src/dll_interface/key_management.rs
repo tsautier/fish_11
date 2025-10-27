@@ -49,7 +49,7 @@ pub extern "stdcall" fn FiSH11_ProcessPublicKey(
         let error_msg = CString::new(
             "Usage: /dll fish_11.dll FiSH11_ProcessPublicKey <nickname> <received_key>",
         )
-        .unwrap();
+        .expect("Error message should not contain null bytes");
 
         unsafe {
             ptr::write_bytes(data as *mut u8, 0, buffer_size);

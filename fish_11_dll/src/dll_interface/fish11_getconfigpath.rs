@@ -79,7 +79,7 @@ pub extern "stdcall" fn FiSH11_GetConfigPath(
                                 );
                                 // Fall back to a known-good string
                                 CString::new("fish_11.ini (Error: Invalid characters in path)")
-                                    .unwrap()
+                                    .expect("Fallback error message should not contain null bytes")
                             }
                         };
                         // Safely write to the buffer

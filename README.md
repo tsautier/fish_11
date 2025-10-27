@@ -139,10 +139,10 @@ cd fish_11
 rustup target add i686-pc-windows-msvc
 
 # Build release version (32-bit)
-cargo build --release --target i686-pc-windows-msvc
+cargo build --release --target i686-pc-windows-msvc --workspace
 
 # Build debug version (with logging)
-cargo build --target i686-pc-windows-msvc
+cargo build --target i686-pc-windows-msvc --workspace
 ```
 
 Binaries will be located in `target/i686-pc-windows-msvc/release/` or `target/i686-pc-windows-msvc/debug/`

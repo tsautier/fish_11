@@ -55,7 +55,7 @@ pub extern "stdcall" fn FiSH11_Help(
                 CString::new(
                     "//echo -cr Error: Could not generate help text due to invalid characters.",
                 )
-                .unwrap()
+                .expect("Fallback error message should not contain null bytes")
             }
         };
 
@@ -96,7 +96,7 @@ pub extern "stdcall" fn FiSH11_Help(
             if !data.is_null() {
                 let panic_msg =
                     CString::new("//echo -cr Critical Error: FiSH11_Help function panicked.")
-                        .unwrap();
+                        .expect("Panic error message should not contain null bytes");
                 unsafe {
                     let bytes_to_copy = panic_msg.as_bytes_with_nul();
                     // Be careful with length, use a known safe small length for panic messages

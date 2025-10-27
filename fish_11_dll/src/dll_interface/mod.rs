@@ -1,7 +1,6 @@
-use std::time::Duration;
-
 use once_cell::sync::Lazy;
 use regex::Regex;
+use std::time::Duration;
 pub(crate) mod core;
 pub mod dll_error;
 mod fish11_decryptmsg;
@@ -49,7 +48,8 @@ pub const FUNCTION_TIMEOUT_SECONDS: Duration = Duration::from_secs(5);
 
 pub static NICK_VALIDATOR: Lazy<Regex> = Lazy::new(|| {
     // RFC 1459 compliant nickname validation
-    Regex::new(r"^[a-zA-Z\[\]\\`_^{|}][a-zA-Z0-9\[\]\\`_^{|}-]{0,15}$").unwrap()
+    Regex::new(r"^[a-zA-Z\[\]\\`_^{|}][a-zA-Z0-9\[\]\\`_^{|}-]{0,15}$")
+        .expect("Hardcoded RFC 1459 nickname regex should always be valid")
 });
 
 // Mutex for accessing/modifying the maximum buffer size
@@ -95,7 +95,7 @@ pub(crate) fn get_buffer_size() -> usize {
 
     // First try to get buffer size from mIRC information
     let buffer_size = {
-        let guard = LOAD_INFO.lock().unwrap();
+        let guard = LOAD_INFO.lock().expect("LOAD_INFO mutex should not be poisoned");
 
         guard.as_ref().map(|info| info.m_bytes as usize).unwrap_or_else(|| {
             // Fall back to our global buffer size
