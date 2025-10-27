@@ -142,13 +142,16 @@ pub fn get_config_path() -> Result<PathBuf> {
 /// # Returns
 ///
 /// - `Result<FishConfig>` - The loaded configuration or an error
-pub fn load_config() -> Result<FishConfig> {
+pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
     // Set a timeout to prevent hanging
     let start_time = std::time::Instant::now();
     let timeout = std::time::Duration::from_secs(5);
 
     let mut config = FishConfig::new();
-    let config_path = get_config_path()?;
+    let config_path = match path_override {
+        Some(path) => path,
+        None => get_config_path()?,
+    };
 
     // Check if we've timed out already
     if start_time.elapsed() > timeout {
@@ -165,7 +168,7 @@ pub fn load_config() -> Result<FishConfig> {
         config.our_public_key = Some(base64_encode(&keypair.public_key));
 
         // Save the config
-        save_config(&config)?;
+        save_config(&config, None)?;
 
         return Ok(config);
     } // Create a new Ini object and load the file
@@ -179,7 +182,11 @@ pub fn load_config() -> Result<FishConfig> {
     }
 
     match ini.load(&config_path) {
-        Ok(_) => {}
+        Ok(_) => {
+            log::debug!("load_config: INI file loaded successfully from {}", config_path.display());
+            log::debug!("load_config: Sections found: {:?}", ini.sections());
+            log::debug!("load_config: Full INI map: {:?}", ini.get_map_ref());
+        }
         Err(e) => return Err(FishError::ConfigError(format!("Failed to load config: {}", e))),
     };
 
@@ -190,84 +197,101 @@ pub fn load_config() -> Result<FishConfig> {
         ));
     }
 
-    // Load [Keys] section
-    if let Some(section) = ini.sections().into_iter().find(|s| s == "Keys") {
-        for (k, v) in ini.get_map_ref()[&section].iter() {
-            if let Some(value) = v {
-                config.keys.insert(k.clone(), value.clone());
+    // Load [Keys] section (case-insensitive)
+    for key in ["Keys", "keys"] {
+        if let Some(section_map) = ini.get_map_ref().get(key) {
+            for (k, v_opt) in section_map.iter() {
+                if let Some(v) = v_opt {
+                    config.keys.insert(k.clone(), v.clone());
+                }
+            }
+            break; // Found the section, no need to check other cases
+        }
+    }
+
+    // Load [KeyPair] section (case-insensitive)
+    for key in ["KeyPair", "keypair"] {
+        if let Some(private) = ini.get(key, "private") {
+            config.our_private_key = Some(private.to_string());
+        }
+        if let Some(public) = ini.get(key, "public") {
+            config.our_public_key = Some(public.to_string());
+        }
+    }
+
+    // Load [NickNetworks] section (case-insensitive)
+    for key in ["NickNetworks", "nicknetworks"] {
+        if let Some(section_map) = ini.get_map_ref().get(key) {
+            for (k, v_opt) in section_map.iter() {
+                if let Some(v) = v_opt {
+                    config.nick_networks.insert(k.clone(), v.clone());
+                }
+            }
+            break; // Found the section, no need to check other cases
+        }
+    }
+
+    // Load [FiSH11] section (case-insensitive)
+    for section_key in ["FiSH11", "fish11"] {
+        if let Some(value) = ini.get(section_key, "process_incoming") {
+            config.fish11.process_incoming = value.eq_ignore_ascii_case("true") || value == "1";
+        }
+
+        if let Some(value) = ini.get(section_key, "process_outgoing") {
+            config.fish11.process_outgoing = value.eq_ignore_ascii_case("true") || value == "1";
+        }
+
+        if let Some(value) = ini.get(section_key, "plain_prefix") {
+            config.fish11.plain_prefix = value.to_string();
+        }
+
+        if let Some(value) = ini.get(section_key, "encrypt_notice") {
+            config.fish11.encrypt_notice = value.eq_ignore_ascii_case("true") || value == "1";
+        }
+
+        if let Some(value) = ini.get(section_key, "encrypt_action") {
+            config.fish11.encrypt_action = value.eq_ignore_ascii_case("true") || value == "1";
+        }
+
+        if let Some(value) = ini.get(section_key, "mark_position") {
+            if let Ok(pos) = value.parse() {
+                config.fish11.mark_position = pos;
+            }
+        }
+
+        if let Some(value) = ini.get(section_key, "mark_encrypted") {
+            config.fish11.mark_encrypted = value.to_string();
+        }
+
+        if let Some(value) = ini.get(section_key, "no_fish10_legacy") {
+            config.fish11.no_fish10_legacy = value.eq_ignore_ascii_case("true") || value == "1";
+        }
+    }
+
+    // Load [Startup] section (case-insensitive)
+    for section_key in ["Startup", "startup"] {
+        if let Some(value) = ini.get(section_key, "date") {
+            if let Ok(date) = value.parse() {
+                config.startup_data.date = Some(date);
             }
         }
     }
 
-    // Load [KeyPair] section
-    if let Some(private) = ini.get("KeyPair", "private") {
-        config.our_private_key = Some(private.to_string());
-    }
-    if let Some(public) = ini.get("KeyPair", "public") {
-        config.our_public_key = Some(public.to_string());
-    }
-
-    // Load [NickNetworks] section
-    if let Some(section) = ini.sections().into_iter().find(|s| s == "NickNetworks") {
-        for (k, v) in ini.get_map_ref()[&section].iter() {
-            if let Some(value) = v {
-                config.nick_networks.insert(k.clone(), value.clone());
-            }
-        }
-    }
-
-    // Load [FiSH11] section
-    if let Some(value) = ini.get("FiSH11", "process_incoming") {
-        config.fish11.process_incoming = value.eq_ignore_ascii_case("true") || value == "1";
-    }
-
-    if let Some(value) = ini.get("FiSH11", "process_outgoing") {
-        config.fish11.process_outgoing = value.eq_ignore_ascii_case("true") || value == "1";
-    }
-
-    if let Some(value) = ini.get("FiSH11", "plain_prefix") {
-        config.fish11.plain_prefix = value.to_string();
-    }
-
-    if let Some(value) = ini.get("FiSH11", "encrypt_notice") {
-        config.fish11.encrypt_notice = value.eq_ignore_ascii_case("true") || value == "1";
-    }
-
-    if let Some(value) = ini.get("FiSH11", "encrypt_action") {
-        config.fish11.encrypt_action = value.eq_ignore_ascii_case("true") || value == "1";
-    }
-
-    if let Some(value) = ini.get("FiSH11", "mark_position") {
-        if let Ok(pos) = value.parse() {
-            config.fish11.mark_position = pos;
-        }
-    }
-
-    if let Some(value) = ini.get("FiSH11", "mark_encrypted") {
-        config.fish11.mark_encrypted = value.to_string();
-    }
-
-    if let Some(value) = ini.get("FiSH11", "no_fish10_legacy") {
-        config.fish11.no_fish10_legacy = value.eq_ignore_ascii_case("true") || value == "1";
-    }
-
-    // Load [Startup] section
-    if let Some(value) = ini.get("Startup", "date") {
-        if let Ok(date) = value.parse() {
-            config.startup_data.date = Some(date);
-        }
-    } // Load entries from section-based format [nickname@network] and [chan_channel@network] sections
+    // Load entries from section-based format [nickname@network] and [chan_channel@network] sections
     for section_name in ini.sections() {
-        // Skip the standard configuration sections
-        if section_name == "Keys"
-            || section_name == "KeyPair"
-            || section_name == "NickNetworks"
-            || section_name == "FiSH11"
-            || section_name == "Startup"
+        // Skip the standard configuration sections (case-insensitive comparison)
+        let section_lower = section_name.to_lowercase();
+        if section_lower == "keys"
+            || section_lower == "keypair"
+            || section_lower == "nicknetworks"
+            || section_lower == "fish11"
+            || section_lower == "startup"
             || section_name.starts_with("Entry.")
         {
             continue;
-        } // Check if this is a valid entry section (contains @ indicating network format)
+        }
+
+        // Check if this is a valid entry section (contains @ indicating network format)
         if section_name.contains('@') {
             println!("DEBUG:   -> Processing entry section: '{}'", section_name);
 
@@ -318,7 +342,7 @@ pub fn load_config() -> Result<FishConfig> {
 /// # Returns
 ///
 /// - `Result<()>` - Success (unit type) or an error
-pub fn save_config(config: &FishConfig) -> Result<()> {
+pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Result<()> {
     // Add timeout to prevent hanging during file operations
     let start_time = std::time::Instant::now();
     let timeout = std::time::Duration::from_secs(3); // Slightly longer timeout for file operations
@@ -385,7 +409,10 @@ pub fn save_config(config: &FishConfig) -> Result<()> {
     }
 
     // Get config path
-    let config_path = get_config_path()?;
+    let config_path = match path_override {
+        Some(path) => path,
+        None => get_config_path()?,
+    };
     log::debug!("save_config: Config path: {}", config_path.display());
 
     // Create parent directories if they don't exist
@@ -428,5 +455,83 @@ pub fn save_config(config: &FishConfig) -> Result<()> {
             log::error!("save_config: failed to write to temp file: {}", e);
             Err(FishError::ConfigError(format!("Failed to write config: {}", e)))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::models::{EntryData, Fish11Section, FishConfig, StartupSection};
+    use crate::utils::generate_random_bytes;
+    use tempfile::NamedTempFile;
+
+    // Helper to create a dummy config for testing
+    fn create_dummy_config() -> FishConfig {
+        let mut config = FishConfig::new();
+        config.keys.insert("test_key_legacy".to_string(), "value_legacy".to_string());
+        config.nick_networks.insert("test_nick".to_string(), "test_net".to_string());
+        config.our_private_key = Some(base64_encode(&generate_random_bytes(32)));
+        config.our_public_key = Some(base64_encode(&generate_random_bytes(32)));
+        config.fish11.process_incoming = false;
+        config.fish11.plain_prefix = "!!".to_string();
+        // Note: configparser library trims whitespace from INI values, so we can't have leading spaces
+        config.fish11.mark_encrypted = "12$chr(183)".to_string();
+        config.startup_data.date = Some(123456789);
+        config.entries.insert(
+            "test_entry@test_net".to_string(),
+            EntryData {
+                key: Some("entry_key_b64".to_string()),
+                date: Some("01/01/2025".to_string()),
+            },
+        );
+        config.entries.insert(
+            "#test_chan@test_net".to_string(),
+            EntryData {
+                key: Some("chan_key_b64".to_string()),
+                date: Some("02/01/2025".to_string()),
+            },
+        );
+        config
+    }
+
+    #[test]
+    fn test_save_and_load_config_roundtrip() {
+        // Tests that a config can be saved to a temporary file and loaded back correctly.
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let temp_path = temp_file.path().to_path_buf();
+
+        let original_config = create_dummy_config();
+
+        // Save the config to the temporary path
+        save_config(&original_config, Some(temp_path.clone())).expect("Failed to save config");
+
+        // Load the config back from the temporary path
+        let loaded_config = load_config(Some(temp_path.clone())).expect("Failed to load config");
+
+        // Assert that the loaded config matches the original
+        assert_eq!(original_config, loaded_config);
+
+        // Ensure the temp file is cleaned up
+        let _ = fs::remove_file(&temp_path);
+    }
+
+    #[test]
+    fn test_load_non_existent_config_creates_default() {
+        // Tests that loading a non-existent config creates a default one.
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let temp_path = temp_file.path().to_path_buf();
+        let _ = fs::remove_file(&temp_path); // Ensure it doesn't exist
+
+        let loaded_config =
+            load_config(Some(temp_path.clone())).expect("Failed to load non-existent config");
+
+        // Check some default values
+        assert!(loaded_config.our_private_key.is_some());
+        assert!(loaded_config.our_public_key.is_some());
+        assert_eq!(loaded_config.fish11.process_incoming, true);
+        assert_eq!(loaded_config.fish11.plain_prefix, "+p ".to_string());
+
+        // Ensure the temp file is cleaned up
+        let _ = fs::remove_file(&temp_path);
     }
 }

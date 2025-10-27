@@ -19,8 +19,11 @@ use once_cell::sync::Lazy;
 /// Global configuration instance
 pub static CONFIG: Lazy<Mutex<FishConfig>> = Lazy::new(|| {
     // Try to load config from disk, or create a new one if it doesn't exist
-    match file_storage::load_config() {
-        Ok(config) => Mutex::new(config),
+    match file_storage::get_config_path() {
+        Ok(path) => match file_storage::load_config(Some(path)) {
+            Ok(config) => Mutex::new(config),
+            Err(_) => Mutex::new(FishConfig::new()),
+        },
         Err(_) => Mutex::new(FishConfig::new()),
     }
 });

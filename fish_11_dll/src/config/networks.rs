@@ -214,3 +214,63 @@ pub fn validate_network_name(name: &str) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Helper to ensure a clean state for tests.
+    fn setup() {
+        clear_all_network_mappings().expect("Failed to clear mappings");
+    }
+
+    #[test]
+    fn test_set_and_get_network_for_nick() {
+        // Tests setting and retrieving a network for a nickname.
+        setup();
+        let nickname = "test_nick";
+        let network = "test_net";
+
+        set_network_for_nick(nickname, network).expect("Failed to set network");
+        let retrieved = get_network_for_nick(nickname).expect("Failed to get network").unwrap();
+
+        assert_eq!(retrieved, network);
+    }
+
+    #[test]
+    fn test_remove_network_for_nick() {
+        // Tests removing a network association.
+        setup();
+        let nickname = "test_nick_2";
+        let network = "test_net_2";
+
+        set_network_for_nick(nickname, network).expect("Failed to set network");
+        remove_network_for_nick(nickname).expect("Failed to remove network");
+
+        let retrieved = get_network_for_nick(nickname).expect("Failed to get network");
+        assert!(retrieved.is_none());
+    }
+
+    #[test]
+    fn test_get_all_networks() {
+        // Tests listing all unique networks.
+        setup();
+        set_network_for_nick("user1", "net1").unwrap();
+        set_network_for_nick("user2", "net2").unwrap();
+        set_network_for_nick("user3", "net1").unwrap();
+
+        let mut networks = get_all_networks().unwrap();
+        networks.sort();
+
+        assert_eq!(networks, vec!["net1", "net2"]);
+    }
+
+    #[test]
+    fn test_validate_network_name() {
+        // Tests the validation of network names.
+        assert!(validate_network_name("good-net").is_ok());
+        let result = validate_network_name("bad:net");
+        assert!(result.is_err());
+        assert!(matches!(result, Err(crate::error::FishError::InvalidNetworkName(_))));
+    }
+}

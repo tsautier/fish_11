@@ -170,15 +170,6 @@ pub fn encrypt_message(key: &[u8; 32], message: &str, recipient: Option<&str>) -
 
     let nonce = Nonce::from_slice(&nonce_bytes);
 
-    // Anti-replay protection - check and register the nonce
-    {
-        let mut cache = NONCE_CACHE.lock().expect("NONCE_CACHE mutex should not be poisoned");
-        if cache.contains_key(&nonce_bytes) {
-            return Err(FishError::CryptoError("Nonce reuse detected".to_string()));
-        }
-        cache.insert(nonce_bytes, ());
-    }
-
     // Create the cipher
     let chacha_key = Key::from_slice(key);
     let cipher = ChaCha20Poly1305::new(chacha_key);
@@ -395,4 +386,94 @@ fn constant_time_compare(a: &[u8], b: &[u8]) -> bool {
 
     // Use ConstantTimeEq trait for timing-attack resistant comparison
     a.ct_eq(b).into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use secrecy::ExposeSecret;
+
+    #[test]
+    fn test_generate_keypair() {
+        let keypair = generate_keypair();
+        // Private key should not be all zeros
+        assert!(
+            !keypair.private_key.expose_secret().iter().all(|&b| b == 0),
+            "Private key should not be all zeros"
+        );
+        // Public key should not be all zeros
+        assert!(!keypair.public_key.iter().all(|&b| b == 0), "Public key should not be all zeros");
+    }
+
+    #[test]
+    fn test_compute_shared_secret() {
+        let keypair1 = generate_keypair();
+        let keypair2 = generate_keypair();
+
+        let shared1 = compute_shared_secret(&keypair1.private_key, &keypair2.public_key)
+            .expect("Failed to compute shared secret 1");
+        let shared2 = compute_shared_secret(&keypair2.private_key, &keypair1.public_key)
+            .expect("Failed to compute shared secret 2");
+
+        assert_eq!(shared1, shared2, "Shared secrets should be identical");
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_roundtrip() {
+        let key: [u8; 32] = generate_random_bytes(32).try_into().expect("Failed to generate key");
+        let message = "This is a secret message for testing purposes.";
+
+        let encrypted_data =
+            encrypt_message(&key, message, Some("test_recipient")).expect("Encryption failed");
+        let decrypted_message = decrypt_message(&key, &encrypted_data).expect("Decryption failed");
+
+        assert_eq!(message, decrypted_message, "Decrypted message should match original message");
+    }
+
+    #[test]
+    fn test_decrypt_with_wrong_key() {
+        let key1: [u8; 32] =
+            generate_random_bytes(32).try_into().expect("Failed to generate key 1");
+        let key2: [u8; 32] =
+            generate_random_bytes(32).try_into().expect("Failed to generate key 2");
+        let message = "Another secret message.";
+
+        assert_ne!(key1, key2);
+
+        let encrypted_data = encrypt_message(&key1, message, None).expect("Encryption failed");
+        let result = decrypt_message(&key2, &encrypted_data);
+
+        assert!(result.is_err(), "Decryption with the wrong key should fail");
+    }
+
+    #[test]
+    fn test_replay_attack_prevention() {
+        // Clear the cache for a clean test run
+        NONCE_CACHE.lock().expect("Failed to lock nonce cache").clear();
+
+        let key: [u8; 32] = generate_random_bytes(32).try_into().expect("Failed to generate key");
+        let message = "A message to test replay attacks.";
+
+        let encrypted_data = encrypt_message(&key, message, None).expect("Encryption failed");
+
+        // First decryption should succeed
+        let first_decryption_result = decrypt_message(&key, &encrypted_data);
+        assert!(first_decryption_result.is_ok(), "First decryption should succeed");
+
+        // Second decryption with the same data should fail
+        let second_decryption_result = decrypt_message(&key, &encrypted_data);
+        assert!(
+            second_decryption_result.is_err(),
+            "Second decryption should fail due to nonce reuse"
+        );
+
+        if let Err(FishError::CryptoError(msg)) = second_decryption_result {
+            assert!(
+                msg.contains("Potential replay attack detected"),
+                "Error message should indicate a replay attack"
+            );
+        } else {
+            panic!("Expected a CryptoError for replay attack");
+        }
+    }
 }

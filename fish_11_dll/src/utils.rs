@@ -112,3 +112,53 @@ pub fn validate_nickname(
     }
     true
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_nick() {
+        // Tests if nickname normalization (lowercase) works correctly.
+        assert_eq!(normalize_nick("TeStNiCk"), "testnick");
+        assert_eq!(normalize_nick("  AnotherNick "), "anothernick");
+    }
+
+    #[test]
+    fn test_base64_roundtrip() {
+        // Tests if base64 encoding and decoding preserves the original data.
+        let original_data = b"some secret message with &*@# symbols";
+        let encoded = base64_encode(original_data);
+        let decoded = base64_decode(&encoded).expect("Base64 decoding failed");
+        assert_eq!(original_data, decoded.as_slice());
+    }
+
+    #[test]
+    fn test_generate_random_bytes() {
+        // Tests if the function generates a byte vector of the specified length.
+        assert_eq!(generate_random_bytes(0).len(), 0);
+        assert_eq!(generate_random_bytes(32).len(), 32);
+        assert_eq!(generate_random_bytes(128).len(), 128);
+    }
+
+    #[test]
+    fn test_validate_nick_basic_ok() {
+        // Tests valid nicknames.
+        assert!(validate_nick_basic("SimpleNick").is_ok());
+        assert!(validate_nick_basic("Nick-With-Dash").is_ok());
+    }
+
+    #[test]
+    fn test_validate_nick_basic_null_byte() {
+        // Tests that a nickname with a null byte is rejected.
+        let result = validate_nick_basic("nick\0withnull");
+        assert!(matches!(result, Err(FishError::NullByteInString)));
+    }
+
+    #[test]
+    fn test_validate_nick_basic_non_ascii() {
+        // Tests that a nickname with non-ASCII characters is rejected.
+        let result = validate_nick_basic("nické");
+        assert!(matches!(result, Err(FishError::NonAsciiCharacter('é'))));
+    }
+}

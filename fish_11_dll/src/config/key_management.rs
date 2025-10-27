@@ -310,3 +310,75 @@ pub fn delete_key_default(nickname: &str) -> Result<()> {
 pub fn set_key_default(nickname: &str, key: &[u8; 32], overwrite: bool) -> Result<()> {
     set_key(nickname, key, Some("default"), overwrite)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::FishError;
+    use crate::utils::generate_random_bytes;
+
+    // Helper to generate a random 32-byte key.
+    fn random_key() -> [u8; 32] {
+        generate_random_bytes(32).try_into().unwrap()
+    }
+
+    #[test]
+    fn test_set_and_get_key() {
+        // Tests adding a key and retrieving it.
+        let nickname = "test_user_1";
+        let key = random_key();
+
+        set_key_default(nickname, &key, true).expect("Failed to set key");
+        let retrieved_key = get_key_default(nickname).expect("Failed to get key");
+
+        assert_eq!(key.to_vec(), retrieved_key);
+        // Cleanup
+        delete_key_default(nickname).ok();
+    }
+
+    #[test]
+    fn test_get_non_existent_key() {
+        // Tests that getting a non-existent key fails correctly.
+        let nickname = "non_existent_user";
+        let result = get_key_default(nickname);
+
+        assert!(matches!(result, Err(FishError::KeyNotFound(_))));
+    }
+
+    #[test]
+    fn test_delete_key() {
+        // Tests deleting a key.
+        let nickname = "test_user_to_delete";
+        let key = random_key();
+
+        set_key_default(nickname, &key, true).expect("Failed to set key");
+        delete_key_default(nickname).expect("Failed to delete key");
+
+        let result = get_key_default(nickname);
+        assert!(matches!(result, Err(FishError::KeyNotFound(_))));
+    }
+
+    #[test]
+    fn test_list_keys() {
+        // Tests listing all available keys.
+        let nickname1 = "list_user_1";
+        let nickname2 = "#list_channel_1";
+        let key1 = random_key();
+        let key2 = random_key();
+
+        set_key(nickname1, &key1, Some("testnet"), true).expect("Failed to set key 1");
+        set_key(nickname2, &key2, Some("testnet"), true).expect("Failed to set key 2");
+
+        let keys = list_keys().expect("Failed to list keys");
+
+        let found1 = keys.iter().any(|(name, net, _, _)| name == nickname1 && net == "testnet");
+        let found2 = keys.iter().any(|(name, net, _, _)| name == nickname2 && net == "testnet");
+
+        assert!(found1, "Key for user 1 not found in list");
+        assert!(found2, "Key for channel 1 not found in list");
+
+        // Cleanup
+        delete_key(nickname1, Some("testnet")).ok();
+        delete_key(nickname2, Some("testnet")).ok();
+    }
+}

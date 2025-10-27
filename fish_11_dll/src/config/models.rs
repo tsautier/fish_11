@@ -4,14 +4,14 @@ use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Data for an entry (user or channel)
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct EntryData {
     pub key: Option<String>,
     pub date: Option<String>,
 }
 
 /// Configuration for FiSH11 settings
-#[derive(Debug, Clone)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct Fish11Section {
     pub process_incoming: bool,
     pub process_outgoing: bool,
@@ -39,7 +39,7 @@ impl Default for Fish11Section {
 }
 
 /// Startup data section
-#[derive(Debug, Clone)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct StartupSection {
     pub date: Option<u64>,
 }
@@ -51,7 +51,7 @@ impl Default for StartupSection {
 }
 
 /// Main configuration struct
-#[derive(Debug, Clone)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct FishConfig {
     /// Legacy keys
     pub keys: HashMap<String, String>,

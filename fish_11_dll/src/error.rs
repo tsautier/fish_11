@@ -70,3 +70,49 @@ impl From<std::io::Error> for FishError {
 }
 
 pub type Result<T> = std::result::Result<T, FishError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_display_for_fish_errors() {
+        // Tests that the Display trait is correctly implemented for FishError variants.
+        assert_eq!(
+            FishError::ConfigError("test message".to_string()).to_string(),
+            "Configuration error: test message"
+        );
+        assert_eq!(
+            FishError::CryptoError("crypto issue".to_string()).to_string(),
+            "Cryptography error: crypto issue"
+        );
+        assert_eq!(
+            FishError::KeyNotFound("my_nick".to_string()).to_string(),
+            "Key not found for nickname: my_nick"
+        );
+        assert_eq!(
+            FishError::DuplicateEntry("my_nick".to_string()).to_string(),
+            "Entry 'my_nick' already exists"
+        );
+        assert_eq!(
+            FishError::InvalidKeyLength(16).to_string(),
+            "Invalid key length: 16 (expected 32 bytes)"
+        );
+        assert_eq!(
+            FishError::AuthenticationFailed.to_string(),
+            "Message authentication failed"
+        );
+        assert_eq!(
+            FishError::NonceReuse.to_string(),
+            "Nonce reuse detected"
+        );
+        assert_eq!(
+            FishError::NullByteInString.to_string(),
+            "String contains null byte"
+        );
+        assert_eq!(
+            FishError::NonAsciiCharacter('é').to_string(),
+            "String contains non-ASCII character: 'é'"
+        );
+    }
+}

@@ -45,7 +45,7 @@ impl<'a> ConfigWriteGuard<'a> {
     pub fn save_if_modified(&mut self) -> Result<()> {
         if self.modified {
             log::debug!("ConfigWriteGuard::save_if_modified - saving config due to modifications");
-            save_config(&self.guard)?;
+            save_config(&self.guard, None)?;
             self.modified = false;
         } else {
             log::debug!("ConfigWriteGuard::save_if_modified - no modifications, skipping save");
@@ -60,7 +60,7 @@ impl<'a> Drop for ConfigWriteGuard<'a> {
             // Add logging to track potential double-save issues
             log::debug!("ConfigWriteGuard::drop - attempting to save modified config");
             // Try to save, but ignore errors since we're in a destructor
-            match save_config(&self.guard) {
+            match save_config(&self.guard, None) {
                 Ok(_) => log::debug!("ConfigWriteGuard::drop - config saved successfully"),
                 Err(e) => log::warn!("ConfigWriteGuard::drop - failed to save config: {}", e),
             }

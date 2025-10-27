@@ -472,7 +472,7 @@ fn store_key_and_persist(nickname: &str, key: &[u8; 32], trace_id: &str) -> Resu
                 )
             })?;
 
-            if let Err(save_err) = save_config(&*config_guard) {
+            if let Err(save_err) = save_config(&*config_guard, None) {
                 log_warn!(
                     "FiSH11_ExchangeKey[{}]: failed to save config to disk: {}",
                     trace_id,
@@ -555,7 +555,7 @@ fn store_keypair_and_persist(
                 error_msg
             })?;
 
-            if let Err(save_err) = save_config(&*config_guard) {
+            if let Err(save_err) = save_config(&*config_guard, None) {
                 log_warn!(
                     "FiSH11_ExchangeKey[{}]: failed to save config with new keypair: {}",
                     trace_id,
