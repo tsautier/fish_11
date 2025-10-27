@@ -98,18 +98,9 @@ mod tests {
             FishError::InvalidKeyLength(16).to_string(),
             "Invalid key length: 16 (expected 32 bytes)"
         );
-        assert_eq!(
-            FishError::AuthenticationFailed.to_string(),
-            "Message authentication failed"
-        );
-        assert_eq!(
-            FishError::NonceReuse.to_string(),
-            "Nonce reuse detected"
-        );
-        assert_eq!(
-            FishError::NullByteInString.to_string(),
-            "String contains null byte"
-        );
+        assert_eq!(FishError::AuthenticationFailed.to_string(), "Message authentication failed");
+        assert_eq!(FishError::NonceReuse.to_string(), "Nonce reuse detected");
+        assert_eq!(FishError::NullByteInString.to_string(), "String contains null byte");
         assert_eq!(
             FishError::NonAsciiCharacter('é').to_string(),
             "String contains non-ASCII character: 'é'"
