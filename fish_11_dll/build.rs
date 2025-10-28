@@ -1,7 +1,5 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use vergen::EmitBuilder;
-
 // Define the version information with compile date and time
 // This is used to display information when the DLL is loaded
 fn get_fish_main_version(pkg_version: &str, build_date: &str, build_time: &str) -> String {
@@ -16,17 +14,10 @@ fn get_fish_main_version(pkg_version: &str, build_date: &str, build_time: &str) 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
-    // Generate build-time information
-    EmitBuilder::builder()
-        .build_timestamp()
-        .emit()
-        .expect("Failed to generate version information");
-
     // Debug output
     println!("cargo:warning=Generating build information for FiSH 11");
 
-    // Manually set the build date and time if VERGEN doesn't work
-    // This ensures the values are always available
+    // Manually set the build date and time
     let now = SystemTime::now();
     let since_epoch = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
 

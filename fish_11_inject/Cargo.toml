@@ -13,7 +13,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # For Windows API
-windows = { version = "0.57.0", features = [
+windows = { version = "0.62.2", features = [
     "Win32_Foundation",
     "Win32_Networking_WinSock",
     "Win32_System_LibraryLoader",
@@ -33,4 +33,4 @@ simple-logging = "2"
 sha2 = "0.10"
 
 [build-dependencies]
-vergen = { version = "8.2.1", features = ["build", "cargo", "rustc", "si"] }
+vergen = { version = "9.0.6", features = ["build", "cargo", "rustc", "si"] }

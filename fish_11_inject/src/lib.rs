@@ -32,18 +32,24 @@ use engines::InjectEngines;
 use lazy_static::lazy_static;
 use log::{error, info};
 use socket_info::SocketInfo;
-use windows::Win32::Foundation::{BOOL, HMODULE, TRUE};
+use winapi::shared::minwindef::BOOL;
+use windows::Win32::Foundation::HMODULE;
 use windows::Win32::Networking::WinSock::SOCKET;
 
 use crate::helpers_inject::{cleanup_hooks, init_logger};
 use crate::ssl_inline_patch::{install_ssl_inline_patches, uninstall_ssl_inline_patches};
 
-// Global state
+// Wrapper to make HMODULE Send + Sync
+#[derive(Clone, Copy)]
+struct SendHMODULE(HMODULE);
+unsafe impl Send for SendHMODULE {}
+unsafe impl Sync for SendHMODULE {}
+
 lazy_static! {
     static ref ACTIVE_SOCKETS: Mutex<HashMap<u32, Arc<SocketInfo>>> = Mutex::new(HashMap::new());
     static ref DISCARDED_SOCKETS: Mutex<Vec<u32>> = Mutex::new(Vec::new());
     static ref ENGINES: Mutex<Option<Arc<InjectEngines>>> = Mutex::new(None);
-    static ref DLL_HANDLE_PTR: Mutex<Option<HMODULE>> = Mutex::new(None);
+    static ref DLL_HANDLE_PTR: Mutex<Option<SendHMODULE>> = Mutex::new(None);
     static ref MAX_MIRC_RETURN_BYTES: Mutex<usize> = Mutex::new(4096);
     static ref SOCKETS: RwLock<HashMap<SOCKET, Arc<Mutex<SocketInfo>>>> =
         RwLock::new(HashMap::new());
@@ -114,19 +120,20 @@ pub const FISH_INJECT_VERSION: u32 = 11;
 */
 /// Entry point for Windows DLL.
 /// WE START HERE !
-///
-/// This function is called by Windows when the DLL is loaded or unloaded.
 #[no_mangle]
-#[allow(non_snake_case)]
-extern "system" fn DllMain(h_module: HMODULE, ul_reason_for_call: u32, _: *mut c_void) -> BOOL {
+pub unsafe extern "system" fn DllMain(
+    h_module: HMODULE,
+    ul_reason_for_call: u32,
+    _: *mut c_void,
+) -> i32 {
     match ul_reason_for_call {
         1 => {
             // DLL_PROCESS_ATTACH
-            // Store module handle
-            *DLL_HANDLE_PTR.lock().unwrap() = Some(h_module);
+        // DLL_PROCESS_ATTACH
+        // Store module handle
+        *DLL_HANDLE_PTR.lock().unwrap() = Some(SendHMODULE(h_module));
 
-            // Initialize logger
-            init_logger();
+        // Initialize logger
 
             info!("***");
             info!(
@@ -148,7 +155,7 @@ extern "system" fn DllMain(h_module: HMODULE, ul_reason_for_call: u32, _: *mut c
             // Mark as loaded
             LOADED.store(true, Ordering::SeqCst);
 
-            TRUE
+            1
         }
         0 => {
             // DLL_PROCESS_DETACH
@@ -166,8 +173,8 @@ extern "system" fn DllMain(h_module: HMODULE, ul_reason_for_call: u32, _: *mut c
                 cleanup_hooks();
             }
 
-            TRUE
+            1
         }
-        _ => TRUE,
+        _ => 1,
     }
 }

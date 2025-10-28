@@ -244,30 +244,23 @@ pub unsafe fn install_ssl_inline_patches() -> Result<(), String> {
     trace!("Found SSL functions: SSL_read={:p}, SSL_write={:p}", ssl_read, ssl_write);
     // Store SSL info for later use
     *OPENSSL_INFO.lock().map_err(|_| "Failed to store SSL info")? = Some(ssl_info.clone().into());
-    ptr::copy_nonoverlapping(ssl_read as *const u8, SSL_READ_ORIG_BYTES.as_mut_ptr(), JMP_SIZE);
-    ptr::copy_nonoverlapping(ssl_write as *const u8, SSL_WRITE_ORIG_BYTES.as_mut_ptr(), JMP_SIZE);
+    ptr::copy_nonoverlapping(ssl_read as *const u8, ptr::addr_of_mut!(SSL_READ_ORIG_BYTES).cast(), JMP_SIZE);
+    ptr::copy_nonoverlapping(ssl_write as *const u8, ptr::addr_of_mut!(SSL_WRITE_ORIG_BYTES).cast(), JMP_SIZE);
 
     // Build trampolines
     let read_ret_addr = (ssl_read as usize + JMP_SIZE) as u64;
     let write_ret_addr = (ssl_write as usize + JMP_SIZE) as u64;
 
-    build_trampoline(&mut SSL_READ_TRAMPOLINE, &SSL_READ_ORIG_BYTES, read_ret_addr)?;
-    // Get stored SSL info
-    let ssl_info_guard = OPENSSL_INFO.lock().map_err(|_| "Failed to access SSL info")?;
-    let thread_safe_ssl_info =
-        ssl_info_guard.as_ref().ok_or_else(|| "No SSL info stored".to_string())?;
+    build_trampoline(&mut *ptr::addr_of_mut!(SSL_READ_TRAMPOLINE), &SSL_READ_ORIG_BYTES, read_ret_addr)?;
+    build_trampoline(&mut *ptr::addr_of_mut!(SSL_WRITE_TRAMPOLINE), &SSL_WRITE_ORIG_BYTES, write_ret_addr)?;
 
-    let ssl_info: OpenSslInfo = thread_safe_ssl_info.clone().into();
+    // Store function pointers to trampolines
+    ORIG_SSL_READ = Some(std::mem::transmute(ptr::addr_of!(SSL_READ_TRAMPOLINE) as *const ()));
+    ORIG_SSL_WRITE = Some(std::mem::transmute(ptr::addr_of!(SSL_WRITE_TRAMPOLINE) as *const ()));
 
-    // Validate OpenSSL is still available
-    if let Err(e) = validate_openssl(&ssl_info) {
-        warn!("OpenSSL validation failed during uninstall: {}", e);
-        // Continue anyway to attempt cleanup
-    }
-
-    let ssl_read = ssl_info.ssl_read_addr as *mut u8;
-    let ssl_write = ssl_info.ssl_write_addr as *mut u8;
-    patch_function(ssl_write, my_ssl_write as *const u8, &mut SSL_WRITE_ORIG_BYTES)?;
+    // Patch the functions
+    patch_function(ssl_read, my_ssl_read as *const u8, &mut *(ptr::addr_of_mut!(SSL_READ_ORIG_BYTES) as *mut [u8; JMP_SIZE]))?;
+    patch_function(ssl_write, my_ssl_write as *const u8, &mut *(ptr::addr_of_mut!(SSL_WRITE_ORIG_BYTES) as *mut [u8; JMP_SIZE]))?;
 
     // Store SSL info for later use - already stored above
 
@@ -301,21 +294,21 @@ pub unsafe fn uninstall_ssl_inline_patches() -> Result<(), String> {
     let ssl_write = ssl_info.ssl_write_addr as *mut u8;
 
     // Restore original functions
-    unpatch_function(ssl_read, &SSL_READ_ORIG_BYTES)?;
-    unpatch_function(ssl_write, &SSL_WRITE_ORIG_BYTES)?;
+    unpatch_function(ssl_read, &*(ptr::addr_of!(SSL_READ_ORIG_BYTES) as *const [u8; JMP_SIZE]))?;
+    unpatch_function(ssl_write, &*(ptr::addr_of!(SSL_WRITE_ORIG_BYTES) as *const [u8; JMP_SIZE]))?;
 
     // Clear function pointers
     ORIG_SSL_READ = None;
     ORIG_SSL_WRITE = None;
 
-    // Make trampolines non-executable
+    // Make trampolines read-only
     let _ = change_memory_protection(
-        SSL_READ_TRAMPOLINE.buf.as_mut_ptr() as *mut c_void,
+        ptr::addr_of_mut!(SSL_READ_TRAMPOLINE).cast::<AlignedTrampoline>().cast::<c_void>(),
         TRAMPOLINE_SIZE,
         PAGE_READONLY,
     );
     let _ = change_memory_protection(
-        SSL_WRITE_TRAMPOLINE.buf.as_mut_ptr() as *mut c_void,
+        ptr::addr_of_mut!(SSL_WRITE_TRAMPOLINE).cast::<AlignedTrampoline>().cast::<c_void>(),
         TRAMPOLINE_SIZE,
         PAGE_READONLY,
     );

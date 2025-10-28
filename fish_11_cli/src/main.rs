@@ -33,6 +33,7 @@ static mut QUIET_MODE: bool = false;
 // Macro for conditional printing based on quiet mode
 macro_rules! info_print {
     ($($arg:tt)*) => {
+        // TODO : should be safe here
         unsafe {
             if !QUIET_MODE {
                 println!($($arg)*);

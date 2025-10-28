@@ -29,7 +29,7 @@ pub struct LOADINFO {
 /// This function is called by mIRC, under this name.
 ///
 /// So this is the second entry point after DllMain().
-pub extern "system" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
+pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
     // Safety check
     if loadinfo.is_null() {
         error!("LoadDll() called with NULL loadinfo!");
@@ -62,7 +62,7 @@ pub extern "system" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
 
         unsafe {
             MessageBoxW(
-                li.m_hwnd,
+                Some(li.m_hwnd),
                 windows::core::w!("Warning: this FiSH_11 version may require mIRC 7.0 or newer."),
                 windows::core::w!("FiSH_11 injection warning"),
                 MB_ICONEXCLAMATION | MB_OK,
@@ -78,7 +78,7 @@ pub extern "system" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
 
         unsafe {
             MessageBoxW(
-                li.m_hwnd,
+                Some(li.m_hwnd),
                 windows::core::w!(
                     "FiSH_11 inject error: failed to install necessary Winsock hooks. DLL will unload now."
                 ),
@@ -123,7 +123,7 @@ pub extern "system" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
 
 #[no_mangle]
 #[allow(non_snake_case)]
-pub extern "system" fn UnloadDll(action: c_int) -> c_int {
+pub extern "stdcall" fn UnloadDll(action: c_int) -> c_int {
     info!("UnloadDll() called with action: {}", action); // 0=Script unload, 1=mIRC exit, 2=DLL crash unload
 
     // Perform cleanup regardless of action type
@@ -208,7 +208,7 @@ pub extern "C" fn FiSH11_InjectDebugInfo(
 
 #[no_mangle]
 #[allow(non_snake_case)]
-pub extern "system" fn FiSH11_InjectVersion(
+pub extern "stdcall" fn FiSH11_InjectVersion(
     _m_wnd: HWND,
     _a_wnd: HWND,
     data: *mut c_char,
