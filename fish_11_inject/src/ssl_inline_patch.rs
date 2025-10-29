@@ -292,13 +292,13 @@ pub unsafe fn install_ssl_inline_patches() -> Result<(), String> {
 
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: Copying original bytes from SSL_read...");
-    ptr::copy_nonoverlapping(ssl_read as *const u8, ptr::addr_of_mut!(SSL_READ_ORIG_BYTES).cast(), JMP_SIZE);
+    ptr::copy_nonoverlapping(ssl_read as *const u8, SSL_READ_ORIG_BYTES.as_mut_ptr(), JMP_SIZE);
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: Copied {} bytes from SSL_read at {:p}", JMP_SIZE, ssl_read);
 
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: Copying original bytes from SSL_write...");
-    ptr::copy_nonoverlapping(ssl_write as *const u8, ptr::addr_of_mut!(SSL_WRITE_ORIG_BYTES).cast(), JMP_SIZE);
+    ptr::copy_nonoverlapping(ssl_write as *const u8, SSL_WRITE_ORIG_BYTES.as_mut_ptr(), JMP_SIZE);
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: Copied {} bytes from SSL_write at {:p}", JMP_SIZE, ssl_write);
 
