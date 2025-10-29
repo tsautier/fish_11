@@ -715,35 +715,91 @@ pub unsafe fn install_ssl_hooks(
     ssl_get_fd: SslGetFdFn,
     ssl_is_init_finished: SslIsInitFinishedProc,
 ) -> Result<(), String> {
-    let mut ssl_read_hook = SSL_READ_HOOK.lock().unwrap_or_else(handle_poison);
-    let mut ssl_write_hook = SSL_WRITE_HOOK.lock().unwrap_or_else(handle_poison);
+    #[cfg(debug_assertions)]
+    info!("install_ssl_hooks: Starting SSL hooks installation...");
 
+    #[cfg(debug_assertions)]
+    info!("install_ssl_hooks: Acquiring SSL_READ_HOOK mutex...");
+    let mut ssl_read_hook = SSL_READ_HOOK.lock().unwrap_or_else(handle_poison);
+    #[cfg(debug_assertions)]
+    info!("install_ssl_hooks: SSL_READ_HOOK mutex acquired");
+
+    #[cfg(debug_assertions)]
+    info!("install_ssl_hooks: Acquiring SSL_WRITE_HOOK mutex...");
+    let mut ssl_write_hook = SSL_WRITE_HOOK.lock().unwrap_or_else(handle_poison);
+    #[cfg(debug_assertions)]
+    info!("install_ssl_hooks: SSL_WRITE_HOOK mutex acquired");
+
+    #[cfg(debug_assertions)]
+    info!("install_ssl_hooks: Storing SSL_GET_FD function pointer...");
     *SSL_GET_FD.lock().unwrap_or_else(handle_poison) = Some(ssl_get_fd);
+    #[cfg(debug_assertions)]
+    info!("install_ssl_hooks: SSL_GET_FD stored at {:?}", ssl_get_fd as *const ());
+
+    #[cfg(debug_assertions)]
+    info!("install_ssl_hooks: Storing SSL_IS_INIT_FINISHED function pointer...");
     *SSL_IS_INIT_FINISHED.lock().unwrap_or_else(handle_poison) = Some(ssl_is_init_finished);
     debug!(
         "[HANDSHAKE] SSL_is_init_finished loaded at address: {:p}",
         ssl_is_init_finished as *const ()
     );
 
+    #[cfg(debug_assertions)]
+    info!("install_ssl_hooks: Creating SSL_read GenericDetour...");
     *ssl_read_hook = Some(
         GenericDetour::new(ssl_read, hooked_ssl_read)
-            .map_err(|e| format!("Failed to create SSL_read hook: {}", e))?,
+            .map_err(|e| {
+                #[cfg(debug_assertions)]
+                error!("install_ssl_hooks: Failed to create SSL_read GenericDetour: {}", e);
+                format!("Failed to create SSL_read hook: {}", e)
+            })?,
     );
+    #[cfg(debug_assertions)]
+    info!("install_ssl_hooks: SSL_read GenericDetour created successfully");
+
+    #[cfg(debug_assertions)]
+    info!("install_ssl_hooks: Creating SSL_write GenericDetour...");
     *ssl_write_hook = Some(
         GenericDetour::new(ssl_write, hooked_ssl_write)
-            .map_err(|e| format!("Failed to create SSL_write hook: {}", e))?,
+            .map_err(|e| {
+                #[cfg(debug_assertions)]
+                error!("install_ssl_hooks: Failed to create SSL_write GenericDetour: {}", e);
+                format!("Failed to create SSL_write hook: {}", e)
+            })?,
     );
+    #[cfg(debug_assertions)]
+    info!("install_ssl_hooks: SSL_write GenericDetour created successfully");
 
+    #[cfg(debug_assertions)]
+    info!("install_ssl_hooks: Enabling SSL_read hook...");
     ssl_read_hook
         .as_mut()
         .unwrap()
         .enable()
-        .map_err(|e| format!("Failed to enable SSL_read hook: {}", e))?;
+        .map_err(|e| {
+            #[cfg(debug_assertions)]
+            error!("install_ssl_hooks: Failed to enable SSL_read hook: {}", e);
+            format!("Failed to enable SSL_read hook: {}", e)
+        })?;
+    #[cfg(debug_assertions)]
+    info!("install_ssl_hooks: SSL_read hook enabled successfully");
+
+    #[cfg(debug_assertions)]
+    info!("install_ssl_hooks: Enabling SSL_write hook...");
     ssl_write_hook
         .as_mut()
         .unwrap()
         .enable()
-        .map_err(|e| format!("Failed to enable SSL_write hook: {}", e))?;
+        .map_err(|e| {
+            #[cfg(debug_assertions)]
+            error!("install_ssl_hooks: Failed to enable SSL_write hook: {}", e);
+            format!("Failed to enable SSL_write hook: {}", e)
+        })?;
+    #[cfg(debug_assertions)]
+    info!("install_ssl_hooks: SSL_write hook enabled successfully");
+
+    #[cfg(debug_assertions)]
+    info!("install_ssl_hooks: SSL hooks installation completed successfully");
 
     Ok(())
 }
