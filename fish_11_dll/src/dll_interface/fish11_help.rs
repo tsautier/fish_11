@@ -27,7 +27,7 @@ pub extern "stdcall" fn FiSH11_Help(
     let result = panic::catch_unwind(|| {
         let help_lines = [
             format!("//echo -a === FiSH_11 v{}, secure chat for mIRC === ", CRATE_VERSION),
-            format!("//echo -a | Written by [etc], {}, licensed under the GPL v3.", CURRENT_YEAR),
+            format!("//echo -a | Written by [GuY], {}, licensed under the GPL v3.", CURRENT_YEAR),
             "//echo -a | ".to_string(), // Empty line
             "//echo -a |     Commands:".to_string(),
             "//echo -a |       FiSH_GetVersion11 - Show version information".to_string(),

@@ -4,7 +4,7 @@
 ===============================================================================
   Main entry point for the FiSH_11 injection DLL for Windows (mIRC).
 
-  Author: etc
+  Author: GuY
   License: GNU GPL v3
   Date: 2025
 
@@ -69,16 +69,10 @@ const MIRC_CONTINUE: c_int = 1;
 const MIRC_COMMAND: c_int = 2;
 
 /// Get build information from VERGEN or use fallbacks
-pub const FISH_11_BUILD_DATE: &str = match option_env!("VERGEN_BUILD_DATE") {
-    Some(date) => date,
-    None => env!("FISH_FALLBACK_DATE"),
-};
+pub const FISH_11_BUILD_DATE: &str = env!("FISH_BUILD_DATE");
 
 /// Get build information from VERGEN or use fallbacks
-pub const FISH_11_BUILD_TIME: &str = match option_env!("VERGEN_BUILD_TIME") {
-    Some(time) => time,
-    None => env!("FISH_FALLBACK_TIME"),
-};
+pub const FISH_11_BUILD_TIME: &str = env!("FISH_BUILD_TIME");
 
 pub const FISH_11_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -219,12 +213,12 @@ pub unsafe extern "system" fn DllMain(
                 } */
 
                 #[cfg(debug_assertions)]
-                info!("DllMain: Cleaning up hooks...");
+                info!("DllMain: cleaning up hooks...");
                 
                 cleanup_hooks();
                 
                 #[cfg(debug_assertions)]
-                info!("DllMain: Cleanup complete");
+                info!("DllMain: cleanup complete");
             } else {
                 #[cfg(debug_assertions)]
                 info!("DllMain: DLL was not loaded, skipping cleanup");
@@ -237,7 +231,7 @@ pub unsafe extern "system" fn DllMain(
         }
         _ => {
             #[cfg(debug_assertions)]
-            info!("DllMain: Unknown reason code: {}", ul_reason_for_call);
+            info!("DllMain: unknown reason code: {}", ul_reason_for_call);
             1
         }
     }

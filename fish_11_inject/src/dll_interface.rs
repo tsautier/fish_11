@@ -61,7 +61,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
             guard
         }
         Err(e) => {
-            error!("LoadDll: Failed to lock MAX_MIRC_RETURN_BYTES: {}", e);
+            error!("LoadDll: failed to lock MAX_MIRC_RETURN_BYTES: {}", e);
             return MIRC_HALT;
         }
     };
@@ -156,12 +156,12 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
     info!("LoadDll: SSL inline patches installation completed");
 
     #[cfg(debug_assertions)]
-    info!("LoadDll: Checking VERSION_SHOWN flag...");
+    info!("LoadDll: checking VERSION_SHOWN flag...");
 
     // Show version info once if not already shown
     if !VERSION_SHOWN.swap(true, Ordering::Relaxed) {
         #[cfg(debug_assertions)]
-        info!("LoadDll: First load, preparing version message...");
+        info!("LoadDll: first load, preparing version message...");
 
         // Prepare version string as a command
         let version_cmd =
@@ -301,7 +301,7 @@ pub extern "stdcall" fn FiSH11_InjectVersion(
 ) -> c_int {
     // Use the version from Cargo.toml
     let version_info = format!(
-        "/echo -ts *** FiSH injection {} *** Compiled on {} at {}. Written by [etc], licensed under the GPL v3. ***",
+        "/echo -ts *** FiSH injection {} *** Compiled on {} at {}. Written by [GuY], licensed under the GPL v3. ***",
         FISH_11_VERSION, FISH_11_BUILD_DATE, FISH_11_BUILD_TIME
     );
 
