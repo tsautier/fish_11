@@ -2,7 +2,7 @@
 ;* FiSH_11 mIRC Script *
 ;***********************
 ; "FiSH_11" - Secure IRC encryption script for mIRC
-; Written by etc, 2025. GPL v3.
+; Written by GuY, 2025. GPL v3.
 
 ; === INITIALIZATION AND STARTUP ===
 on *:START: {

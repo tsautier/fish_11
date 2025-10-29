@@ -173,7 +173,7 @@ pub unsafe extern "system" fn DllMain(
             info!("DllMain: About to install SSL patches...");
 
             // Install SSL hooks with error handling
-            unsafe {
+            /* unsafe {
                 if let Err(e) = install_ssl_inline_patches() {
                     error!("Failed to install SSL patches: {}", e);
                     #[cfg(debug_assertions)]
@@ -183,7 +183,7 @@ pub unsafe extern "system" fn DllMain(
                     #[cfg(debug_assertions)]
                     info!("DllMain: SSL patches OK");
                 }
-            }
+            } */
 
             #[cfg(debug_assertions)]
             info!("DllMain: Setting LOADED flag to true...");
@@ -209,14 +209,14 @@ pub unsafe extern "system" fn DllMain(
                 info!("DllMain: Uninstalling SSL patches...");
 
                 // Uninstall SSL hooks
-                unsafe {
+                /* unsafe {
                     if let Err(e) = uninstall_ssl_inline_patches() {
                         error!("Failed to uninstall SSL patches: {}", e);
                     } else {
                         #[cfg(debug_assertions)]
                         info!("DllMain: SSL patches uninstalled successfully");
                     }
-                }
+                } */
 
                 #[cfg(debug_assertions)]
                 info!("DllMain: Cleaning up hooks...");

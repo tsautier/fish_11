@@ -141,7 +141,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
     info!("LoadDll: Installing SSL inline patches...");
 
     // Install inline SSL patches after hooks and after libssl-3.dll is likely loaded
-    unsafe {
+    /* unsafe {
         if let Err(e) = ssl_inline_patch::install_ssl_inline_patches() {
             error!("LoadDll: Failed to install SSL inline patches: {}", e);
             #[cfg(debug_assertions)]
@@ -150,7 +150,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
             #[cfg(debug_assertions)]
             info!("LoadDll: SSL inline patches installed successfully");
         }
-    }
+    } */
 
     #[cfg(debug_assertions)]
     info!("LoadDll: SSL inline patches installation completed");
