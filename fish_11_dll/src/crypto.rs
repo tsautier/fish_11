@@ -230,15 +230,15 @@ pub fn encrypt_message(key: &[u8; 32], message: &str, recipient: Option<&str>) -
     nonce_bytes[0..8].copy_from_slice(&counter);
     nonce_bytes[8..12].copy_from_slice(&random_bytes);
 
-    let nonce = Nonce::from_slice(&nonce_bytes);
+    let nonce = Nonce::from(nonce_bytes);
 
     // Create the cipher
-    let chacha_key = Key::from_slice(key);
-    let cipher = ChaCha20Poly1305::new(chacha_key);
+    let chacha_key = Key::from(*key);
+    let cipher = ChaCha20Poly1305::new(&chacha_key);
 
     // Encrypt the message
     let ciphertext = cipher
-        .encrypt(nonce, message.as_bytes())
+        .encrypt(&nonce, message.as_bytes())
         .map_err(|e| FishError::CryptoError(format!("Encryption failed: {}", e)))?;
 
     // Concatenate the nonce and ciphertext
@@ -304,13 +304,15 @@ pub fn decrypt_message(key: &[u8; 32], encrypted_data: &str) -> Result<String> {
     }
 
     // Create cipher
-    let chacha_key = Key::from_slice(key);
-    let cipher = ChaCha20Poly1305::new(chacha_key);
-    let nonce = Nonce::from_slice(nonce);
+    let chacha_key = Key::from(*key);
+    let cipher = ChaCha20Poly1305::new(&chacha_key);
+    let mut nonce_array = [0u8; 12];
+    nonce_array.copy_from_slice(nonce);
+    let nonce = Nonce::from(nonce_array);
 
     // Decrypt
     let plaintext = cipher
-        .decrypt(nonce, ciphertext)
+        .decrypt(&nonce, ciphertext)
         .map_err(|e| FishError::CryptoError(format!("Decryption failed: {}", e)))?;
 
     // Log decryption (audit trail)
