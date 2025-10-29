@@ -49,10 +49,8 @@ var %exe_dir = $nofile($mircexe)
   if (%mark_style == $null) { set %mark_style 1 }
   if (%NickTrack == $null) { set %NickTrack [Off] }
   
-  ; Set config file path if not already set
-  if (%fish_config_file == $null) {
-    set %fish_config_file $+($scriptdir,fish_11.ini)
-  }
+  ; Set MIRCDIR environment variable for the DLL
+  setenv MIRCDIR $mircdir
   
     ; Register events for incoming messages
   .signal *:TEXT:*:*:fish11_incoming_text

@@ -37,12 +37,11 @@ impl FileLogger {
             match self.file.try_lock() {
                 Ok(mut file) => {
                     // Successfully got the lock, write the message
-                    if let Err(e) = file.write_all(log_message.as_bytes()) {
+                    if let Err(_e) = file.write_all(log_message.as_bytes()) {
                         // Don't use eprintln in a DLL - it can cause issues
                         // Just silently ignore errors
-                    } else {
-                        // Always flush to ensure logs are written
-                        let _ = file.flush();
+                    } else if let Err(_e) = file.flush() {
+                        // Also ignore flush errors silently
                     }
                     return; // We're done, exit the loop
                 },

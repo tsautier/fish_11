@@ -34,7 +34,7 @@ pub fn init_config_file() -> Result<()> {
 pub fn get_config_path() -> Result<PathBuf> {
     log::debug!("get_config_path: Determining configuration file path");
 
-    // First, try to use environment variable for mIRC directory if available
+    // Use environment variable for mIRC directory
     match std::env::var("MIRCDIR") {
         Ok(mirc_path) => {
             log::debug!("get_config_path: Found MIRCDIR environment variable: {}", mirc_path);
@@ -56,80 +56,13 @@ pub fn get_config_path() -> Result<PathBuf> {
             path.push("fish_11.ini");
             log::info!("get_config_path: Using config path from MIRCDIR: {}", path.display());
 
-            // Check if the path looks valid
-            log::debug!("get_config_path: Path exists? {}", path.exists());
-            if path.exists() {
-                log::debug!("get_config_path: Path is file? {}", path.is_file());
-                log::debug!("get_config_path: Path is directory? {}", path.is_dir());
-            }
-
-            return Ok(path);
+            Ok(path)
         }
         Err(e) => {
-            log::debug!("get_config_path: MIRCDIR environment variable not found: {}", e);
+            log::error!("get_config_path: MIRCDIR environment variable not found: {}", e);
+            Err(FishError::ConfigError("MIRCDIR environment variable not set".to_string()))
         }
     }
-
-    // Fallback to local directory (where the DLL is loaded)
-    match std::env::current_exe() {
-        Ok(dll_path) => {
-            log::debug!("get_config_path: Current executable path: {}", dll_path.display());
-
-            if let Some(parent) = dll_path.parent() {
-                log::debug!("get_config_path: Parent directory: {}", parent.display());
-
-                let mut path = PathBuf::from(parent);
-                path.push("fish_11.ini");
-                log::info!(
-                    "get_config_path: Using config path from current directory: {}",
-                    path.display()
-                );
-
-                // Check if the path looks valid
-                log::debug!("get_config_path: Path exists? {}", path.exists());
-                if path.exists() {
-                    log::debug!("get_config_path: Path is file? {}", path.is_file());
-                    log::debug!("get_config_path: Path is directory? {}", path.is_dir());
-                }
-
-                return Ok(path);
-            } else {
-                log::warn!("get_config_path: Couldn't get parent directory from executable path");
-            }
-        }
-        Err(e) => {
-            log::warn!("get_config_path: Failed to get current executable path: {}", e);
-        }
-    }
-
-    // Final fallback: use system config directory
-    if let Some(base_dirs) = BaseDirs::new() {
-        let config_dir = base_dirs.config_dir();
-        log::debug!("get_config_path: System config directory: {}", config_dir.display());
-
-        let mut path = PathBuf::from(config_dir);
-        path.push("fish_11");
-
-        // Create directory if it doesn't exist
-        if !path.exists() {
-            log::debug!("get_config_path: Creating directory: {}", path.display());
-            if let Err(e) = std::fs::create_dir_all(&path) {
-                log::error!("get_config_path: Failed to create directory: {}", e);
-            }
-        }
-
-        path.push("fish_11.ini");
-        log::info!(
-            "get_config_path: Using config path from system config directory: {}",
-            path.display()
-        );
-        return Ok(path);
-    } else {
-        log::error!("get_config_path: Couldn't determine base directories");
-    }
-
-    log::error!("get_config_path: All methods to determine config path failed");
-    Err(FishError::ConfigError("Could not determine config directory".to_string()))
 }
 
 /// Loads the configuration from the disk or creates a new one if it doesn't exist.
@@ -533,5 +466,37 @@ mod tests {
 
         // Ensure the temp file is cleaned up
         let _ = fs::remove_file(&temp_path);
+    }
+
+    #[test]
+    fn test_get_config_path_with_mircdir() {
+        // Set a temporary directory for MIRCDIR
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+        std::env::set_var("MIRCDIR", temp_dir.path());
+
+        // Call the function
+        let path_result = get_config_path();
+
+        // Check that we got a valid path
+        assert!(path_result.is_ok());
+
+        let path = path_result.unwrap();
+
+        // Check that the path is correct
+        let mut expected_path = temp_dir.path().to_path_buf();
+        expected_path.push("fish_11.ini");
+        assert_eq!(path, expected_path);
+    }
+
+    #[test]
+    fn test_get_config_path_no_mircdir() {
+        // Ensure MIRCDIR is not set
+        std::env::remove_var("MIRCDIR");
+
+        // Call the function
+        let path_result = get_config_path();
+
+        // Check that we got an error
+        assert!(path_result.is_err());
     }
 }

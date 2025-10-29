@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use winapi::shared::minwindef::BOOL;
 use winapi::shared::windef::HWND;
 
@@ -21,6 +22,9 @@ pub extern "stdcall" fn FiSH11_GetConfigPath(
     _show: BOOL,
     _nopause: BOOL,
 ) -> c_int {
+    // Ensure the logger is initialized for testing
+    let _ = crate::logging::init_logger(log::LevelFilter::Debug);
+
     // Log function entry with structured logging
     crate::logging::log_function_entry("FiSH11_GetConfigPath", Some("SAFE VERSION"));
 
@@ -213,4 +217,39 @@ pub extern "stdcall" fn FiSH11_GetConfigPath(
     log::info!("FiSH11_GetConfigPath[{}]: Function completed successfully", trace_id);
     crate::logging::log_function_exit("FiSH11_GetConfigPath", Some(MIRC_IDENTIFIER));
     MIRC_IDENTIFIER
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::CStr;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_fish11_getconfigpath_normal() {
+        // Initialize logger for testing
+        let _ = crate::logging::init_logger(log::LevelFilter::Debug);
+
+        // Create a buffer to hold the path
+        let mut buffer: [c_char; 260] = [0; 260];
+
+        // Call the function
+        let result = FiSH11_GetConfigPath(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            buffer.as_mut_ptr(),
+            ptr::null_mut(),
+            0,
+            0,
+        );
+
+        // Check the return value
+        assert_eq!(result, MIRC_IDENTIFIER);
+
+        // Check the buffer content
+        let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
+        let path_str = c_str.to_str().unwrap();
+
+        assert!(path_str.contains("fish_11.ini"));
+    }
 }
