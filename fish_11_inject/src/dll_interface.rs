@@ -29,17 +29,42 @@ pub struct LOADINFO {
 /// This function is called by mIRC, under this name.
 ///
 /// So this is the second entry point after DllMain().
-pub extern "system" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
+pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
+    #[cfg(debug_assertions)]
+    info!("=== LoadDll: Function called ===");
+
     // Safety check
     if loadinfo.is_null() {
         error!("LoadDll() called with NULL loadinfo!");
+        #[cfg(debug_assertions)]
+        error!("LoadDll: loadinfo pointer is NULL - aborting");
         return MIRC_HALT; // Indicate failure
     }
 
+    #[cfg(debug_assertions)]
+    info!("LoadDll: loadinfo pointer is valid: {:?}", loadinfo);
+
     let li = unsafe { &mut *loadinfo };
 
+    #[cfg(debug_assertions)]
+    info!("LoadDll: LOADINFO fields - version: {}, unicode: {}, m_bytes: {}", 
+        li.m_version, li.m_unicode, li.m_bytes);
+
+    #[cfg(debug_assertions)]
+    info!("LoadDll: Acquiring MAX_MIRC_RETURN_BYTES lock...");
+
     // Store max return bytes (corrected type usage)
-    let mut max_bytes_guard = MAX_MIRC_RETURN_BYTES.lock().unwrap();
+    let mut max_bytes_guard = match MAX_MIRC_RETURN_BYTES.lock() {
+        Ok(guard) => {
+            #[cfg(debug_assertions)]
+            info!("LoadDll: MAX_MIRC_RETURN_BYTES lock acquired");
+            guard
+        }
+        Err(e) => {
+            error!("LoadDll: failed to lock MAX_MIRC_RETURN_BYTES: {}", e);
+            return MIRC_HALT;
+        }
+    };
 
     // m_bytes is u32, MAX_MIRC_RETURN_BYTES is Mutex<usize>
     *max_bytes_guard = li.m_bytes as usize;
@@ -47,6 +72,9 @@ pub extern "system" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
     // copy value for logging after drop
     let max_len = *max_bytes_guard;
     drop(max_bytes_guard); // Release lock
+
+    #[cfg(debug_assertions)]
+    info!("LoadDll: MAX_MIRC_RETURN_BYTES set to {}", max_len);
 
     info!(
         "=== LoadDll() called. mIRC version: {}, Unicode: {}, MaxBytes: {} === ",
@@ -60,25 +88,37 @@ pub extern "system" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
             li.m_version
         );
 
+        #[cfg(debug_assertions)]
+        info!("LoadDll: Displaying version warning MessageBox...");
+
         unsafe {
             MessageBoxW(
-                li.m_hwnd,
+                Some(li.m_hwnd),
                 windows::core::w!("Warning: this FiSH_11 version may require mIRC 7.0 or newer."),
                 windows::core::w!("FiSH_11 injection warning"),
                 MB_ICONEXCLAMATION | MB_OK,
             );
         }
+
+        #[cfg(debug_assertions)]
+        info!("LoadDll: MessageBox closed");
     }
 
     // Setup hooks via install_hooks()
     info!("Setting up socket hooks...");
+    
+    #[cfg(debug_assertions)]
+    info!("LoadDll: Calling install_hooks()...");
 
     if let Err(e) = install_hooks() {
         error!("Failed to set up Winsock hooks: {}", e);
 
+        #[cfg(debug_assertions)]
+        error!("LoadDll: install_hooks() failed with error: {}", e);
+
         unsafe {
             MessageBoxW(
-                li.m_hwnd,
+                Some(li.m_hwnd),
                 windows::core::w!(
                     "FiSH_11 inject error: failed to install necessary Winsock hooks. DLL will unload now."
                 ),
@@ -88,16 +128,41 @@ pub extern "system" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
         }
         li.m_keep = 0; // Tell mIRC to unload us
 
+        #[cfg(debug_assertions)]
+        error!("LoadDll: Returning MIRC_HALT due to hook installation failure");
+
         return MIRC_HALT; // Indicate failure
     }
 
+    #[cfg(debug_assertions)]
+    info!("LoadDll: install_hooks() completed successfully");
+
+    #[cfg(debug_assertions)]
+    info!("LoadDll: Installing SSL inline patches...");
+
     // Install inline SSL patches after hooks and after libssl-3.dll is likely loaded
-    unsafe {
-        ssl_inline_patch::install_ssl_inline_patches();
-    }
+    /* unsafe {
+        if let Err(e) = ssl_inline_patch::install_ssl_inline_patches() {
+            error!("LoadDll: Failed to install SSL inline patches: {}", e);
+            #[cfg(debug_assertions)]
+            error!("LoadDll: SSL inline patch error: {}", e);
+        } else {
+            #[cfg(debug_assertions)]
+            info!("LoadDll: SSL inline patches installed successfully");
+        }
+    } */
+
+    #[cfg(debug_assertions)]
+    info!("LoadDll: SSL inline patches installation completed");
+
+    #[cfg(debug_assertions)]
+    info!("LoadDll: checking VERSION_SHOWN flag...");
 
     // Show version info once if not already shown
     if !VERSION_SHOWN.swap(true, Ordering::Relaxed) {
+        #[cfg(debug_assertions)]
+        info!("LoadDll: first load, preparing version message...");
+
         // Prepare version string as a command
         let version_cmd =
             format!("/echo -ts *** FiSH_11 Inject v{} loaded successfully. ***", FISH_11_VERSION);
@@ -107,23 +172,41 @@ pub extern "system" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
 
             if c_cmd.as_bytes_with_nul().len() <= current_max_len {
                 info!("Version info ready to be displayed via /fish11_version");
+                #[cfg(debug_assertions)]
+                info!("LoadDll: Version command fits in buffer (len: {} <= max: {})", 
+                    c_cmd.as_bytes_with_nul().len(), current_max_len);
             } else {
                 warn!("Version info command too long for mIRC buffer.");
+                #[cfg(debug_assertions)]
+                warn!("LoadDll: Version command too long (len: {} > max: {})", 
+                    c_cmd.as_bytes_with_nul().len(), current_max_len);
             }
+        } else {
+            #[cfg(debug_assertions)]
+            error!("LoadDll: Failed to create CString for version command");
         }
+    } else {
+        #[cfg(debug_assertions)]
+        info!("LoadDll: VERSION_SHOWN already true, skipping version message");
     }
 
     info!("=== LoadDll() finished successfully ===");
 
+    #[cfg(debug_assertions)]
+    info!("LoadDll: Setting m_keep = 1 to keep DLL loaded");
+
     // Tell mIRC to keep the DLL loaded
     li.m_keep = 1;
+
+    #[cfg(debug_assertions)]
+    info!("=== LoadDll: Returning MIRC_HALT (success) ===");
 
     MIRC_HALT // Return 0 for success
 }
 
 #[no_mangle]
 #[allow(non_snake_case)]
-pub extern "system" fn UnloadDll(action: c_int) -> c_int {
+pub extern "stdcall" fn UnloadDll(action: c_int) -> c_int {
     info!("UnloadDll() called with action: {}", action); // 0=Script unload, 1=mIRC exit, 2=DLL crash unload
 
     // Perform cleanup regardless of action type
@@ -208,7 +291,7 @@ pub extern "C" fn FiSH11_InjectDebugInfo(
 
 #[no_mangle]
 #[allow(non_snake_case)]
-pub extern "system" fn FiSH11_InjectVersion(
+pub extern "stdcall" fn FiSH11_InjectVersion(
     _m_wnd: HWND,
     _a_wnd: HWND,
     data: *mut c_char,
@@ -218,7 +301,7 @@ pub extern "system" fn FiSH11_InjectVersion(
 ) -> c_int {
     // Use the version from Cargo.toml
     let version_info = format!(
-        "/echo -ts *** FiSH injection {} *** Compiled on {} at {}. Written by [etc], licensed under the GPL v3. ***",
+        "/echo -ts *** FiSH injection {} *** Compiled on {} at {}. Written by [GuY], licensed under the GPL v3. ***",
         FISH_11_VERSION, FISH_11_BUILD_DATE, FISH_11_BUILD_TIME
     );
 

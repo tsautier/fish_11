@@ -4,7 +4,7 @@
 ===============================================================================
   Main entry point for the FiSH_11 injection DLL for Windows (mIRC).
 
-  Author: etc
+  Author: GuY
   License: GNU GPL v3
   Date: 2025
 
@@ -32,18 +32,24 @@ use engines::InjectEngines;
 use lazy_static::lazy_static;
 use log::{error, info};
 use socket_info::SocketInfo;
-use windows::Win32::Foundation::{BOOL, HMODULE, TRUE};
+use winapi::shared::minwindef::BOOL;
+use windows::Win32::Foundation::HMODULE;
 use windows::Win32::Networking::WinSock::SOCKET;
 
 use crate::helpers_inject::{cleanup_hooks, init_logger};
 use crate::ssl_inline_patch::{install_ssl_inline_patches, uninstall_ssl_inline_patches};
 
-// Global state
+// Wrapper to make HMODULE Send + Sync
+#[derive(Clone, Copy)]
+struct SendHMODULE(HMODULE);
+unsafe impl Send for SendHMODULE {}
+unsafe impl Sync for SendHMODULE {}
+
 lazy_static! {
     static ref ACTIVE_SOCKETS: Mutex<HashMap<u32, Arc<SocketInfo>>> = Mutex::new(HashMap::new());
     static ref DISCARDED_SOCKETS: Mutex<Vec<u32>> = Mutex::new(Vec::new());
     static ref ENGINES: Mutex<Option<Arc<InjectEngines>>> = Mutex::new(None);
-    static ref DLL_HANDLE_PTR: Mutex<Option<HMODULE>> = Mutex::new(None);
+    static ref DLL_HANDLE_PTR: Mutex<Option<SendHMODULE>> = Mutex::new(None);
     static ref MAX_MIRC_RETURN_BYTES: Mutex<usize> = Mutex::new(4096);
     static ref SOCKETS: RwLock<HashMap<SOCKET, Arc<Mutex<SocketInfo>>>> =
         RwLock::new(HashMap::new());
@@ -63,16 +69,10 @@ const MIRC_CONTINUE: c_int = 1;
 const MIRC_COMMAND: c_int = 2;
 
 /// Get build information from VERGEN or use fallbacks
-pub const FISH_11_BUILD_DATE: &str = match option_env!("VERGEN_BUILD_DATE") {
-    Some(date) => date,
-    None => env!("FISH_FALLBACK_DATE"),
-};
+pub const FISH_11_BUILD_DATE: &str = env!("FISH_BUILD_DATE");
 
 /// Get build information from VERGEN or use fallbacks
-pub const FISH_11_BUILD_TIME: &str = match option_env!("VERGEN_BUILD_TIME") {
-    Some(time) => time,
-    None => env!("FISH_FALLBACK_TIME"),
-};
+pub const FISH_11_BUILD_TIME: &str = env!("FISH_BUILD_TIME");
 
 pub const FISH_11_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -114,18 +114,45 @@ pub const FISH_INJECT_VERSION: u32 = 11;
 */
 /// Entry point for Windows DLL.
 /// WE START HERE !
-///
-/// This function is called by Windows when the DLL is loaded or unloaded.
 #[no_mangle]
-#[allow(non_snake_case)]
-extern "system" fn DllMain(h_module: HMODULE, ul_reason_for_call: u32, _: *mut c_void) -> BOOL {
+pub unsafe extern "system" fn DllMain(
+    h_module: HMODULE,
+    ul_reason_for_call: u32,
+    _: *mut c_void,
+) -> i32 {
     match ul_reason_for_call {
         1 => {
             // DLL_PROCESS_ATTACH
-            // Store module handle
-            *DLL_HANDLE_PTR.lock().unwrap() = Some(h_module);
+            #[cfg(debug_assertions)]
+            {
+                // Initialize logger first so we can log everything
+                if !LOGGER_INITIALIZED.load(Ordering::SeqCst) {
+                    init_logger();
+                }
+                info!("=== DllMain: DLL_PROCESS_ATTACH ===");
+                info!("DllMain: h_module = {:?}", h_module);
+            }
 
-            // Initialize logger
+            // Store module handle
+            #[cfg(debug_assertions)]
+            info!("DllMain: Acquiring DLL_HANDLE_PTR lock...");
+            
+            match DLL_HANDLE_PTR.lock() {
+                Ok(mut handle) => {
+                    *handle = Some(SendHMODULE(h_module));
+                    #[cfg(debug_assertions)]
+                    info!("DllMain: Module handle stored successfully");
+                }
+                Err(e) => {
+                    #[cfg(debug_assertions)]
+                    error!("DllMain: Failed to lock DLL_HANDLE_PTR: {}", e);
+                    return 0; // Return FALSE
+                }
+            }
+
+            #[cfg(debug_assertions)]
+            info!("DllMain: Initializing logger (if not already done)...");
+            
             init_logger();
 
             info!("***");
@@ -136,38 +163,76 @@ extern "system" fn DllMain(h_module: HMODULE, ul_reason_for_call: u32, _: *mut c
             info!("***");
             info!("The DLL is loaded successfully. Now it's time to h00k some calls baby !");
 
+            #[cfg(debug_assertions)]
+            info!("DllMain: About to install SSL patches...");
+
             // Install SSL hooks with error handling
-            unsafe {
+            /* unsafe {
                 if let Err(e) = install_ssl_inline_patches() {
                     error!("Failed to install SSL patches: {}", e);
+                    #[cfg(debug_assertions)]
+                    error!("DllMain: SSL patch installation failed, continuing anyway...");
                 } else {
                     info!("SSL patches installed successfully");
+                    #[cfg(debug_assertions)]
+                    info!("DllMain: SSL patches OK");
                 }
-            }
+            } */
+
+            #[cfg(debug_assertions)]
+            info!("DllMain: Setting LOADED flag to true...");
 
             // Mark as loaded
             LOADED.store(true, Ordering::SeqCst);
 
-            TRUE
+            #[cfg(debug_assertions)]
+            info!("=== DllMain: DLL_PROCESS_ATTACH completed successfully ===");
+
+            1
         }
         0 => {
             // DLL_PROCESS_DETACH
+            #[cfg(debug_assertions)]
+            info!("=== DllMain: DLL_PROCESS_DETACH ===");
+            
             // Cleanup
             if LOADED.swap(false, Ordering::SeqCst) {
                 info!("DllMain(): process is detaching. Cleaning up...");
 
+                #[cfg(debug_assertions)]
+                info!("DllMain: Uninstalling SSL patches...");
+
                 // Uninstall SSL hooks
-                unsafe {
+                /* unsafe {
                     if let Err(e) = uninstall_ssl_inline_patches() {
                         error!("Failed to uninstall SSL patches: {}", e);
+                    } else {
+                        #[cfg(debug_assertions)]
+                        info!("DllMain: SSL patches uninstalled successfully");
                     }
-                }
+                } */
 
+                #[cfg(debug_assertions)]
+                info!("DllMain: cleaning up hooks...");
+                
                 cleanup_hooks();
+                
+                #[cfg(debug_assertions)]
+                info!("DllMain: cleanup complete");
+            } else {
+                #[cfg(debug_assertions)]
+                info!("DllMain: DLL was not loaded, skipping cleanup");
             }
 
-            TRUE
+            #[cfg(debug_assertions)]
+            info!("=== DllMain: DLL_PROCESS_DETACH completed ===");
+
+            1
         }
-        _ => TRUE,
+        _ => {
+            #[cfg(debug_assertions)]
+            info!("DllMain: unknown reason code: {}", ul_reason_for_call);
+            1
+        }
     }
 }

@@ -1,6 +1,6 @@
 # FiSH_11 - Secure encryption for IRC & mIRC
 
-FiSH_11 is a modernized implementation of the classic FiSH_10 IRC encryption tool, completely rewritten in Rust with modern cryptographic algorithms and enhanced security features :
+FiSH_11 (work in progress) is a modernized implementation of the classic FiSH_10 IRC encryption tool, completely rewritten in Rust with modern cryptographic algorithms and enhanced security features :
 
 - **X25519 (Curve25519-dalek)** for secure key exchange
 - **ChaCha20-Poly1305** for authenticated encryption
@@ -125,8 +125,8 @@ The core library exports the following functions for mIRC integration :
 #### Prerequisites
 
 - Rust toolchain (install via [rustup](https://rustup.rs/))
-- Windows: MSVC Build Tools or Visual Studio
-- For 32-bit mIRC compatibility: i686 target
+- Windows: MSVC Build Tools or Visual Studio. You can build using GCC too.
+- For 32-bit mIRC compatibility: i686-pc-windows-msvc
 
 #### Windows build steps
 
@@ -367,4 +367,4 @@ GNU GENERAL PUBLIC LICENSE, Version 3, 29 June 2007
 
 ## Acknowledgments
 
-This project is inspired by the original FiSH_10 IRC encryption tool, particularly the injection methodology from fish_inject. The modern Rust implementation provides enhanced security while maintaining compatibility with existing IRC infrastructure. Many thanks to the developpers for their hard work and inspiration.
+This project is inspired by the original FiSH_10 IRC encryption tool, particularly the injection methodology from fish_inject. The modern Rust implementation provides enhanced security while maintaining compatibility with existing IRC infrastructure. Many thanks to the developpers of previous FiSH versions for their hard work.

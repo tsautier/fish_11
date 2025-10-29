@@ -13,7 +13,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # For Windows API
-windows = { version = "0.57.0", features = [
+windows = { version = "0.62.2", features = [
     "Win32_Foundation",
     "Win32_Networking_WinSock",
     "Win32_System_LibraryLoader",
@@ -22,15 +22,16 @@ windows = { version = "0.57.0", features = [
 ] }
 
 # For hooking
-retour = "0.3.1"
+retour = { git = "https://github.com/Hpmason/retour-rs.git" }
 
 # Utility
 lazy_static = "1.5.0"
 log = "0.4.27"
 parking_lot = "0.12"
-winapi = { version = "0.3.9", features = ["winsock2", "ws2def", "psapi"] }
+winapi = { version = "0.3.9", features = ["winsock2", "ws2def", "psapi", "memoryapi"] }
 simple-logging = "2"
 sha2 = "0.10"
+chrono = "0.4"
 
 [build-dependencies]
-vergen = { version = "8.2.1", features = ["build", "cargo", "rustc", "si"] }
+vergen = { version = "9.0.6", features = ["build", "cargo", "rustc", "si"] }

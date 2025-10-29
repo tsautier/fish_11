@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use vergen::EmitBuilder;
+use vergen::Emitter;
 
 // Define the version information with compile date and time
 // This is used to display information when the DLL is loaded
@@ -17,10 +17,11 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
     // Generate build-time information
-    EmitBuilder::builder()
-        .build_timestamp()
+    Emitter::default()
+        .add_instructions(&vergen::BuildBuilder::all_build().unwrap())
+        .expect("Failed to generate version information")
         .emit()
-        .expect("Failed to generate version information");
+        .expect("Failed to emit version information");
 
     // Debug output
     println!("cargo:warning=Generating build information for FiSH 11 Inject");
