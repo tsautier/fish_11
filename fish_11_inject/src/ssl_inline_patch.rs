@@ -308,13 +308,13 @@ pub unsafe fn install_ssl_inline_patches() -> Result<(), String> {
 
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: Building trampoline for SSL_read (return address: {:#x})...", read_ret_addr);
-    build_trampoline(&mut *ptr::addr_of_mut!(SSL_READ_TRAMPOLINE), &SSL_READ_ORIG_BYTES, read_ret_addr)?;
+    build_trampoline(&mut SSL_READ_TRAMPOLINE, &SSL_READ_ORIG_BYTES, read_ret_addr)?;
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: SSL_read trampoline built successfully");
 
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: Building trampoline for SSL_write (return address: {:#x})...", write_ret_addr);
-    build_trampoline(&mut *ptr::addr_of_mut!(SSL_WRITE_TRAMPOLINE), &SSL_WRITE_ORIG_BYTES, write_ret_addr)?;
+    build_trampoline(&mut SSL_WRITE_TRAMPOLINE, &SSL_WRITE_ORIG_BYTES, write_ret_addr)?;
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: SSL_write trampoline built successfully");
 
