@@ -129,11 +129,37 @@ pub unsafe extern "system" fn DllMain(
     match ul_reason_for_call {
         1 => {
             // DLL_PROCESS_ATTACH
-        // DLL_PROCESS_ATTACH
-        // Store module handle
-        *DLL_HANDLE_PTR.lock().unwrap() = Some(SendHMODULE(h_module));
+            #[cfg(debug_assertions)]
+            {
+                // Initialize logger first so we can log everything
+                if !LOGGER_INITIALIZED.load(Ordering::SeqCst) {
+                    init_logger();
+                }
+                info!("=== DllMain: DLL_PROCESS_ATTACH ===");
+                info!("DllMain: h_module = {:?}", h_module);
+            }
 
-        // Initialize logger
+            // Store module handle
+            #[cfg(debug_assertions)]
+            info!("DllMain: Acquiring DLL_HANDLE_PTR lock...");
+            
+            match DLL_HANDLE_PTR.lock() {
+                Ok(mut handle) => {
+                    *handle = Some(SendHMODULE(h_module));
+                    #[cfg(debug_assertions)]
+                    info!("DllMain: Module handle stored successfully");
+                }
+                Err(e) => {
+                    #[cfg(debug_assertions)]
+                    error!("DllMain: Failed to lock DLL_HANDLE_PTR: {}", e);
+                    return 0; // Return FALSE
+                }
+            }
+
+            #[cfg(debug_assertions)]
+            info!("DllMain: Initializing logger (if not already done)...");
+            
+            init_logger();
 
             info!("***");
             info!(
@@ -143,38 +169,76 @@ pub unsafe extern "system" fn DllMain(
             info!("***");
             info!("The DLL is loaded successfully. Now it's time to h00k some calls baby !");
 
+            #[cfg(debug_assertions)]
+            info!("DllMain: About to install SSL patches...");
+
             // Install SSL hooks with error handling
             unsafe {
                 if let Err(e) = install_ssl_inline_patches() {
                     error!("Failed to install SSL patches: {}", e);
+                    #[cfg(debug_assertions)]
+                    error!("DllMain: SSL patch installation failed, continuing anyway...");
                 } else {
                     info!("SSL patches installed successfully");
+                    #[cfg(debug_assertions)]
+                    info!("DllMain: SSL patches OK");
                 }
             }
 
+            #[cfg(debug_assertions)]
+            info!("DllMain: Setting LOADED flag to true...");
+
             // Mark as loaded
             LOADED.store(true, Ordering::SeqCst);
+
+            #[cfg(debug_assertions)]
+            info!("=== DllMain: DLL_PROCESS_ATTACH completed successfully ===");
 
             1
         }
         0 => {
             // DLL_PROCESS_DETACH
+            #[cfg(debug_assertions)]
+            info!("=== DllMain: DLL_PROCESS_DETACH ===");
+            
             // Cleanup
             if LOADED.swap(false, Ordering::SeqCst) {
                 info!("DllMain(): process is detaching. Cleaning up...");
+
+                #[cfg(debug_assertions)]
+                info!("DllMain: Uninstalling SSL patches...");
 
                 // Uninstall SSL hooks
                 unsafe {
                     if let Err(e) = uninstall_ssl_inline_patches() {
                         error!("Failed to uninstall SSL patches: {}", e);
+                    } else {
+                        #[cfg(debug_assertions)]
+                        info!("DllMain: SSL patches uninstalled successfully");
                     }
                 }
 
+                #[cfg(debug_assertions)]
+                info!("DllMain: Cleaning up hooks...");
+                
                 cleanup_hooks();
+                
+                #[cfg(debug_assertions)]
+                info!("DllMain: Cleanup complete");
+            } else {
+                #[cfg(debug_assertions)]
+                info!("DllMain: DLL was not loaded, skipping cleanup");
             }
+
+            #[cfg(debug_assertions)]
+            info!("=== DllMain: DLL_PROCESS_DETACH completed ===");
 
             1
         }
-        _ => 1,
+        _ => {
+            #[cfg(debug_assertions)]
+            info!("DllMain: Unknown reason code: {}", ul_reason_for_call);
+            1
+        }
     }
 }
