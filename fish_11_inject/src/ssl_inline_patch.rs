@@ -386,12 +386,12 @@ pub unsafe fn uninstall_ssl_inline_patches() -> Result<(), String> {
 
     // Make trampolines read-only
     let _ = change_memory_protection(
-        ptr::addr_of_mut!(SSL_READ_TRAMPOLINE).cast::<AlignedTrampoline>().cast::<c_void>(),
+        ptr::addr_of_mut!(SSL_READ_TRAMPOLINE).cast::<c_void>(),
         TRAMPOLINE_SIZE,
         PAGE_READONLY,
     );
     let _ = change_memory_protection(
-        ptr::addr_of_mut!(SSL_WRITE_TRAMPOLINE).cast::<AlignedTrampoline>().cast::<c_void>(),
+        ptr::addr_of_mut!(SSL_WRITE_TRAMPOLINE).cast::<c_void>(),
         TRAMPOLINE_SIZE,
         PAGE_READONLY,
     );
