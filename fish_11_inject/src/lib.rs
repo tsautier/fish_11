@@ -69,10 +69,16 @@ const MIRC_CONTINUE: c_int = 1;
 const MIRC_COMMAND: c_int = 2;
 
 /// Get build information from VERGEN or use fallbacks
-pub const FISH_11_BUILD_DATE: &str = env!("FISH_BUILD_DATE");
+pub const FISH_11_BUILD_DATE: &str = match option_env!("FISH_BUILD_DATE") {
+    Some(date) => date,
+    None => "unknown",
+};
 
 /// Get build information from VERGEN or use fallbacks
-pub const FISH_11_BUILD_TIME: &str = env!("FISH_BUILD_TIME");
+pub const FISH_11_BUILD_TIME: &str = match option_env!("FISH_BUILD_TIME") {
+    Some(time) => time,
+    None => "unknown",
+};
 
 pub const FISH_11_VERSION: &str = env!("CARGO_PKG_VERSION");
 

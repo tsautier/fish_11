@@ -119,17 +119,17 @@ unsafe fn get_module_filename(module: HMODULE) -> Option<String> {
 /// Detect OpenSSL in the current process
 pub unsafe fn detect_openssl() -> Option<OpenSslInfo> {
     #[cfg(debug_assertions)]
-    info!("detect_openssl: Starting OpenSSL detection...");
+    info!("detect_openssl: starting OpenSSL detection...");
 
     info!("Scanning for OpenSSL libraries...");
 
     #[cfg(debug_assertions)]
-    info!("detect_openssl: Method 1 - Trying known DLL names ({} names)...", OPENSSL_DLL_NAMES.len());
+    info!("detect_openssl: method 1 => trying known DLL names ({} names)...", OPENSSL_DLL_NAMES.len());
 
     // Method 1: Try known DLL names
     for (idx, &dll_name) in OPENSSL_DLL_NAMES.iter().enumerate() {
         #[cfg(debug_assertions)]
-        info!("detect_openssl: [{}/{}] Checking '{}'...", idx + 1, OPENSSL_DLL_NAMES.len(), dll_name);
+        info!("detect_openssl: [{}/{}] checking '{}'...", idx + 1, OPENSSL_DLL_NAMES.len(), dll_name);
 
         let dll_name_cstr = CString::new(dll_name).ok()?;
         let module = GetModuleHandleA(dll_name_cstr.as_ptr());
@@ -137,10 +137,10 @@ pub unsafe fn detect_openssl() -> Option<OpenSslInfo> {
         if !module.is_null() {
             debug!("Found potential OpenSSL module: {}", dll_name);
             #[cfg(debug_assertions)]
-            info!("detect_openssl: Module '{}' loaded at {:p}", dll_name, module);
+            info!("detect_openssl: module '{}' loaded at {:p}", dll_name, module);
 
             #[cfg(debug_assertions)]
-            info!("detect_openssl: Looking for SSL functions in '{}'...", dll_name);
+            info!("detect_openssl: looking for SSL functions in '{}'...", dll_name);
 
             if let Some((ssl_read, ssl_write)) = find_ssl_functions(module) {
                 #[cfg(debug_assertions)]
@@ -148,14 +148,14 @@ pub unsafe fn detect_openssl() -> Option<OpenSslInfo> {
                     dll_name, ssl_read, ssl_write);
 
                 #[cfg(debug_assertions)]
-                info!("detect_openssl: Getting OpenSSL version from '{}'...", dll_name);
+                info!("detect_openssl: getting OpenSSL version from '{}'...", dll_name);
 
                 let version = get_openssl_version(module).unwrap_or_else(|| "Unknown".to_string());
 
-                info!("✓ OpenSSL detected: {} ({})", dll_name, version);
+                info!("!! OpenSSL detected: {} ({})", dll_name, version);
 
                 #[cfg(debug_assertions)]
-                info!("detect_openssl: Returning OpenSslInfo for '{}'", dll_name);
+                info!("detect_openssl: returning OpenSslInfo for '{}'", dll_name);
 
                 return Some(OpenSslInfo {
                     module_handle: module,
@@ -166,27 +166,27 @@ pub unsafe fn detect_openssl() -> Option<OpenSslInfo> {
                 });
             } else {
                 #[cfg(debug_assertions)]
-                info!("detect_openssl: No SSL functions found in '{}'", dll_name);
+                info!("detect_openssl: no SSL functions found in '{}'", dll_name);
             }
         } else {
             #[cfg(debug_assertions)]
-            info!("detect_openssl: Module '{}' not loaded (GetModuleHandleA returned null)", dll_name);
+            info!("detect_openssl: module '{}' not loaded (GetModuleHandleA returned null)", dll_name);
         }
     }
 
     #[cfg(debug_assertions)]
-    info!("detect_openssl: Method 1 failed - no known DLL found");
+    info!("detect_openssl: method 1 failed => no known DLL found");
 
     // Method 2: Enumerate all loaded modules
     info!("Scanning all loaded modules for OpenSSL...");
     #[cfg(debug_assertions)]
-    info!("detect_openssl: Method 2 - Enumerating all loaded modules...");
+    info!("detect_openssl: method 2 => enumerating all loaded modules...");
 
     let mut modules: Vec<HMODULE> = vec![ptr::null_mut(); 1024];
     let mut bytes_needed = 0;
 
     #[cfg(debug_assertions)]
-    info!("detect_openssl: Calling EnumProcessModules...");
+    info!("detect_openssl: calling EnumProcessModules...");
 
     if EnumProcessModules(
         GetCurrentProcess(),
@@ -213,7 +213,7 @@ pub unsafe fn detect_openssl() -> Option<OpenSslInfo> {
                 if filename_lower.contains("ssl") || filename_lower.contains("crypto") {
                     debug!("Checking module: {}", filename);
                     #[cfg(debug_assertions)]
-                    info!("detect_openssl: Potential SSL module found: '{}' at {:p}", filename, module);
+                    info!("detect_openssl: potential SSL module found: '{}' at {:p}", filename, module);
 
                     if let Some((ssl_read, ssl_write)) = find_ssl_functions(module) {
                         #[cfg(debug_assertions)]
@@ -223,10 +223,10 @@ pub unsafe fn detect_openssl() -> Option<OpenSslInfo> {
                         let version =
                             get_openssl_version(module).unwrap_or_else(|| "Unknown".to_string());
 
-                        info!("✓ OpenSSL detected in: {} ({})", filename, version);
+                        info!("!! OpenSSL detected in: {} ({})", filename, version);
 
                         #[cfg(debug_assertions)]
-                        info!("detect_openssl: Returning OpenSslInfo for '{}'", filename);
+                        info!("detect_openssl: returning OpenSSLInfo for '{}'", filename);
 
                         return Some(OpenSslInfo {
                             module_handle: module,
@@ -237,13 +237,13 @@ pub unsafe fn detect_openssl() -> Option<OpenSslInfo> {
                         });
                     } else {
                         #[cfg(debug_assertions)]
-                        info!("detect_openssl: No SSL functions found in '{}'", filename);
+                        info!("detect_openssl: no SSL functions found in '{}'", filename);
                     }
                 }
             }
         }
         #[cfg(debug_assertions)]
-        info!("detect_openssl: Finished scanning all modules, no OpenSSL found");
+        info!("detect_openssl: finished scanning all modules, no OpenSSL found");
     } else {
         #[cfg(debug_assertions)]
         error!("detect_openssl: EnumProcessModules failed!");
@@ -259,16 +259,16 @@ pub unsafe fn detect_openssl() -> Option<OpenSslInfo> {
 /// Validate that OpenSSL is properly loaded and ready
 pub unsafe fn validate_openssl(info: &OpenSslInfo) -> Result<(), String> {
     #[cfg(debug_assertions)]
-    info!("validate_openssl: Starting OpenSSL validation for '{}'...", info.dll_name);
+    info!("validate_openssl: starting OpenSSL validation for '{}'...", info.dll_name);
 
     #[cfg(debug_assertions)]
-    info!("validate_openssl: Creating CString for DLL name '{}'...", info.dll_name);
+    info!("validate_openssl: creating CString for DLL name '{}'...", info.dll_name);
     
     // Check if module is still loaded
     let current_handle = GetModuleHandleA(
         CString::new(info.dll_name.as_str()).map_err(|e| {
             #[cfg(debug_assertions)]
-            error!("validate_openssl: Failed to create CString: {:?}", e);
+            error!("validate_openssl: failed to create CString: {:?}", e);
             "Invalid DLL name"
         })?.as_ptr(),
     );
@@ -279,15 +279,15 @@ pub unsafe fn validate_openssl(info: &OpenSslInfo) -> Result<(), String> {
 
     if current_handle != info.module_handle {
         #[cfg(debug_assertions)]
-        error!("validate_openssl: Module handle mismatch!");
+        error!("validate_openssl: module handle mismatch!");
         return Err("OpenSSL module handle changed".to_string());
     }
 
     #[cfg(debug_assertions)]
-    info!("validate_openssl: Module handle verification passed");
+    info!("validate_openssl: module handle verification passed");
 
     #[cfg(debug_assertions)]
-    info!("validate_openssl: Verifying SSL functions are still accessible...");
+    info!("validate_openssl: verifying SSL functions are still accessible...");
 
     // Verify SSL functions are still accessible
     if let Some((ssl_read, ssl_write)) = find_ssl_functions(info.module_handle) {
