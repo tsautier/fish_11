@@ -126,7 +126,7 @@ The core library exports the following functions for mIRC integration :
 
 - Rust toolchain (install via [rustup](https://rustup.rs/))
 - Windows: MSVC Build Tools or Visual Studio. You can build using GCC too.
-- For 32-bit mIRC compatibility: i686-target
+- For 32-bit mIRC compatibility: i686-pc-windows-msvc
 
 #### Windows build steps
 
