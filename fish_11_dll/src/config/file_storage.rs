@@ -63,12 +63,14 @@ pub fn get_config_path() -> Result<PathBuf> {
             
             // FALLBACK: Use current directory if MIRCDIR is not set
             // This prevents crashes and allows the DLL to work even if the environment variable is missing
-            let current_dir = std::env::current_dir().unwrap_or_else(|_| {
-                log::error!("get_config_path: failed to get current directory, using default !");
-                PathBuf::from(".")
-            });
-            
-            let mut path = current_dir;
+            let mut path = match std::env::current_dir() {
+                Ok(dir) => dir,
+                Err(e) => {
+                    log::error!("get_config_path: failed to get current directory: {}", e);
+                    // Fallback: use "fish_11.ini" in current directory
+                    PathBuf::new()
+                }
+            };
             path.push("fish_11.ini");
             
             log::warn!(
