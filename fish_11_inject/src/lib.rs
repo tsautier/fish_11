@@ -32,7 +32,6 @@ use engines::InjectEngines;
 use lazy_static::lazy_static;
 use log::{error, info};
 use socket_info::SocketInfo;
-use winapi::shared::minwindef::BOOL;
 use windows::Win32::Foundation::HMODULE;
 use windows::Win32::Networking::WinSock::SOCKET;
 
@@ -142,7 +141,7 @@ pub unsafe extern "system" fn DllMain(
             // Store module handle
             #[cfg(debug_assertions)]
             info!("DllMain: Acquiring DLL_HANDLE_PTR lock...");
-            
+
             match DLL_HANDLE_PTR.lock() {
                 Ok(mut handle) => {
                     *handle = Some(SendHMODULE(h_module));
@@ -158,7 +157,7 @@ pub unsafe extern "system" fn DllMain(
 
             #[cfg(debug_assertions)]
             info!("DllMain: Initializing logger (if not already done)...");
-            
+
             init_logger();
 
             info!("***");
@@ -200,7 +199,7 @@ pub unsafe extern "system" fn DllMain(
             // DLL_PROCESS_DETACH
             #[cfg(debug_assertions)]
             info!("=== DllMain: DLL_PROCESS_DETACH ===");
-            
+
             // Cleanup
             if LOADED.swap(false, Ordering::SeqCst) {
                 info!("DllMain(): process is detaching. Cleaning up...");
@@ -220,9 +219,9 @@ pub unsafe extern "system" fn DllMain(
 
                 #[cfg(debug_assertions)]
                 info!("DllMain: cleaning up hooks...");
-                
+
                 cleanup_hooks();
-                
+
                 #[cfg(debug_assertions)]
                 info!("DllMain: cleanup complete");
             } else {

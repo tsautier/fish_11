@@ -614,3 +614,432 @@ fn redact_nickname(nickname: &str) -> String {
         format!("{}***{}", &nickname[..1], &nickname[nickname.len() - 1..])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::CString;
+    use std::ptr;
+
+    // Helper function to create a test buffer
+    fn create_test_buffer(initial_content: &str) -> (*mut c_char, usize) {
+        let buffer_size = 4096;
+        let c_string = CString::new(initial_content).expect("CString creation failed");
+        let bytes = c_string.as_bytes_with_nul();
+
+        unsafe {
+            let buffer = libc::malloc(buffer_size) as *mut c_char;
+            ptr::copy_nonoverlapping(bytes.as_ptr() as *const c_char, buffer, bytes.len());
+            (buffer, buffer_size)
+        }
+    }
+
+    // Helper to free test buffer
+    unsafe fn free_test_buffer(buffer: *mut c_char) {
+        libc::free(buffer as *mut libc::c_void);
+    }
+
+    // Helper to read buffer content
+    unsafe fn read_buffer_content(buffer: *mut c_char) -> String {
+        std::ffi::CStr::from_ptr(buffer).to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn test_generate_trace_id() {
+        let trace_id1 = generate_trace_id();
+        let trace_id2 = generate_trace_id();
+
+        // Should be 16 hex characters (8 bytes * 2)
+        assert_eq!(trace_id1.len(), 16);
+        assert_eq!(trace_id2.len(), 16);
+
+        // Should be different
+        assert_ne!(trace_id1, trace_id2);
+
+        // Should only contain hex characters
+        assert!(trace_id1.chars().all(|c| c.is_ascii_hexdigit()));
+        assert!(trace_id2.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_redact_nickname() {
+        assert_eq!(redact_nickname("alice"), "a***e");
+        assert_eq!(redact_nickname("ab"), "**");
+        assert_eq!(redact_nickname("a"), "*");
+        assert_eq!(redact_nickname(""), "");
+        assert_eq!(redact_nickname("testuser123"), "t***3");
+    }
+
+    #[test]
+    fn test_validate_buffer_valid() {
+        let trace_id = "test123";
+        let (buffer, size) = create_test_buffer("test");
+
+        let result = validate_buffer(size, trace_id, buffer);
+
+        assert!(result);
+
+        unsafe {
+            free_test_buffer(buffer);
+        }
+    }
+
+    #[test]
+    fn test_validate_buffer_invalid_size() {
+        let trace_id = "test123";
+        let (buffer, _) = create_test_buffer("test");
+
+        let result = validate_buffer(0, trace_id, buffer);
+
+        assert!(!result);
+
+        unsafe {
+            free_test_buffer(buffer);
+        }
+    }
+
+    #[test]
+    fn test_validate_buffer_null_pointer() {
+        let trace_id = "test123";
+
+        let result = validate_buffer(4096, trace_id, ptr::null_mut());
+
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_extract_input_safely_valid() {
+        let (buffer, size) = create_test_buffer("testnick");
+        let trace_id = "test123";
+        let start_time = Instant::now();
+        let timeout = std::time::Duration::from_secs(30);
+
+        let result = extract_input_safely(buffer, size, start_time, timeout, trace_id);
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "testnick");
+
+        unsafe {
+            free_test_buffer(buffer);
+        }
+    }
+
+    #[test]
+    fn test_extract_input_safely_timeout() {
+        let (buffer, size) = create_test_buffer("testnick");
+        let trace_id = "test123";
+        // Set start time in the past to simulate timeout
+        let start_time = Instant::now() - std::time::Duration::from_secs(100);
+        let timeout = std::time::Duration::from_secs(30);
+
+        let result = extract_input_safely(buffer, size, start_time, timeout, trace_id);
+
+        assert!(result.is_err());
+
+        unsafe {
+            free_test_buffer(buffer);
+        }
+    }
+
+    #[test]
+    fn test_check_timeout_not_expired() {
+        let (buffer, size) = create_test_buffer("");
+        let trace_id = "test123";
+        let start_time = Instant::now();
+        let timeout = std::time::Duration::from_secs(30);
+
+        let result = check_timeout(start_time, timeout, buffer, size, trace_id, "test stage");
+
+        assert!(!result);
+
+        unsafe {
+            free_test_buffer(buffer);
+        }
+    }
+
+    #[test]
+    fn test_check_timeout_expired() {
+        let (buffer, size) = create_test_buffer("");
+        let trace_id = "test123";
+        let start_time = Instant::now() - std::time::Duration::from_secs(100);
+        let timeout = std::time::Duration::from_secs(30);
+
+        let result = check_timeout(start_time, timeout, buffer, size, trace_id, "test stage");
+
+        assert!(result);
+
+        // Verify error message was written to buffer
+        unsafe {
+            let content = read_buffer_content(buffer);
+            assert!(content.contains("timed out"));
+            free_test_buffer(buffer);
+        }
+    }
+
+    #[test]
+    fn test_generate_secure_random_key() {
+        let (buffer, size) = create_test_buffer("");
+        let trace_id = "test123";
+
+        let result = generate_secure_random_key(trace_id, buffer, size);
+
+        assert!(result.is_ok());
+
+        let key = result.unwrap();
+        assert_eq!(key.len(), 32);
+
+        // Verify key is not all zeros
+        assert_ne!(key, [0u8; 32]);
+
+        unsafe {
+            free_test_buffer(buffer);
+        }
+    }
+
+    #[test]
+    fn test_generate_secure_random_key_uniqueness() {
+        let (buffer, size) = create_test_buffer("");
+        let trace_id = "test123";
+
+        let key1 = generate_secure_random_key(trace_id, buffer, size).unwrap();
+        let key2 = generate_secure_random_key(trace_id, buffer, size).unwrap();
+
+        // Two consecutive calls should produce different keys
+        assert_ne!(key1, key2);
+
+        unsafe {
+            free_test_buffer(buffer);
+        }
+    }
+
+    #[test]
+    fn test_validate_keypair_valid() {
+        let trace_id = "test123";
+        let keypair = generate_keypair();
+
+        let result = validate_keypair(&keypair, trace_id);
+
+        assert!(result);
+    }
+
+    #[test]
+    fn test_validate_keypair_all_zeros() {
+        let trace_id = "test123";
+        let keypair = KeyPair {
+            public_key: [0u8; 32],
+            private_key: secrecy::Secret::new([0u8; 32]),
+            creation_time: chrono::Utc::now(),
+        };
+
+        let result = validate_keypair(&keypair, trace_id);
+
+        assert!(!result);
+    }
+    #[test]
+    fn test_validate_keypair_public_zero_only() {
+        let trace_id = "test123";
+        let mut private_key = [0u8; 32];
+        private_key[0] = 1; // Make it non-zero
+
+        let keypair = KeyPair {
+            public_key: [0u8; 32],
+            private_key: secrecy::Secret::new(private_key),
+            creation_time: chrono::Utc::now(),
+        };
+
+        let result = validate_keypair(&keypair, trace_id);
+
+        assert!(!result);
+    }
+    #[test]
+    fn test_validate_keypair_private_zero_only() {
+        let trace_id = "test123";
+        let mut public_key = [0u8; 32];
+        public_key[0] = 1; // Make it non-zero
+
+        let keypair = KeyPair {
+            public_key,
+            private_key: secrecy::Secret::new([0u8; 32]),
+            creation_time: chrono::Utc::now(),
+        };
+
+        let result = validate_keypair(&keypair, trace_id);
+
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_store_key_and_persist_creates_entry() {
+        let trace_id = "test123";
+        let nickname = "testuser";
+        let key = [1u8; 32];
+
+        // Clean up any existing key first
+        let _ = crate::config::delete_key_default(nickname);
+
+        let result = store_key_and_persist(nickname, &key, trace_id);
+
+        assert!(result.is_ok());
+
+        // Verify key was stored
+        let retrieved = crate::config::get_key_default(nickname);
+        assert!(retrieved.is_ok());
+
+        // Clean up
+        let _ = crate::config::delete_key_default(nickname);
+    }
+
+    #[test]
+    fn test_store_keypair_and_persist_creates_keypair() {
+        let trace_id = "test123";
+        let keypair = generate_keypair();
+
+        let result = store_keypair_and_persist(&keypair, trace_id);
+
+        assert!(result.is_ok());
+
+        // Verify keypair was stored (this will retrieve the stored keypair)
+        let retrieved = get_keypair();
+        assert!(retrieved.is_ok());
+    }
+
+    #[test]
+    fn test_fish11_exchangekey_null_data_pointer() {
+        let result = FiSH11_ExchangeKey(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            0,
+            0,
+        );
+
+        assert_eq!(result, MIRC_HALT);
+    }
+
+    #[test]
+    fn test_fish11_exchangekey_empty_nickname() {
+        let (buffer, _size) = create_test_buffer("");
+
+        let result =
+            FiSH11_ExchangeKey(ptr::null_mut(), ptr::null_mut(), buffer, ptr::null_mut(), 0, 0);
+
+        // Should handle empty input gracefully
+        assert_eq!(result, MIRC_COMMAND);
+
+        unsafe {
+            let content = read_buffer_content(buffer);
+            assert!(content.contains("Error") || content.contains("invalid"));
+            free_test_buffer(buffer);
+        }
+    }
+
+    #[test]
+    fn test_fish11_exchangekey_invalid_nickname() {
+        let (buffer, _size) = create_test_buffer("invalid@nickname!");
+
+        let result =
+            FiSH11_ExchangeKey(ptr::null_mut(), ptr::null_mut(), buffer, ptr::null_mut(), 0, 0);
+
+        assert_eq!(result, MIRC_COMMAND);
+
+        unsafe {
+            let content = read_buffer_content(buffer);
+            assert!(content.contains("Error") || content.contains("invalid"));
+            free_test_buffer(buffer);
+        }
+    }
+
+    #[test]
+    fn test_fish11_exchangekey_valid_nickname() {
+        let (buffer, _size) = create_test_buffer("alice");
+
+        let result =
+            FiSH11_ExchangeKey(ptr::null_mut(), ptr::null_mut(), buffer, ptr::null_mut(), 0, 0);
+
+        assert_eq!(result, MIRC_COMMAND);
+
+        unsafe {
+            let content = read_buffer_content(buffer);
+            // Should contain either the public key or success message
+            assert!(content.contains("FiSH11-PubKey:") || content.contains("public key"));
+            free_test_buffer(buffer);
+        }
+    }
+
+    #[test]
+    fn test_fish11_exchangekey_generates_keypair_if_missing() {
+        // Clear any existing keypair
+        let mut config = CONFIG.lock().expect("Config lock failed");
+        config.our_public_key = None;
+        config.our_private_key = None;
+        drop(config);
+
+        let (buffer, _size) = create_test_buffer("bob");
+
+        let result =
+            FiSH11_ExchangeKey(ptr::null_mut(), ptr::null_mut(), buffer, ptr::null_mut(), 0, 0);
+
+        assert_eq!(result, MIRC_COMMAND);
+
+        // Verify keypair was generated
+        let keypair_result = get_keypair();
+        assert!(keypair_result.is_ok());
+
+        unsafe {
+            free_test_buffer(buffer);
+        }
+    }
+
+    #[test]
+    fn test_fish11_exchangekey_output_contains_timeout_info() {
+        let (buffer, _size) = create_test_buffer("charlie");
+
+        let result =
+            FiSH11_ExchangeKey(ptr::null_mut(), ptr::null_mut(), buffer, ptr::null_mut(), 0, 0);
+
+        assert_eq!(result, MIRC_COMMAND);
+
+        unsafe {
+            let content = read_buffer_content(buffer);
+            // Should mention timeout or contain the public key
+            assert!(
+                content.contains("timeout")
+                    || content.contains("FiSH11-PubKey:")
+                    || content.contains("public key")
+            );
+            free_test_buffer(buffer);
+        }
+    }
+
+    #[test]
+    fn test_fish11_exchangekey_long_nickname() {
+        let long_nick = "a".repeat(100);
+        let (buffer, _size) = create_test_buffer(&long_nick);
+
+        let result =
+            FiSH11_ExchangeKey(ptr::null_mut(), ptr::null_mut(), buffer, ptr::null_mut(), 0, 0);
+
+        // Should handle long nicknames (likely with validation error)
+        assert_eq!(result, MIRC_COMMAND);
+
+        unsafe {
+            free_test_buffer(buffer);
+        }
+    }
+
+    #[test]
+    fn test_fish11_exchangekey_special_characters_in_nickname() {
+        let special_nick = "user[test]";
+        let (buffer, _size) = create_test_buffer(special_nick);
+
+        let result =
+            FiSH11_ExchangeKey(ptr::null_mut(), ptr::null_mut(), buffer, ptr::null_mut(), 0, 0);
+
+        assert_eq!(result, MIRC_COMMAND);
+
+        unsafe {
+            free_test_buffer(buffer);
+        }
+    }
+}
