@@ -670,9 +670,10 @@ alias fish11_removekey {
 alias fish11_test_crypt {
   if ($1 == $null) var %msg = Test message for encryption
   else var %msg = $1-
-  
-  ; Let the DLL handle the output directly
+
+  echo -s FiSH11_TestCrypt: appel DLL avec "%msg%"
   .dll %Fish11DllFile FiSH11_TestCrypt %msg
+  echo -s FiSH11_TestCrypt: retour DLL
 }
 
 

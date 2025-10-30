@@ -118,11 +118,8 @@ pub fn init_logger(level: LevelFilter) -> Result<(), SetLoggerError> {
         let mut result = Ok(());
 
         // If the runtime requests debug logging via env var, promote the level
-        let effective_level = if std::env::var("FISH11_DEBUG").is_ok() {
-            LevelFilter::Debug
-        } else {
-            level
-        };
+        // Force DEBUG level for troubleshooting
+        let effective_level = LevelFilter::Debug;
 
         LOGGER_INIT.call_once(|| {
             if LOGGER_INITIALIZED {
