@@ -671,9 +671,9 @@ alias fish11_test_crypt {
   if ($1 == $null) var %msg = Test message for encryption
   else var %msg = $1-
 
-  echo -s FiSH11_TestCrypt: appel DLL avec "%msg%"
+  echo -s *** FiSH_11 :: TestCrypt -> call DLL with $qt(%msg)
   .dll %Fish11DllFile FiSH11_TestCrypt %msg
-  echo -s FiSH11_TestCrypt: retour DLL
+  echo -s *** FiSH_11 :: TestCrypt -> retour DLL
 }
 
 
