@@ -116,15 +116,29 @@ where
             return Err(FishError::ConfigError("Config lock timed out".to_string()));
         }
 
-        // Try to get the lock
+        // Try to get the lock - handle poison errors gracefully
         match CONFIG.try_lock() {
             Ok(guard) => {
+                #[cfg(debug_assertions)]
                 log::debug!("with_config: acquired lock after {} attempts", attempts);
                 let guard = ConfigReadGuard { guard };
                 return f(guard.config());
             }
-            Err(_) => {
-                // Wait a bit and try again with exponential backoff
+            Err(e) => {
+                // Check if mutex is poisoned
+                if e.is_poisoned() {
+                    log::error!("with_config: CONFIG mutex is POISONED! Attempting recovery...");
+                    // Try to recover from poison by getting the inner guard
+                    match e.into_inner() {
+                        guard => {
+                            log::warn!("with_config: Recovered from poisoned mutex, proceeding with caution");
+                            let guard = ConfigReadGuard { guard };
+                            return f(guard.config());
+                        }
+                    }
+                }
+                
+                // Lock is just busy, wait and retry
                 attempts += 1;
                 let backoff_ms = 10 + (attempts as u64 * 15); // Base 10ms + 15ms per attempt (up to ~310ms max)
                 if attempts % 3 == 0 {

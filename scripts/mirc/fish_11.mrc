@@ -17,13 +17,15 @@ on *:START: {
 alias fish11_startup {
   echo 4 -a *** FiSH_11 SECURITY WARNING: for your safety, ensure your mIRC installation and this script are located in a secure, write-protected directory to prevent malicious DLLs from being loaded.
 
-var %exe_dir = $nofile($mircexe)
+  var %exe_dir = $nofile($mircexe)
 
   ; Set paths to DLLs
   %Fish11InjectDllFile = $qt(%exe_dir $+ fish_11_inject.dll)
   %Fish11DllFile = $qt(%exe_dir $+ fish_11.dll)
 
   echo 4 -a DEBUG : loading DLLs...
+  echo 4 -a DEBUG : Fish11InjectDllFile = %Fish11InjectDllFile
+  echo 4 -a DEBUG : Fish11DllFile = %Fish11DllFile
 
   ; Check if DLLs exist
   if (!$exists(%Fish11InjectDllFile)) {
@@ -45,8 +47,15 @@ var %exe_dir = $nofile($mircexe)
     halt
   }
 
-  .dll %Fish11InjectDllFile FiSH11_InjectVersion
-  .dll %Fish11DllFile FiSH11_GetVersion
+  echo 4 -a DEBUG : Calling fish_11.dll FiSH11_SetMircDir to set configuration path...
+  noop $dll(%Fish11DllFile, FiSH11_SetMircDir, $mircdir)
+  echo 4 -a DEBUG : MIRCDIR set to: $mircdir
+  
+  echo 4 -a DEBUG : Calling fish_11_inject.dll FiSH11_InjectVersion...
+  $dll(%Fish11InjectDllFile, FiSH11_InjectVersion, )
+  
+  echo 4 -a DEBUG : Calling fish_11.dll FiSH11_GetVersion...  
+  $dll(%Fish11DllFile, FiSH11_GetVersion, )
 
 
   ; Initialize default settings if not already set
@@ -703,8 +712,8 @@ alias fish11_file_list_keys {
   }
     ; Log that we're about to call the function
   echo $color(Mode text) -at *** FiSH: Listing keys...
-    ; Set the environment variable to help DLL find mIRC directory
-  set %MIRCDIR $mircdir
+    ; Ensure MIRCDIR is set (should already be set at startup, but be safe)
+  noop $dll(%Fish11DllFile, FiSH11_SetMircDir, $mircdir)
   
   ; Initialize the buffer variable
   var %keys
