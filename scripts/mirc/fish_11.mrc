@@ -1139,7 +1139,7 @@ menu channel {
     }
   }
   .Misc config
-  ..Encrypt TOPIC $iif($fish11_GetChannelIniValue($chan, encrypt_topic) == 1, [On], [Off])
+  ..Encrypt TOPIC
   ...Enable :{ fish11_SetChannelIniValue $chan encrypt_topic 1 | echo $color(Mode text) -at *** FiSH: topic encryption enabled for $chan }
   ...Disable :{ fish11_SetChannelIniValue $chan encrypt_topic 0 | echo $color(Mode text) -at *** FiSH: topic encryption disabled for $chan }
 }
