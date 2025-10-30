@@ -71,21 +71,43 @@ pub extern "stdcall" fn INI_GetString(
     };
 
     execute_dll_function(data, config, |input, _trace_id| {
+        log::debug!("INI_GetString: closure started, input='{}'", input);
+        
         // Split into key and optional default
         let parts: Vec<&str> = input.splitn(2, ' ').collect();
         let key = parts.get(0).map_or("", |s| s.trim());
         let default = parts.get(1).map_or("", |s| s.trim());
 
+        log::debug!("INI_GetString: parsed key='{}', default='{}'", key, default);
+
         // Try to read from config
+        log::debug!("INI_GetString: calling get_fish11_config()...");
         let config_result = match config::get_fish11_config() {
-            Ok(config) => match key {
-                "plain_prefix" => config.plain_prefix.clone(),
-                "mark_encrypted" => config.mark_encrypted.clone(),
-                _ => default.to_string(),
+            Ok(config) => {
+                log::debug!("INI_GetString: get_fish11_config() succeeded, matching key...");
+                match key {
+                    "plain_prefix" => {
+                        log::debug!("INI_GetString: matched plain_prefix");
+                        config.plain_prefix.clone()
+                    },
+                    "mark_encrypted" => {
+                        log::debug!("INI_GetString: matched mark_encrypted");
+                        config.mark_encrypted.clone()
+                    },
+                    _ => {
+                        log::debug!("INI_GetString: key '{}' not matched, using default", key);
+                        default.to_string()
+                    },
+                }
             },
-            Err(_) => default.to_string(),
+            Err(e) => {
+                log::error!("INI_GetString: get_fish11_config() failed: {:?}", e);
+                default.to_string()
+            },
         };
 
+        log::debug!("INI_GetString: config_result='{}'", config_result);
+        log::debug!("INI_GetString: returning Ok");
         Ok(config_result)
     })
 }

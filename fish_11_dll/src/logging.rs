@@ -117,6 +117,10 @@ pub fn init_logger(level: LevelFilter) -> Result<(), SetLoggerError> {
     unsafe {
         let mut result = Ok(());
 
+        // If the runtime requests debug logging via env var, promote the level
+        // Force DEBUG level for troubleshooting
+        let effective_level = LevelFilter::Debug;
+
         LOGGER_INIT.call_once(|| {
             if LOGGER_INITIALIZED {
                 return;
@@ -125,13 +129,15 @@ pub fn init_logger(level: LevelFilter) -> Result<(), SetLoggerError> {
             match get_log_file_path() {
                 Ok(log_path) => {                        match OpenOptions::new().create(true).append(true).open(&log_path) {
                         Ok(log_file) => {
-                            let logger = Box::new(FileLogger::new(level, log_file));
+                            let logger = Box::new(FileLogger::new(effective_level, log_file));
 
                             match log::set_boxed_logger(logger) {
                                 Ok(_) => {                                    log::set_max_level(level);                                    LOGGER_INITIALIZED = true;
+                                    // If effective level differs from requested, set max level accordingly
+                                    log::set_max_level(effective_level);
                                     
                                     // Log to file only, no console output
-                                    log::info!("*********** *********** FiSH_11 DLL logger initialized *************** ***********");
+                                    log::info!("*********** *********** FiSH_11 core DLL logger initialized *************** ***********");
 
                                     // Log the initialization
                                     log::info!(

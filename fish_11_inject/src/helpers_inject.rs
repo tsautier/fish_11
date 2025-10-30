@@ -2,7 +2,7 @@ use std::fs::OpenOptions;
 use std::io;
 use std::sync::PoisonError;
 
-use log::{error, info, LevelFilter};
+use log::{LevelFilter, error, info};
 use retour::GenericDetour;
 use winapi::shared::minwindef::FARPROC;
 use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
@@ -25,10 +25,7 @@ struct TimestampLogger {
 
 impl TimestampLogger {
     fn new(file: std::fs::File, level: LevelFilter) -> Self {
-        Self {
-            file: std::sync::Mutex::new(file),
-            level,
-        }
+        Self { file: std::sync::Mutex::new(file), level }
     }
 }
 
@@ -76,7 +73,7 @@ pub fn init_logger() {
             .expect("Failed to open log file");
 
         let logger = TimestampLogger::new(log_file, LevelFilter::Trace);
-        
+
         if log::set_boxed_logger(Box::new(logger)).is_ok() {
             log::set_max_level(LevelFilter::Trace);
             info!("Ground zero : logger initialized !");
@@ -89,11 +86,11 @@ pub fn install_hooks() -> Result<(), io::Error> {
     info!("Installing Winsock hooks :");
 
     #[cfg(debug_assertions)]
-    info!("install_hooks: Starting hook installation process...");
+    info!("install_hooks: starting hook installation process...");
 
     unsafe {
         #[cfg(debug_assertions)]
-        info!("install_hooks: Resolving Winsock functions...");
+        info!("install_hooks: resolving Winsock functions...");
 
         // Dynamically resolve Winsock functions
         let recv_fn = std::mem::transmute::<FARPROC, RecvFn>(get_winsock_function("recv\0"));
@@ -115,7 +112,7 @@ pub fn install_hooks() -> Result<(), io::Error> {
         info!("install_hooks: closesocket function resolved at {:?}", closesocket_fn as *const ());
 
         #[cfg(debug_assertions)]
-        info!("install_hooks: Installing socket hooks...");
+        info!("install_hooks: installing socket hooks...");
 
         // Install socket hooks
         install_socket_hook::<RecvFn>("recv", recv_fn, hooked_recv, &RECV_HOOK)?;
@@ -160,7 +157,10 @@ pub fn install_hooks() -> Result<(), io::Error> {
             find_ssl_function("SSL_is_init_finished"),
         );
         #[cfg(debug_assertions)]
-        info!("install_hooks: SSL_is_init_finished resolved at {:?}", ssl_is_init_finished as *const ());
+        info!(
+            "install_hooks: SSL_is_init_finished resolved at {:?}",
+            ssl_is_init_finished as *const ()
+        );
 
         if ssl_read as usize == 0
             || ssl_write as usize == 0
@@ -171,11 +171,16 @@ pub fn install_hooks() -> Result<(), io::Error> {
                 "One or more required SSL functions could not be found. Skipping SSL hook installation."
             );
             #[cfg(debug_assertions)]
-            error!("install_hooks: SSL functions missing - ssl_read={:?}, ssl_write={:?}, ssl_get_fd={:?}, ssl_is_init_finished={:?}",
-                ssl_read as *const (), ssl_write as *const (), ssl_get_fd as *const (), ssl_is_init_finished as *const ());
+            error!(
+                "install_hooks: SSL functions missing - ssl_read={:?}, ssl_write={:?}, ssl_get_fd={:?}, ssl_is_init_finished={:?}",
+                ssl_read as *const (),
+                ssl_write as *const (),
+                ssl_get_fd as *const (),
+                ssl_is_init_finished as *const ()
+            );
         } else {
             #[cfg(debug_assertions)]
-            info!("install_hooks: All SSL functions found, installing SSL hooks...");
+            info!("install_hooks: all SSL functions found, installing SSL hooks...");
 
             match install_ssl_hooks(ssl_read, ssl_write, ssl_get_fd, ssl_is_init_finished) {
                 Ok(_) => {
@@ -193,8 +198,8 @@ pub fn install_hooks() -> Result<(), io::Error> {
 
         info!("All winsock hooks successfully installed !");
         #[cfg(debug_assertions)]
-        info!("install_hooks: Hook installation process completed successfully");
-        
+        info!("install_hooks: hook installation process completed successfully");
+
         Ok(())
     }
 }
@@ -207,7 +212,7 @@ unsafe fn install_socket_hook<T: Copy + retour::Function>(
     hook_storage: &std::sync::Mutex<Option<GenericDetour<T>>>,
 ) -> Result<(), io::Error> {
     #[cfg(debug_assertions)]
-    info!("install_socket_hook: Installing {} hook...", hook_name);
+    info!("install_socket_hook: installing {} hook...", hook_name);
 
     match GenericDetour::<T>::new(original_fn, hook_fn) {
         Ok(hook) => {
@@ -216,7 +221,7 @@ unsafe fn install_socket_hook<T: Copy + retour::Function>(
 
             hook.enable().map_err(|e| {
                 #[cfg(debug_assertions)]
-                error!("install_socket_hook: Failed to enable {} hook: {:?}", hook_name, e);
+                error!("install_socket_hook: failed to enable {} hook: {:?}", hook_name, e);
 
                 io::Error::new(
                     io::ErrorKind::Other,
@@ -237,7 +242,7 @@ unsafe fn install_socket_hook<T: Copy + retour::Function>(
         }
         Err(e) => {
             #[cfg(debug_assertions)]
-            error!("install_socket_hook: Failed to create {} GenericDetour: {:?}", hook_name, e);
+            error!("install_socket_hook: failed to create {} GenericDetour: {:?}", hook_name, e);
 
             Err(io::Error::new(
                 io::ErrorKind::Other,
@@ -266,13 +271,13 @@ pub fn cleanup_hooks() {
 /// 2. Retrieving the addresses of connect(), send(), recv(), and closesocket() using GetProcAddress.
 unsafe fn get_winsock_function(func_name: &str) -> FARPROC {
     #[cfg(debug_assertions)]
-    info!("get_winsock_function: Looking for function '{}'", func_name);
+    info!("get_winsock_function: looking for function '{}'", func_name);
 
     let ws2_32 = GetModuleHandleA(b"ws2_32.dll\0".as_ptr() as _);
     if ws2_32.is_null() {
         #[cfg(debug_assertions)]
         error!("get_winsock_function: Failed to get ws2_32.dll handle!");
-        
+
         panic!("Failed to get ws2_32.dll handle");
     }
 

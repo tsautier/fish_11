@@ -223,7 +223,7 @@ pub extern "stdcall" fn FiSH11_GetConfigPath(
 mod tests {
     use super::*;
     use std::ffi::CStr;
-    use std::path::PathBuf;
+    //use std::path::PathBuf;
 
     #[test]
     fn test_fish11_getconfigpath_normal() {

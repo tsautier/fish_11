@@ -199,22 +199,27 @@ pub extern "stdcall" fn FiSH11_TestCrypt(
     _nopause: BOOL,
 ) -> c_int {
     let buffer_size = get_buffer_size();
+    log::debug!("[FiSH11_TestCrypt] called");
 
     // Read input parameters
     let input = unsafe {
         if data.is_null() {
-            error!("Data buffer pointer is null");
+            error!("[FiSH11_TestCrypt] Data buffer pointer is null");
             return MIRC_HALT;
         }
         match CStr::from_ptr(data).to_str() {
-            Ok(s) => s.to_owned(),
+            Ok(s) => {
+                log::debug!("[FiSH11_TestCrypt] input string: {}", s);
+                s.to_owned()
+            },
             Err(e) => {
-                error!("Invalid ANSI input: {}", e);
+                error!("[FiSH11_TestCrypt] Invalid ANSI input: {}", e);
                 return MIRC_HALT;
             }
         }
     };
     if input.is_empty() {
+        log::debug!("[FiSH11_TestCrypt] input is empty");
         let error_msg =
             CString::new("/echo -ts Usage: /dll fish_11.dll FiSH11_TestCrypt <message>")
                 .expect("Failed to create TestCrypt usage message");
@@ -229,12 +234,19 @@ pub extern "stdcall" fn FiSH11_TestCrypt(
         }
 
         return MIRC_COMMAND;
-    } // Generate a random key for testing using cryptographically secure RNG
+    }
+    log::debug!("[FiSH11_TestCrypt] input not empty, generating key");
     let mut key = [0u8; 32];
-    crate::utils::generate_random_bytes(32).iter().enumerate().for_each(|(i, &b)| key[i] = b); // Encrypt the message
+    crate::utils::generate_random_bytes(32).iter().enumerate().for_each(|(i, &b)| key[i] = b);
+    log::debug!("[FiSH11_TestCrypt] generated key: {:x?}", key);
+    // Encrypt the message
     let encrypted = match crypto::encrypt_message(&key, &input, None) {
-        Ok(e) => e,
+        Ok(e) => {
+            log::debug!("[FiSH11_TestCrypt] encrypted: {}", e);
+            e
+        },
         Err(e) => {
+            error!("[FiSH11_TestCrypt] Encryption failed: {}", e);
             let error_msg = CString::new(format!("/echo -ts Encryption failed: {}", e))
                 .expect("Failed to create encryption error message");
 
@@ -253,8 +265,12 @@ pub extern "stdcall" fn FiSH11_TestCrypt(
 
     // Decrypt the message
     let decrypted = match crypto::decrypt_message(&key, &encrypted) {
-        Ok(d) => d,
+        Ok(d) => {
+            log::debug!("[FiSH11_TestCrypt] decrypted: {}", d);
+            d
+        },
         Err(e) => {
+            error!("[FiSH11_TestCrypt] Decryption failed: {}", e);
             let error_msg = CString::new(format!("/echo -ts Decryption failed: {}", e))
                 .expect("Failed to create decryption error message");
 
@@ -270,20 +286,33 @@ pub extern "stdcall" fn FiSH11_TestCrypt(
             return MIRC_COMMAND;
         }
     };
-    let result = CString::new(format!(
-        "/echo -ts Original: {} | Encrypted: {} | Decrypted: {}",
-        input, encrypted, decrypted
-    ))
-    .expect("Failed to create test result message");
-
-    unsafe {
-        ptr::write_bytes(data as *mut u8, 0, buffer_size);
-
-        let bytes = result.as_bytes_with_nul();
-        let copy_len = bytes.len().min(buffer_size - 1);
-        ptr::copy_nonoverlapping(bytes.as_ptr(), data as *mut u8, copy_len);
-        *data.add(copy_len) = 0;
+    log::debug!("[FiSH11_TestCrypt] preparing result");
+    // Limite la taille et filtre les caractères non imprimables
+    fn safe_str(s: &str) -> String {
+        s.chars()
+            .map(|c| if c.is_ascii_graphic() || c == ' ' { c } else { '?' })
+            .collect::<String>()
     }
-
+    let maxlen = 512;
+    let input_safe = safe_str(&input).chars().take(maxlen).collect::<String>();
+    let encrypted_safe = safe_str(&encrypted).chars().take(maxlen).collect::<String>();
+    let decrypted_safe = safe_str(&decrypted).chars().take(maxlen).collect::<String>();
+    let result_str = format!(
+        "/echo -ts Original: {} | Encrypted: {} | Decrypted: {}",
+        input_safe,
+        encrypted_safe,
+        decrypted_safe
+    );
+    // Version minimale qui fonctionne :
+    let result_str = format!(
+        "/echo -ts Original: {} | Encrypted: {} | Decrypted: {}",
+        input,
+        encrypted,
+        decrypted
+    );
+    let result = CString::new(result_str).unwrap_or_else(|_| CString::new("/echo -ts [FiSH11] Error: invalid result").unwrap());
+    unsafe {
+        crate::buffer_utils::write_cstring_to_buffer(data, 900, &result).ok();
+    }
     MIRC_COMMAND
 }

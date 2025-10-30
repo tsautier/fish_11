@@ -5,17 +5,19 @@ use std::time::{SystemTime, UNIX_EPOCH};
 fn get_fish_main_version(pkg_version: &str, build_date: &str, build_time: &str) -> String {
     format!(
         "{}compiled {} {} ***",
-        format!("*** FiSH {} *** by [GuY] *** fish_11.dll ", pkg_version),
+        format!("*** FiSH core {} *** by [GuY] *** fish_11.dll ", pkg_version),
         build_date,
         build_time
     )
 }
 
 fn main() {
+    println!("cargo:warning=********\n");
     println!("cargo:rerun-if-changed=build.rs");
 
     // Debug output
-    println!("cargo:warning=Generating build information for FiSH 11");
+    println!("cargo:warning=Generating build information for FiSH 11\n");
+    
 
     // Manually set the build date and time
     let now = SystemTime::now();
@@ -40,6 +42,7 @@ fn main() {
     // Calculate the version string
     let version_string = get_fish_main_version(&pkg_version, &fallback_date, &fallback_time);
     println!("cargo:warning=Version info: {}", version_string);
+    println!("cargo:warning=********\n");
 
     // Set these as cargo variables that will be accessible via env! macro
     println!("cargo:rustc-env=FISH_FALLBACK_DATE={}", fallback_date);

@@ -14,6 +14,7 @@ mod fish11_genkey;
 mod fish11_getconfigpath;
 mod fish11_help;
 mod fish11_setkey;
+mod fish11_setmircdir;
 pub mod function_template;
 pub mod ini_types;
 mod key_management;

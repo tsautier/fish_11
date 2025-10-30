@@ -29,6 +29,25 @@ impl std::fmt::Display for BufferError {
     }
 }
 
+
+/// # Safely writes a CString to a mIRC DLL result buffer.
+///
+/// mIRC expects DLL return buffers to be no larger than 900 bytes (including the null terminator).
+/// Using 900 as the buffer size is the historical and recommended standard for mIRC DLLs.
+/// This prevents buffer overflows, memory corruption, and client crashes when displaying results.
+/// The 900-byte limit is sufficient for most mIRC commands, including /echo, /notice, and custom output.
+/// If your DLL function needs to return a result to mIRC, always use 900 as the buffer size unless you have a
+/// specific reason and know the client can handle a larger buffer.
+///
+/// # Best practices:
+/// - Always ensure the buffer is null-terminated.
+/// - Filter out non-ASCII or non-printable characters if the result will be displayed in mIRC.
+/// - For all DLL result functions, use this helper with 900 as the default size.
+///
+/// Example usage:
+///     crate::buffer_utils::write_cstring_to_buffer(data, 900, &result)
+///
+/// # Safety
 /// Efficiently write a CString to the mIRC buffer with bounds checking
 pub unsafe fn write_cstring_to_buffer(
     data: *mut c_char,

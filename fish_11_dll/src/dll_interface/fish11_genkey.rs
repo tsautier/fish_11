@@ -80,3 +80,4 @@ fn gen_key_impl(data: *mut c_char, ctx: &DllFunctionContext) -> DllResult<()> {
 
     Ok(())
 }
+

@@ -1,6 +1,6 @@
 //! Configuration module for FiSH_11
 
-use std::sync::Mutex;
+use parking_lot::Mutex;
 pub mod config_access;
 pub mod entries;
 pub mod file_storage;
@@ -17,6 +17,7 @@ pub use models::{EntryData, Fish11Section, FishConfig, StartupSection};
 use once_cell::sync::Lazy;
 
 /// Global configuration instance
+/// Using parking_lot::Mutex for better performance and no poisoning
 pub static CONFIG: Lazy<Mutex<FishConfig>> = Lazy::new(|| {
     #[cfg(debug_assertions)]
     log::info!("CONFIG: Initializing global configuration...");
