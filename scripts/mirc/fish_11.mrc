@@ -454,7 +454,7 @@ alias fish11_incoming_text {
     var %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, %key_target $3-)
     
     ; If decryption successful (doesn't start with "Error")
-    if ($left(%decrypted, 5) != Error) {
+    if ($left(%decrypted, 5) !== Error) {
       ; Get encryption mark info if configured
       var %mark_pos = $dll(%Fish11DllFile, INI_GetInt, mark_position 1)
       var %mark_txt = $dll(%Fish11DllFile, INI_GetString, mark_encrypted 12$chr(183))
@@ -492,7 +492,7 @@ alias fish11_incoming_action {
     var %key_target = $iif($2 ischan, $1, $2)
     var %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, %key_target $3-)
     
-    if ($left(%decrypted, 5) != Error) {
+    if ($left(%decrypted, 5) !== Error) {
       var %mark_pos = $dll(%Fish11DllFile, INI_GetInt, mark_position 1)
       var %mark_txt = $dll(%Fish11DllFile, INI_GetString, mark_encrypted 12$chr(183))
       
@@ -515,7 +515,7 @@ alias fish11_incoming_notice {
     var %key_target = $iif($2 ischan, $1, $2)
     var %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, %key_target $3-)
     
-    if ($left(%decrypted, 5) != Error) {
+    if ($left(%decrypted, 5) !== Error) {
       var %mark_pos = $dll(%Fish11DllFile, INI_GetInt, mark_position 1)
       var %mark_txt = $dll(%Fish11DllFile, INI_GetString, mark_encrypted 12$chr(183))
       

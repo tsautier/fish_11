@@ -36,7 +36,7 @@ use windows::Win32::Foundation::HMODULE;
 use windows::Win32::Networking::WinSock::SOCKET;
 
 use crate::helpers_inject::{cleanup_hooks, init_logger};
-//use crate::ssl_inline_patch::{install_ssl_inline_patches, uninstall_ssl_inline_patches};
+use crate::ssl_inline_patch::{install_ssl_inline_patches, uninstall_ssl_inline_patches};
 
 // Wrapper to make HMODULE Send + Sync
 #[derive(Clone, Copy)]
