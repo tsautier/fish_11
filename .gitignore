@@ -21,7 +21,7 @@ Cargo.lock
 *.bak
 *.old
 
-# Exclude the copydll.bat script from version control
+# Exclude the local copydll.bat script from version control :P
 copydll.bat
 
 .github

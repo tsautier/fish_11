@@ -24,9 +24,9 @@ chacha20poly1305 = "0.10"
 crypto = "0.5.1"
 
 # TODO : bump all the versions
-rand = "0.8.5"                                     #Hard to bump to 0.9
+rand = "0.8.5"                                   #Hard to bump to 0.9
 sha2 = "0.10"
-base64 = "0.22.1"                             
+base64 = "0.22.1"
 configparser = "3.1.0"
 log = { version = "0.4.26", features = ["std"] }
 chrono = "0.4.40"
@@ -34,7 +34,7 @@ ini = "1.3.0"
 
 # Security enhancements
 subtle = "2.5"
-secrecy = "0.8"     #Hard to bump to 0.10.3
+secrecy = "0.8"            #Hard to bump to 0.10.3
 hkdf = "0.12"
 lru_time_cache = "0.11"
 zeroize = "1.6"
@@ -43,7 +43,12 @@ hex = "0.4.3"
 regex = "1.11.1"
 
 [build-dependencies]
-vergen = { version = "9.0.6", features = ["build", "cargo", "rustc", "si"] }  #Hard to bumpd to 9.0.6
+vergen = { version = "9.0.6", features = [
+    "build",
+    "cargo",
+    "rustc",
+    "si",
+] } #Hard to bumpd to 9.0.6
 
 [dev-dependencies]
 tempfile = "3.0"

@@ -15,12 +15,27 @@ pub fn set_key(
     network: Option<&str>,
     overwrite: bool,
 ) -> Result<()> {
+    #[cfg(debug_assertions)]
+    log::info!("set_key: Called with nickname='{}', network={:?}, overwrite={}", nickname, network, overwrite);
+
     let normalized_nick = normalize_nick(nickname);
+
+    #[cfg(debug_assertions)]
+    log::info!("set_key: Normalized nickname: '{}'", normalized_nick);
 
     // Validate network name if provided
     if let Some(net) = network {
+        #[cfg(debug_assertions)]
+        log::info!("set_key: Validating network name '{}'...", net);
+
         networks::validate_network_name(net)?;
+
+        #[cfg(debug_assertions)]
+        log::info!("set_key: Network name validated");
     }
+
+    #[cfg(debug_assertions)]
+    log::info!("set_key: Calling with_config_mut...");
 
     with_config_mut(|config| {
         // Check for existing key if not overwriting

@@ -18,15 +18,72 @@ use once_cell::sync::Lazy;
 
 /// Global configuration instance
 pub static CONFIG: Lazy<Mutex<FishConfig>> = Lazy::new(|| {
+    #[cfg(debug_assertions)]
+    log::info!("CONFIG: Initializing global configuration...");
+
     // Try to load config from disk, or create a new one if it doesn't exist
     match file_storage::get_config_path() {
-        Ok(path) => match file_storage::load_config(Some(path)) {
-            Ok(config) => Mutex::new(config),
-            Err(_) => Mutex::new(FishConfig::new()),
-        },
-        Err(_) => Mutex::new(FishConfig::new()),
+        Ok(path) => {
+            #[cfg(debug_assertions)]
+            log::info!("CONFIG: Config path obtained: {}", path.display());
+
+            match file_storage::load_config(Some(path.clone())) {
+                Ok(config) => {
+                    #[cfg(debug_assertions)]
+                    log::info!("CONFIG: Configuration loaded successfully from {}", path.display());
+                    Mutex::new(config)
+                }
+                Err(e) => {
+                    #[cfg(debug_assertions)]
+                    log::error!("CONFIG: Failed to load config from {}: {}", path.display(), e);
+                    
+                    log::warn!("CONFIG: Using default configuration due to load error");
+                    Mutex::new(FishConfig::new())
+                }
+            }
+        }
+        Err(e) => {
+            #[cfg(debug_assertions)]
+            log::error!("CONFIG: Failed to get config path: {}", e);
+
+            log::warn!("CONFIG: Using default configuration (MIRCDIR not set)");
+            
+            #[cfg(debug_assertions)]
+            log::info!("CONFIG: Creating new FishConfig...");
+            
+            let new_config = FishConfig::new();
+            
+            #[cfg(debug_assertions)]
+            log::info!("CONFIG: FishConfig created successfully");
+            
+            #[cfg(debug_assertions)]
+            log::info!("CONFIG: Creating Mutex wrapper...");
+            
+            let mutex = Mutex::new(new_config);
+            
+            #[cfg(debug_assertions)]
+            log::info!("CONFIG: Mutex created successfully");
+            
+            #[cfg(debug_assertions)]
+            log::info!("CONFIG: Returning from Lazy::new...");
+            
+            mutex
+        }
     }
 });
+
+/// Force initialization of the CONFIG lazy static
+/// This must be called during DLL initialization to avoid deadlocks
+pub fn init_config() {
+    #[cfg(debug_assertions)]
+    log::info!("init_config: Forcing CONFIG initialization...");
+    
+    // Just access CONFIG to trigger Lazy initialization
+    let _ = &*CONFIG;
+    
+    #[cfg(debug_assertions)]
+    log::info!("init_config: CONFIG initialized successfully");
+}
 
 /// Tries to perform an operation with exponential backoff
 /// This function is useful for operations that might fail due to temporary conditions

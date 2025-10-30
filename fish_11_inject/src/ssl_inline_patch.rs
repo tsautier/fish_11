@@ -256,12 +256,11 @@ pub unsafe fn install_ssl_inline_patches() -> Result<(), String> {
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: Calling detect_openssl()...");
     // Detect OpenSSL
-    let ssl_info = detect_openssl()
-        .ok_or_else(|| {
-            #[cfg(debug_assertions)]
-            error!("install_ssl_inline_patches: detect_openssl() returned None");
-            "No compatible OpenSSL library found in process".to_string()
-        })?;
+    let ssl_info = detect_openssl().ok_or_else(|| {
+        #[cfg(debug_assertions)]
+        error!("install_ssl_inline_patches: detect_openssl() returned None");
+        "No compatible OpenSSL library found in process".to_string()
+    })?;
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: detect_openssl() succeeded");
 
@@ -278,7 +277,7 @@ pub unsafe fn install_ssl_inline_patches() -> Result<(), String> {
     let ssl_write = ssl_info.ssl_write_addr as *mut u8;
 
     trace!("Found SSL functions: SSL_read={:p}, SSL_write={:p}", ssl_read, ssl_write);
-    
+
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: Storing SSL info...");
     // Store SSL info for later use
@@ -292,29 +291,54 @@ pub unsafe fn install_ssl_inline_patches() -> Result<(), String> {
 
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: Copying original bytes from SSL_read...");
-    ptr::copy_nonoverlapping(ssl_read as *const u8, ptr::addr_of_mut!(SSL_READ_ORIG_BYTES) as *mut u8, JMP_SIZE);
+    ptr::copy_nonoverlapping(
+        ssl_read as *const u8,
+        ptr::addr_of_mut!(SSL_READ_ORIG_BYTES) as *mut u8,
+        JMP_SIZE,
+    );
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: Copied {} bytes from SSL_read at {:p}", JMP_SIZE, ssl_read);
 
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: Copying original bytes from SSL_write...");
-    ptr::copy_nonoverlapping(ssl_write as *const u8, ptr::addr_of_mut!(SSL_WRITE_ORIG_BYTES) as *mut u8, JMP_SIZE);
+    ptr::copy_nonoverlapping(
+        ssl_write as *const u8,
+        ptr::addr_of_mut!(SSL_WRITE_ORIG_BYTES) as *mut u8,
+        JMP_SIZE,
+    );
     #[cfg(debug_assertions)]
-    info!("install_ssl_inline_patches: Copied {} bytes from SSL_write at {:p}", JMP_SIZE, ssl_write);
+    info!(
+        "install_ssl_inline_patches: Copied {} bytes from SSL_write at {:p}",
+        JMP_SIZE, ssl_write
+    );
 
     // Build trampolines
     let read_ret_addr = (ssl_read as usize + JMP_SIZE) as u32;
     let write_ret_addr = (ssl_write as usize + JMP_SIZE) as u32;
 
     #[cfg(debug_assertions)]
-    info!("install_ssl_inline_patches: Building trampoline for SSL_read (return address: {:#x})...", read_ret_addr);
-    build_trampoline(&mut *ptr::addr_of_mut!(SSL_READ_TRAMPOLINE), &SSL_READ_ORIG_BYTES, read_ret_addr)?;
+    info!(
+        "install_ssl_inline_patches: Building trampoline for SSL_read (return address: {:#x})...",
+        read_ret_addr
+    );
+    build_trampoline(
+        &mut *ptr::addr_of_mut!(SSL_READ_TRAMPOLINE),
+        &*(ptr::addr_of!(SSL_READ_ORIG_BYTES) as *const [u8; JMP_SIZE]),
+        read_ret_addr,
+    )?;
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: SSL_read trampoline built successfully");
 
     #[cfg(debug_assertions)]
-    info!("install_ssl_inline_patches: Building trampoline for SSL_write (return address: {:#x})...", write_ret_addr);
-    build_trampoline(&mut *ptr::addr_of_mut!(SSL_WRITE_TRAMPOLINE), &SSL_WRITE_ORIG_BYTES, write_ret_addr)?;
+    info!(
+        "install_ssl_inline_patches: Building trampoline for SSL_write (return address: {:#x})...",
+        write_ret_addr
+    );
+    build_trampoline(
+        &mut *ptr::addr_of_mut!(SSL_WRITE_TRAMPOLINE),
+        &*(ptr::addr_of!(SSL_WRITE_ORIG_BYTES) as *const [u8; JMP_SIZE]),
+        write_ret_addr,
+    )?;
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: SSL_write trampoline built successfully");
 
@@ -329,13 +353,21 @@ pub unsafe fn install_ssl_inline_patches() -> Result<(), String> {
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: Patching SSL_read function...");
     // Patch the functions
-    patch_function(ssl_read, my_ssl_read as *const u8, &mut *(ptr::addr_of_mut!(SSL_READ_ORIG_BYTES) as *mut [u8; JMP_SIZE]))?;
+    patch_function(
+        ssl_read,
+        my_ssl_read as *const u8,
+        &mut *(ptr::addr_of_mut!(SSL_READ_ORIG_BYTES) as *mut [u8; JMP_SIZE]),
+    )?;
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: SSL_read patched successfully");
 
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: Patching SSL_write function...");
-    patch_function(ssl_write, my_ssl_write as *const u8, &mut *(ptr::addr_of_mut!(SSL_WRITE_ORIG_BYTES) as *mut [u8; JMP_SIZE]))?;
+    patch_function(
+        ssl_write,
+        my_ssl_write as *const u8,
+        &mut *(ptr::addr_of_mut!(SSL_WRITE_ORIG_BYTES) as *mut [u8; JMP_SIZE]),
+    )?;
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: SSL_write patched successfully");
 
@@ -344,11 +376,11 @@ pub unsafe fn install_ssl_inline_patches() -> Result<(), String> {
     *patched = true;
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: Setting PATCHED flag to true");
-    
+
     info!("SSL hooks installed successfully");
     #[cfg(debug_assertions)]
     info!("install_ssl_inline_patches: SSL inline patch installation completed successfully");
-    
+
     Ok(())
 }
 

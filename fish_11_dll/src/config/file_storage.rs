@@ -76,59 +76,126 @@ pub fn get_config_path() -> Result<PathBuf> {
 ///
 /// - `Result<FishConfig>` - The loaded configuration or an error
 pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
+    #[cfg(debug_assertions)]
+    log::info!("load_config: Starting configuration load...");
+
     // Set a timeout to prevent hanging
     let start_time = std::time::Instant::now();
     let timeout = std::time::Duration::from_secs(5);
 
+    #[cfg(debug_assertions)]
+    log::info!("load_config: Creating new FishConfig...");
+
     let mut config = FishConfig::new();
+
+    #[cfg(debug_assertions)]
+    log::info!("load_config: FishConfig created successfully");
+
+    #[cfg(debug_assertions)]
+    log::info!("load_config: Determining config path (override: {:?})...", path_override.is_some());
+
     let config_path = match path_override {
-        Some(path) => path,
-        None => get_config_path()?,
+        Some(path) => {
+            #[cfg(debug_assertions)]
+            log::info!("load_config: Using override path: {}", path.display());
+            path
+        }
+        None => {
+            #[cfg(debug_assertions)]
+            log::info!("load_config: Calling get_config_path()...");
+            get_config_path()?
+        }
     };
+
+    #[cfg(debug_assertions)]
+    log::info!("load_config: Config path determined: {}", config_path.display());
 
     // Check if we've timed out already
     if start_time.elapsed() > timeout {
+        #[cfg(debug_assertions)]
+        log::error!("load_config: Timeout exceeded during path resolution");
+
         return Err(FishError::ConfigError("Configuration loading timed out".to_string()));
     }
 
+    #[cfg(debug_assertions)]
+    log::info!("load_config: Checking if config file exists...");
+
     // Check if the config file exists
     if !config_path.exists() {
+        #[cfg(debug_assertions)]
+        log::info!("load_config: Config file does not exist, generating new keypair...");
+
         // Generate a keypair using crypto module
         let keypair = crypto::generate_keypair();
+
+        #[cfg(debug_assertions)]
+        log::info!("load_config: Keypair generated successfully");
 
         // Store the keypair in the config
         config.our_private_key = Some(base64_encode(keypair.private_key.expose_secret()));
         config.our_public_key = Some(base64_encode(&keypair.public_key));
 
+        #[cfg(debug_assertions)]
+        log::info!("load_config: Saving new config to disk...");
+
         // Save the config
         save_config(&config, None)?;
 
+        #[cfg(debug_assertions)]
+        log::info!("load_config: New config saved successfully");
+
         return Ok(config);
-    } // Create a new Ini object and load the file
+    }
+
+    #[cfg(debug_assertions)]
+    log::info!("load_config: Config file exists, loading...");
+
+    // Create a new Ini object and load the file
     let mut ini = Ini::new();
 
     // Check if we've timed out before loading ini
     if start_time.elapsed() > timeout {
+        #[cfg(debug_assertions)]
+        log::error!("load_config: Timeout before INI load");
+
         return Err(FishError::ConfigError(
             "Configuration loading timed out before ini load".to_string(),
         ));
     }
+
+    #[cfg(debug_assertions)]
+    log::info!("load_config: Loading INI file from {}...", config_path.display());
 
     match ini.load(&config_path) {
         Ok(_) => {
             log::debug!("load_config: INI file loaded successfully from {}", config_path.display());
             log::debug!("load_config: Sections found: {:?}", ini.sections());
             log::debug!("load_config: Full INI map: {:?}", ini.get_map_ref());
+
+            #[cfg(debug_assertions)]
+            log::info!("load_config: INI file parsed successfully");
         }
-        Err(e) => return Err(FishError::ConfigError(format!("Failed to load config: {}", e))),
+        Err(e) => {
+            #[cfg(debug_assertions)]
+            log::error!("load_config: Failed to load INI file: {}", e);
+
+            return Err(FishError::ConfigError(format!("Failed to load config: {}", e)));
+        }
     };
 
     // Check if we've timed out after loading ini
     if start_time.elapsed() > timeout {
+        #[cfg(debug_assertions)]
+        log::error!("load_config: Timeout after INI load");
+
         return Err(FishError::ConfigError(
             "Configuration loading timed out after ini load".to_string(),
         ));
     }
+
+    #[cfg(debug_assertions)]
+    log::info!("load_config: Processing [Keys] section...");
 
     // Load [Keys] section (case-insensitive)
     for key in ["Keys", "keys"] {
@@ -142,6 +209,12 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
         }
     }
 
+    #[cfg(debug_assertions)]
+    log::info!("load_config: Loaded {} keys", config.keys.len());
+
+    #[cfg(debug_assertions)]
+    log::info!("load_config: Processing [KeyPair] section...");
+
     // Load [KeyPair] section (case-insensitive)
     for key in ["KeyPair", "keypair"] {
         if let Some(private) = ini.get(key, "private") {
@@ -151,6 +224,9 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
             config.our_public_key = Some(public.to_string());
         }
     }
+
+    #[cfg(debug_assertions)]
+    log::info!("load_config: Processing [NickNetworks] section...");
 
     // Load [NickNetworks] section (case-insensitive)
     for key in ["NickNetworks", "nicknetworks"] {
@@ -163,6 +239,9 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
             break; // Found the section, no need to check other cases
         }
     }
+
+    #[cfg(debug_assertions)]
+    log::info!("load_config: Processing [FiSH11] section...");
 
     // Load [FiSH11] section (case-insensitive)
     for section_key in ["FiSH11", "fish11"] {

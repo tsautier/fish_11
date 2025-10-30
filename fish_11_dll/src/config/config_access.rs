@@ -91,6 +91,9 @@ pub fn with_config<F, T>(f: F) -> Result<T>
 where
     F: FnOnce(&FishConfig) -> Result<T>,
 {
+    #[cfg(debug_assertions)]
+    log::info!("with_config: Attempting to acquire read lock on CONFIG...");
+
     // Add timeout to prevent deadlocks
     let timeout = std::time::Duration::from_secs(10); // Increased to 10 seconds
     let start_time = std::time::Instant::now();
@@ -98,7 +101,15 @@ where
     let mut attempts = 0;
     const MAX_ATTEMPTS: usize = 30; // Increased to 30 attempts
 
+    #[cfg(debug_assertions)]
+    log::info!("with_config: Starting lock acquisition loop (max attempts: {})...", MAX_ATTEMPTS);
+
     while attempts < MAX_ATTEMPTS {
+        #[cfg(debug_assertions)]
+        if attempts == 0 {
+            log::info!("with_config: Attempt {} - About to call CONFIG.try_lock()...", attempts + 1);
+        }
+
         // Check if we've already timed out
         if start_time.elapsed() > timeout {
             log::error!("with_config: operation timed out after {} attempts", attempts);
@@ -138,6 +149,9 @@ pub fn with_config_mut<F, T>(f: F) -> Result<T>
 where
     F: FnOnce(&mut FishConfig) -> Result<T>,
 {
+    #[cfg(debug_assertions)]
+    log::info!("with_config_mut: Attempting to acquire write lock on CONFIG...");
+
     // Add timeout to prevent deadlocks
     let timeout = std::time::Duration::from_secs(10); // Increased to 10 seconds
     let start_time = std::time::Instant::now();
@@ -145,7 +159,15 @@ where
     let mut attempts = 0;
     const MAX_ATTEMPTS: usize = 30; // Increased to 30 attempts
 
+    #[cfg(debug_assertions)]
+    log::info!("with_config_mut: Starting lock acquisition loop (max attempts: {})...", MAX_ATTEMPTS);
+
     while attempts < MAX_ATTEMPTS {
+        #[cfg(debug_assertions)]
+        if attempts == 0 {
+            log::info!("with_config_mut: Attempt {} - About to call CONFIG.try_lock()...", attempts + 1);
+        }
+
         // Check if we've already timed out
         if start_time.elapsed() > timeout {
             log::error!("with_config_mut: operation timed out after {} attempts", attempts);

@@ -97,9 +97,12 @@ pub extern "system" fn DllMain(_hinst: HINSTANCE, reason: DWORD, _: LPVOID) -> B
             // Use structured logging helper for module initialization
             crate::logging::log_module_init("DLL Core", &crate::FISH_11_VERSION);
 
-            // Additional system information that might be helpful
+            // Log version info once during DLL attach
             if crate::logging::is_logger_initialized() {
-                log::info!("DLL Process Attach: {}", crate::FISH_MAIN_VERSION);
+                log::info!("DLL Process Attach - FiSH v{} (built {} {})", 
+                    crate::FISH_11_VERSION, 
+                    crate::FISH_11_BUILD_DATE, 
+                    crate::FISH_11_BUILD_TIME);
                 log::debug!("System information: Process ID: {}", std::process::id());
 
                 // Log OS information if available
@@ -138,10 +141,21 @@ pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
     }
 
     // Log version information to file, not to console
-    log::info!("Loading FiSH_11 DLL: {}", crate::FISH_MAIN_VERSION);
+    log::debug!("LoadDll called for FiSH v{}", crate::FISH_11_VERSION);
 
     // Log function entry with structured logging
-    crate::logging::log_function_entry("LoadDll", None::<i32>); // Create a structure to hold mIRC client info for logging
+    crate::logging::log_function_entry("LoadDll", None::<i32>);
+
+    // Initialize CONFIG early to avoid lazy initialization deadlocks
+    #[cfg(debug_assertions)]
+    log::info!("LoadDll: calling init_config() to force CONFIG initialization...");
+    
+    crate::config::init_config();
+    
+    #[cfg(debug_assertions)]
+    log::info!("LoadDll: CONFIG initialized successfully");
+
+    // Create a structure to hold mIRC client info for logging
     let mut mirc_version = String::from("Unknown mIRC version");
     let mut buffer_size = DEFAULT_MIRC_BUFFER_SIZE;
     let mut unicode_mode = false;
@@ -165,9 +179,6 @@ pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
             log::info!("CONFIG [mIRC]: version = {}", mirc_version);
             log::info!("CONFIG [mIRC]: buffer_size = {}", buffer_size);
             log::info!("CONFIG [mIRC]: unicode_mode = {}", unicode_mode);
-
-            // Only log to file, no console output
-            log::info!("FiSH_11 loaded: {}", crate::FISH_MAIN_VERSION);
         }
     } else {
         // Log the null pointer situation
