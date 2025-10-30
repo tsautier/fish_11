@@ -464,12 +464,8 @@ fn store_key_and_persist(nickname: &str, key: &[u8; 32], trace_id: &str) -> Resu
                 );
             }
 
-            // Save configuration to disk with proper poison handling
-            let config_guard = CONFIG.lock().map_err(|_| {
-                crate::error::FishError::ConfigError(
-                    "Config mutex poisoned during key storage".to_string(),
-                )
-            })?;
+            // Save configuration to disk
+            let config_guard = CONFIG.lock();
 
             if let Err(save_err) = save_config(&*config_guard, None) {
                 log_warn!(
@@ -539,20 +535,12 @@ fn store_keypair_and_persist(
                 trace_id
             );
 
-            // Save configuration to disk with proper poison handling
-            let config_guard = CONFIG.lock().map_err(|_| {
-                let error_msg = CString::new("/echo -ts Error: config system locked")
-                    .expect("Static string contains no null bytes");
-                log_error!(
-                    "FiSH11_ExchangeKey[{}]: config mutex poisoned during keypair storage",
-                    trace_id
-                );
-                error_msg
-            })?;
+            // Save configuration to disk
+            let config_guard = CONFIG.lock();
 
             if let Err(save_err) = save_config(&*config_guard, None) {
                 log_warn!(
-                    "FiSH11_ExchangeKey[{}]: failed to save config with new keypair: {}",
+                    "FiSH11_ExchangeKey[{}]: failed to save config to disk: {}",
                     trace_id,
                     save_err
                 );
@@ -978,7 +966,7 @@ mod tests {
     #[test]
     fn test_fish11_exchangekey_generates_keypair_if_missing() {
         // Clear any existing keypair
-        let mut config = CONFIG.lock().expect("Config lock failed");
+        let mut config = CONFIG.lock();
         config.our_public_key = None;
         config.our_private_key = None;
         drop(config);

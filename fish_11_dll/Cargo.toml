@@ -42,6 +42,7 @@ zeroize = "1.6"
 hex = "0.4.3"
 regex = "1.11.1"
 libc = "0.2.177"
+parking_lot = "0.12"       # More robust mutex implementation
 
 [build-dependencies]
 vergen = { version = "9.0.6", features = [

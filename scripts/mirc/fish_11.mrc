@@ -48,14 +48,17 @@ alias fish11_startup {
   }
 
   echo 4 -a DEBUG : Calling fish_11.dll FiSH11_SetMircDir to set configuration path...
-  noop $dll(%Fish11DllFile, FiSH11_SetMircDir, $mircdir)
+  ;noop $dll(%Fish11DllFile, FiSH11_SetMircDir, $mircdir)
   echo 4 -a DEBUG : MIRCDIR set to: $mircdir
   
-  echo 4 -a DEBUG : Calling fish_11_inject.dll FiSH11_InjectVersion...
-  $dll(%Fish11InjectDllFile, FiSH11_InjectVersion, )
+  ;echo 4 -a DEBUG : Calling fish_11_inject.dll FiSH11_InjectVersion...
+  .dll %Fish11InjectDllFile FiSH11_InjectVersion
   
-  echo 4 -a DEBUG : Calling fish_11.dll FiSH11_GetVersion...  
-  $dll(%Fish11DllFile, FiSH11_GetVersion, )
+  ;echo 4 -a DEBUG : Calling fish_11.dll FiSH11_GetVersion...  
+  .dll %Fish11DllFile FiSH11_GetVersion
+
+
+  
 
 
   ; Initialize default settings if not already set
