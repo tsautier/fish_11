@@ -1222,10 +1222,10 @@ menu status,channel,nicklist,query {
   ..Enable :set %autokeyx [On]
   ..Disable :set %autokeyx [Off]
   .Misc config
-  ..Encrypt outgoing $iif($fish11_GetIniValue(process_outgoing) == 1, [On], [Off])
+  ..Encrypt outgoing [Status]
   ...Enable :{ fish11_SetIniValue process_outgoing 1 | echo $color(Mode text) -at *** FiSH: outgoing message encryption enabled }
   ...Disable :{ fish11_SetIniValue process_outgoing 0 | echo $color(Mode text) -at *** FiSH: outgoing message encryption disabled }
-  ..Decrypt incoming $iif($fish11_GetIniValue(process_incoming) == 1, [On], [Off])
+  ..Decrypt incoming [Status]
   ...Enable :{ fish11_SetIniValue process_incoming 1 | echo $color(Mode text) -at *** FiSH: incoming message decryption enabled }
   ...Disable :{ fish11_SetIniValue process_incoming 0 | echo $color(Mode text) -at *** FiSH: incoming message decryption disabled }
   ..-
@@ -1255,13 +1255,13 @@ menu status,channel,nicklist,query {
   ..NickTracker $+ $chr(32) $+ %NickTrack
   ...Enable :{ set %NickTrack [On] | echo $color(Mode text) -at *** FiSH: nick tracking enabled }
   ...Disable :{ set %NickTrack [Off] | echo $color(Mode text) -at *** FiSH: nick tracking disabled }
-  ..Encrypt NOTICE $iif($fish11_GetIniValue(encrypt_notice) == 1, [On], [Off])
+  ..Encrypt NOTICE [Status]
   ...Enable :{ fish11_SetIniValue encrypt_notice 1 | echo $color(Mode text) -at *** FiSH: NOTICE encryption enabled }
   ...Disable :{ fish11_SetIniValue encrypt_notice 0 | echo $color(Mode text) -at *** FiSH: NOTICE encryption disabled }
-  ..Encrypt ACTION $iif($fish11_GetIniValue(encrypt_action) == 1, [On], [Off])
+  ..Encrypt ACTION [Status]
   ...Enable :{ fish11_SetIniValue encrypt_action 1 | echo $color(Mode text) -at *** FiSH: ACTION encryption enabled }
   ...Disable :{ fish11_SetIniValue encrypt_action 0 | echo $color(Mode text) -at *** FiSH: ACTION encryption disabled }
-  ..No legacy FiSH 10 $iif($fish11_GetIniValue(no_fish10_legacy) == 1, [On], [Off])
+  ..No legacy FiSH 10 [Status]
   ...Enable :{ fish11_SetIniValue no_fish10_legacy 1 | echo $color(Mode text) -at *** FiSH: legacy FiSH 10 compatibility disabled }
   ...Disable :{ fish11_SetIniValue no_fish10_legacy 0 | echo $color(Mode text) -at *** FiSH: legacy FiSH 10 compatibility enabled }
   ..-

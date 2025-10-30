@@ -140,7 +140,7 @@ pub fn init_logger(level: LevelFilter) -> Result<(), SetLoggerError> {
                                     log::set_max_level(effective_level);
                                     
                                     // Log to file only, no console output
-                                    log::info!("*********** *********** FiSH_11 DLL logger initialized *************** ***********");
+                                    log::info!("*********** *********** FiSH_11 core DLL logger initialized *************** ***********");
 
                                     // Log the initialization
                                     log::info!(
