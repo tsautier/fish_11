@@ -3,6 +3,11 @@
 ;***********************
 ; "FiSH_11" - Secure IRC encryption script for mIRC
 ; Written by GuY, 2025. GPL v3.
+;
+; SECURITY NOTICE: The security of this script depends entirely on the
+; binary DLL files (fish_11.dll, fish_11_inject.dll). This mIRC script
+; only provides the user interface. Ensure the DLLs are from a trusted
+; source, as vulnerabilities in them can compromise your system.
 
 ; === INITIALIZATION AND STARTUP ===
 on *:START: {
@@ -10,6 +15,7 @@ on *:START: {
 }
 
 alias fish11_startup {
+  echo 4 -a *** FiSH_11 SECURITY WARNING: for your safety, ensure your mIRC installation and this script are located in a secure, write-protected directory to prevent malicious DLLs from being loaded.
 
 var %exe_dir = $nofile($mircexe)
 
@@ -48,9 +54,6 @@ var %exe_dir = $nofile($mircexe)
   if (%mark_outgoing == $null) { set %mark_outgoing [Off] }
   if (%mark_style == $null) { set %mark_style 1 }
   if (%NickTrack == $null) { set %NickTrack [Off] }
-  
-  ; Set MIRCDIR environment variable for the DLL
-  setenv MIRCDIR $mircdir
   
     ; Register events for incoming messages
   .signal *:TEXT:*:*:fish11_incoming_text
@@ -189,7 +192,8 @@ on *:TEXT:*:*:{
       
       ; Display decrypted message with appropriate mark
       var %display = $iif(%mark_pos == 1, %decrypted %mark_txt, %mark_txt %decrypted)
-      echo $color(text) -t $iif(%chan, %chan, $nick) <$nick> %display
+      var %safe_display = $strip(%display, b,c,i,k,o,r,u)
+      echo $color(text) -t $iif(%chan, %chan, $nick) <$nick> %safe_display
       
       ; Halt to prevent default display
       haltdef
@@ -230,7 +234,8 @@ on *:ACTION:*:*:{
       
       ; Display decrypted action with appropriate mark
       var %display = $iif(%mark_pos == 1, %decrypted %mark_txt, %mark_txt %decrypted)
-      echo $color(action text) -t $iif(%chan, %chan, $nick) * $nick %display
+      var %safe_display = $strip(%display, b,c,i,k,o,r,u)
+      echo $color(action text) -t $iif(%chan, %chan, $nick) * $nick %safe_display
       
       ; Halt to prevent default display
       haltdef
@@ -262,7 +267,8 @@ on *:NOTICE:*:*:{
       
       ; Display decrypted notice with appropriate mark
       var %display = $iif(%mark_pos == 1, %decrypted %mark_txt, %mark_txt %decrypted)
-      echo $color(notice text) -t $iif(%chan, %chan, $nick) -$nick- %display
+      var %safe_display = $strip(%display, b,c,i,k,o,r,u)
+      echo $color(notice text) -t $iif(%chan, %chan, $nick) -$nick- %safe_display
       
       ; Halt to prevent default display
       haltdef
@@ -332,6 +338,8 @@ on ^*:NOTICE:X25519_FINISH*:?:{
         .timer fish_timeout_ $+ $nick off
         
         echo $color(Mode text) -tm $nick *** FiSH_11: key exchange complete with $nick
+        echo $color(Error) -tm $nick *** FiSH_11: WARNING: Key exchange complete, but the identity of $nick is NOT VERIFIED.
+        echo $color(Error) -tm $nick *** FiSH_11: Use /fish_fp11 $nick to see their key fingerprint and verify it with them through a secure channel (e.g., voice call).
       }
       else {
         echo $color(Mode text) -tm $nick *** FiSH_11: error processing key exchange
@@ -370,14 +378,29 @@ on *:NICK:{
   if (($nick == $me) || ($upper($newnick) == $upper($nick))) { return }
   if (($query($newnick) == $null) || (%NickTrack != [On])) { return }
   
-  var %ky_tmp = $dll(%Fish11DllFile, FiSH11_FileGetKey, $nick)
-  if ($len(%ky_tmp) > 4) {
-    ; Store the key under the new nickname
-    if ($dll(%Fish11DllFile, FiSH11_SetKey, $+($network," ",$newnick," ",%ky_tmp))) {
-      echo $color(Mode text) -at *** FiSH_11: Key for $nick copied to $newnick
+  var %old_nick_key = $dll(%Fish11DllFile, FiSH11_FileGetKey, $nick)
+  
+  ; If we have a key for the old nick
+  if ($len(%old_nick_key) > 4) {
+    var %new_nick_key = $dll(%Fish11DllFile, FiSH11_FileGetKey, $newnick)
+    
+    ; If a key already exists for the new nick, warn user about conflict
+    if ($len(%new_nick_key) > 4) {
+      echo $color(Error) -at *** FiSH_11: Nick Change Conflict! You have a key for $nick, who is now $newnick. However, you ALREADY have a different key for $newnick. No keys were changed. Please resolve this manually.
+      unset %old_nick_key
+      unset %new_nick_key
+      return
     }
+    
+    ; Store the key under the new nickname
+    if ($dll(%Fish11DllFile, FiSH11_SetKey, $+($network," ",$newnick," ",%old_nick_key))) {
+      echo $color(Mode text) -at *** FiSH_11: Key for $nick has been moved to new nick $newnick.
+      ; Remove the key from the old nickname to prevent reuse by another user
+      noop $dll(%Fish11DllFile, FiSH11_FileDelKey, $+($network," ",$nick))
+    }
+    unset %new_nick_key
   }
-  unset %ky_tmp
+  unset %old_nick_key
 }
 
 
@@ -419,14 +442,15 @@ alias fish11_incoming_text {
     var %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, %key_target $3-)
     
     ; If decryption successful (doesn't start with "Error")
-    if ($left(%decrypted, 5) !== Error) {
+    if ($left(%decrypted, 5) != Error) {
       ; Get encryption mark info if configured
       var %mark_pos = $dll(%Fish11DllFile, INI_GetInt, mark_position 1)
       var %mark_txt = $dll(%Fish11DllFile, INI_GetString, mark_encrypted 12$chr(183))
       
       ; Show decrypted message with optional mark
       var %display = $iif(%mark_pos == 1, %mark_txt $+ %decrypted, %decrypted $+ %mark_txt)
-      echo $color(encrypted text) -t $iif($2 ischan, $2, $1) <$1> %display
+      var %safe_display = $strip(%display, b,c,i,k,o,r,u)
+      echo $color(encrypted text) -t $iif($2 ischan, $2, $1) <$1> %safe_display
       halt
     }
   }
@@ -456,12 +480,13 @@ alias fish11_incoming_action {
     var %key_target = $iif($2 ischan, $1, $2)
     var %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, %key_target $3-)
     
-    if ($left(%decrypted, 5) !== Error) {
+    if ($left(%decrypted, 5) != Error) {
       var %mark_pos = $dll(%Fish11DllFile, INI_GetInt, mark_position 1)
       var %mark_txt = $dll(%Fish11DllFile, INI_GetString, mark_encrypted 12$chr(183))
       
       var %display = $iif(%mark_pos == 1, %mark_txt $+ %decrypted, %decrypted $+ %mark_txt)
-      echo $color(action text) -t $iif($2 ischan, $2, $1) * $1 %display
+      var %safe_display = $strip(%display, b,c,i,k,o,r,u)
+      echo $color(action text) -t $iif($2 ischan, $2, $1) * $1 %safe_display
       halt
     }
   }
@@ -478,12 +503,13 @@ alias fish11_incoming_notice {
     var %key_target = $iif($2 ischan, $1, $2)
     var %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, %key_target $3-)
     
-    if ($left(%decrypted, 5) !== Error) {
+    if ($left(%decrypted, 5) != Error) {
       var %mark_pos = $dll(%Fish11DllFile, INI_GetInt, mark_position 1)
       var %mark_txt = $dll(%Fish11DllFile, INI_GetString, mark_encrypted 12$chr(183))
       
       var %display = $iif(%mark_pos == 1, %mark_txt $+ %decrypted, %decrypted $+ %mark_txt)
-      echo $color(notice text) -t $iif($2 ischan, $2, $1) -$1- %display
+      var %safe_display = $strip(%display, b,c,i,k,o,r,u)
+      echo $color(notice text) -t $iif($2 ischan, $2, $1) -$1- %safe_display
       halt
     }
   }
@@ -563,6 +589,8 @@ alias fish11_ProcessPublicKey {
   ; Process the public key
   if ($dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $1 $2-)) {
     echo $color(Mode text) -at *** FiSH_11: key exchange completed with $1
+    echo $color(Error) -at *** FiSH_11: WARNING: Key exchange complete, but the identity of $1 is NOT VERIFIED.
+    echo $color(Error) -at *** FiSH_11: Use /fish_fp11 $1 to see their key fingerprint and verify it with them through a secure channel (e.g., voice call).
   }
   else {
     echo $color(Mode text) -at *** FiSH_11: key exchange failed with $1
@@ -1081,8 +1109,8 @@ menu channel {
       echo $color(Mode text) -at *** FiSH_11: fingerprint for $chan copied to clipboard
     }
   }
-  .Set new key :fish11_setkey $chan $?
-  .Set new key (UTF-8) :fish11_setkey_utf8 $chan $?
+  .Set new key :{ var %key = $?="Enter new key for " $+ $chan $+ ":" | if (%key != $null) fish11_setkey $chan %key }
+  .Set new key (UTF-8) :{ var %key = $?="Enter new key for " $+ $chan $+ " (UTF-8):" | if (%key != $null) fish11_setkey_utf8 $chan %key }
   .Remove key :fish11_removekey $chan
   .Encrypt message :{
     var %msg = $?="Enter message to encrypt:"
@@ -1120,8 +1148,8 @@ menu query {
       echo $color(Mode text) -at *** FiSH_11: fingerprint for $1 copied to clipboard
     }
   }
-  .Set new key :fish11_setkey $1 $?
-  .Set new key (UTF-8) :fish11_setkey_utf8 $1 $?
+  .Set new key :{ var %key = $?="Enter new key for " $+ $1 $+ ":" | if (%key != $null) fish11_setkey $1 %key }
+  .Set new key (UTF-8) :{ var %key = $?="Enter new key for " $+ $1 $+ " (UTF-8):" | if (%key != $null) fish11_setkey_utf8 $1 %key }
   .Remove key :fish11_removekey $1
   .Encrypt message :{
     var %msg = $?="Enter message to encrypt:"
@@ -1147,8 +1175,8 @@ menu nicklist {
   .-
   .Show key :fish11_showkey $1
   .Show fingerprint :fish11_showfingerprint $1
-  .Set new key :fish11_setkey $1 $?
-  .Set new key (UTF-8) :fish11_setkey_utf8 $1 $?
+  .Set new key :{ var %key = $?="Enter new key for " $+ $1 $+ ":" | if (%key != $null) fish11_setkey $1 %key }
+  .Set new key (UTF-8) :{ var %key = $?="Enter new key for " $+ $1 $+ " (UTF-8):" | if (%key != $null) fish11_setkey_utf8 $1 %key }
   .Remove key :fish11_removekey $1
   .Use same key as $chan :fish11_usechankey $1 $chan
   .Encrypt message :{
@@ -1177,7 +1205,7 @@ menu status,channel,nicklist,query {
   .List all keys :fish11_file_list_keys
   .Test encryption :fish11_test_crypt
   .-
-  .Set plain-prefix :fish11_prefix $?="Enter new plain-prefix:"
+  .Set plain-prefix :{ var %prefix = $?="Enter new plain-prefix:" | if (%prefix != $null) fish11_prefix %prefix }
   .Auto-KeyXchange $+ $chr(32) $+ %autokeyx
   ..Enable :set %autokeyx [On]
   ..Disable :set %autokeyx [Off]
@@ -1225,9 +1253,9 @@ menu status,channel,nicklist,query {
   ...Enable :{ fish11_SetIniValue no_fish10_legacy 1 | echo $color(Mode text) -at *** FiSH: legacy FiSH 10 compatibility disabled }
   ...Disable :{ fish11_SetIniValue no_fish10_legacy 0 | echo $color(Mode text) -at *** FiSH: legacy FiSH 10 compatibility enabled }
   ..-
-  ..Open config file :run %fish_config_file
+  ..Open config file :fish11_ViewIniFile
   ..-
-  ..FiSH 11 - secure IRC encryption :run https://github.com/ggielly/fish_11
+  ..FiSH 11 - secure IRC encryption :shell -o https://github.com/ggielly/fish_11
   .Backup and Restore
   ..Create backup now :fish11_ScheduleBackup
   ..Restore from backup :{
@@ -1268,19 +1296,33 @@ menu @fishdebug {
 
 menu @iniviewer {
   &Save Changes:{ 
-    var %temp_file = $+($mircdir, fishtemp.ini)
-    .remove %temp_file
+    var %temp_file = $+($mircdir, fish_11.tmp)
+    var %backup_file = %fish_config_file $+ .bak
     
+    ; Write the content of the window to a temporary file
+    .remove %temp_file
     var %i = 1
     while (%i <= $line(@iniviewer, 0)) {
       write %temp_file $line(@iniviewer, %i)
       inc %i
     }
+
+    if (!$isfile(%temp_file)) {
+      echo $color(Error) -at *** FiSH: Error writing temporary file. Save aborted.
+      return
+    }
     
-    .remove %fish_config_file
+    ; Safely replace the old config file with the new one
+    .rename %fish_config_file %backup_file
     .rename %temp_file %fish_config_file
     
-    echo $color(Mode text) -at *** FiSH: configuration saved
+    if ($isfile(%fish_config_file)) {
+      echo $color(Mode text) -at *** FiSH: configuration saved
+      .remove %backup_file
+    } else {
+      echo $color(Error) -at *** FiSH: Error saving config, restoring from backup.
+      .rename %backup_file %fish_config_file
+    }
   }
   &Refresh:{ 
     clear @iniviewer

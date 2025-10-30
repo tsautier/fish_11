@@ -2,7 +2,7 @@ use std::fs::OpenOptions;
 use std::io;
 use std::sync::PoisonError;
 
-use log::{error, info, LevelFilter};
+use log::{LevelFilter, error, info};
 use retour::GenericDetour;
 use winapi::shared::minwindef::FARPROC;
 use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
@@ -25,10 +25,7 @@ struct TimestampLogger {
 
 impl TimestampLogger {
     fn new(file: std::fs::File, level: LevelFilter) -> Self {
-        Self {
-            file: std::sync::Mutex::new(file),
-            level,
-        }
+        Self { file: std::sync::Mutex::new(file), level }
     }
 }
 
@@ -76,7 +73,7 @@ pub fn init_logger() {
             .expect("Failed to open log file");
 
         let logger = TimestampLogger::new(log_file, LevelFilter::Trace);
-        
+
         if log::set_boxed_logger(Box::new(logger)).is_ok() {
             log::set_max_level(LevelFilter::Trace);
             info!("Ground zero : logger initialized !");
@@ -160,7 +157,10 @@ pub fn install_hooks() -> Result<(), io::Error> {
             find_ssl_function("SSL_is_init_finished"),
         );
         #[cfg(debug_assertions)]
-        info!("install_hooks: SSL_is_init_finished resolved at {:?}", ssl_is_init_finished as *const ());
+        info!(
+            "install_hooks: SSL_is_init_finished resolved at {:?}",
+            ssl_is_init_finished as *const ()
+        );
 
         if ssl_read as usize == 0
             || ssl_write as usize == 0
@@ -171,8 +171,13 @@ pub fn install_hooks() -> Result<(), io::Error> {
                 "One or more required SSL functions could not be found. Skipping SSL hook installation."
             );
             #[cfg(debug_assertions)]
-            error!("install_hooks: SSL functions missing - ssl_read={:?}, ssl_write={:?}, ssl_get_fd={:?}, ssl_is_init_finished={:?}",
-                ssl_read as *const (), ssl_write as *const (), ssl_get_fd as *const (), ssl_is_init_finished as *const ());
+            error!(
+                "install_hooks: SSL functions missing - ssl_read={:?}, ssl_write={:?}, ssl_get_fd={:?}, ssl_is_init_finished={:?}",
+                ssl_read as *const (),
+                ssl_write as *const (),
+                ssl_get_fd as *const (),
+                ssl_is_init_finished as *const ()
+            );
         } else {
             #[cfg(debug_assertions)]
             info!("install_hooks: All SSL functions found, installing SSL hooks...");
@@ -194,7 +199,7 @@ pub fn install_hooks() -> Result<(), io::Error> {
         info!("All winsock hooks successfully installed !");
         #[cfg(debug_assertions)]
         info!("install_hooks: Hook installation process completed successfully");
-        
+
         Ok(())
     }
 }
@@ -272,7 +277,7 @@ unsafe fn get_winsock_function(func_name: &str) -> FARPROC {
     if ws2_32.is_null() {
         #[cfg(debug_assertions)]
         error!("get_winsock_function: Failed to get ws2_32.dll handle!");
-        
+
         panic!("Failed to get ws2_32.dll handle");
     }
 
