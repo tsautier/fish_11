@@ -379,7 +379,7 @@ macro_rules! dll_function {
                         };
                         $crate::buffer_utils::write_cstring_to_buffer($data, 900, &cstring).ok();
                     }
-                    MIRC_COMMAND
+                    $crate::dll_interface::MIRC_COMMAND
                 }
                 Err(e) => unsafe { e.to_mirc_response($data) },
             }
