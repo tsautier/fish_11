@@ -10,7 +10,7 @@ use crate::helpers_inject::install_hooks;
 use crate::{
     ACTIVE_SOCKETS, DISCARDED_SOCKETS, DLL_HANDLE_PTR, ENGINES, FISH_11_BUILD_DATE,
     FISH_11_BUILD_TIME, FISH_11_VERSION, LOADED, MAX_MIRC_RETURN_BYTES, MIRC_COMMAND, MIRC_HALT,
-    MIRC_RET_DATA_COMMAND, VERSION_SHOWN, c_int, cleanup_hooks, ssl_inline_patch,
+    MIRC_RET_DATA_COMMAND, VERSION_SHOWN, c_int, cleanup_hooks,
 };
 
 #[repr(C)]

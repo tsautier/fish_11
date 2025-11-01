@@ -124,12 +124,20 @@ pub unsafe fn detect_openssl() -> Option<OpenSslInfo> {
     info!("Scanning for OpenSSL libraries...");
 
     #[cfg(debug_assertions)]
-    info!("detect_openssl: method 1 => trying known DLL names ({} names)...", OPENSSL_DLL_NAMES.len());
+    info!(
+        "detect_openssl: method 1 => trying known DLL names ({} names)...",
+        OPENSSL_DLL_NAMES.len()
+    );
 
     // Method 1: Try known DLL names
     for (idx, &dll_name) in OPENSSL_DLL_NAMES.iter().enumerate() {
         #[cfg(debug_assertions)]
-        info!("detect_openssl: [{}/{}] checking '{}'...", idx + 1, OPENSSL_DLL_NAMES.len(), dll_name);
+        info!(
+            "detect_openssl: [{}/{}] checking '{}'...",
+            idx + 1,
+            OPENSSL_DLL_NAMES.len(),
+            dll_name
+        );
 
         let dll_name_cstr = CString::new(dll_name).ok()?;
         let module = GetModuleHandleA(dll_name_cstr.as_ptr());
@@ -144,8 +152,10 @@ pub unsafe fn detect_openssl() -> Option<OpenSslInfo> {
 
             if let Some((ssl_read, ssl_write)) = find_ssl_functions(module) {
                 #[cfg(debug_assertions)]
-                info!("detect_openssl: SSL functions found in '{}' - SSL_read={:p}, SSL_write={:p}", 
-                    dll_name, ssl_read, ssl_write);
+                info!(
+                    "detect_openssl: SSL functions found in '{}' - SSL_read={:p}, SSL_write={:p}",
+                    dll_name, ssl_read, ssl_write
+                );
 
                 #[cfg(debug_assertions)]
                 info!("detect_openssl: getting OpenSSL version from '{}'...", dll_name);
@@ -170,7 +180,10 @@ pub unsafe fn detect_openssl() -> Option<OpenSslInfo> {
             }
         } else {
             #[cfg(debug_assertions)]
-            info!("detect_openssl: module '{}' not loaded (GetModuleHandleA returned null)", dll_name);
+            info!(
+                "detect_openssl: module '{}' not loaded (GetModuleHandleA returned null)",
+                dll_name
+            );
         }
     }
 
@@ -213,12 +226,17 @@ pub unsafe fn detect_openssl() -> Option<OpenSslInfo> {
                 if filename_lower.contains("ssl") || filename_lower.contains("crypto") {
                     debug!("Checking module: {}", filename);
                     #[cfg(debug_assertions)]
-                    info!("detect_openssl: potential SSL module found: '{}' at {:p}", filename, module);
+                    info!(
+                        "detect_openssl: potential SSL module found: '{}' at {:p}",
+                        filename, module
+                    );
 
                     if let Some((ssl_read, ssl_write)) = find_ssl_functions(module) {
                         #[cfg(debug_assertions)]
-                        info!("detect_openssl: SSL functions found in '{}' - SSL_read={:p}, SSL_write={:p}", 
-                            filename, ssl_read, ssl_write);
+                        info!(
+                            "detect_openssl: SSL functions found in '{}' - SSL_read={:p}, SSL_write={:p}",
+                            filename, ssl_read, ssl_write
+                        );
 
                         let version =
                             get_openssl_version(module).unwrap_or_else(|| "Unknown".to_string());
@@ -252,7 +270,7 @@ pub unsafe fn detect_openssl() -> Option<OpenSslInfo> {
     warn!("No OpenSSL library found in current process");
     #[cfg(debug_assertions)]
     info!("detect_openssl: OpenSSL detection failed, returning None");
-    
+
     None
 }
 
@@ -263,19 +281,23 @@ pub unsafe fn validate_openssl(info: &OpenSslInfo) -> Result<(), String> {
 
     #[cfg(debug_assertions)]
     info!("validate_openssl: creating CString for DLL name '{}'...", info.dll_name);
-    
+
     // Check if module is still loaded
     let current_handle = GetModuleHandleA(
-        CString::new(info.dll_name.as_str()).map_err(|e| {
-            #[cfg(debug_assertions)]
-            error!("validate_openssl: failed to create CString: {:?}", e);
-            "Invalid DLL name"
-        })?.as_ptr(),
+        CString::new(info.dll_name.as_str())
+            .map_err(|e| {
+                #[cfg(debug_assertions)]
+                error!("validate_openssl: failed to create CString: {:?}", e);
+                "Invalid DLL name"
+            })?
+            .as_ptr(),
     );
 
     #[cfg(debug_assertions)]
-    info!("validate_openssl: GetModuleHandleA returned {:p} (expected {:p})", 
-        current_handle, info.module_handle);
+    info!(
+        "validate_openssl: GetModuleHandleA returned {:p} (expected {:p})",
+        current_handle, info.module_handle
+    );
 
     if current_handle != info.module_handle {
         #[cfg(debug_assertions)]
@@ -292,8 +314,10 @@ pub unsafe fn validate_openssl(info: &OpenSslInfo) -> Result<(), String> {
     // Verify SSL functions are still accessible
     if let Some((ssl_read, ssl_write)) = find_ssl_functions(info.module_handle) {
         #[cfg(debug_assertions)]
-        info!("validate_openssl: SSL functions found - SSL_read={:p} (expected {:p}), SSL_write={:p} (expected {:p})", 
-            ssl_read, info.ssl_read_addr, ssl_write, info.ssl_write_addr);
+        info!(
+            "validate_openssl: SSL functions found - SSL_read={:p} (expected {:p}), SSL_write={:p} (expected {:p})",
+            ssl_read, info.ssl_read_addr, ssl_write, info.ssl_write_addr
+        );
 
         if ssl_read != info.ssl_read_addr || ssl_write != info.ssl_write_addr {
             #[cfg(debug_assertions)]
@@ -309,6 +333,6 @@ pub unsafe fn validate_openssl(info: &OpenSslInfo) -> Result<(), String> {
     trace!("OpenSSL validation passed");
     #[cfg(debug_assertions)]
     info!("validate_openssl: OpenSSL validation completed successfully");
-    
+
     Ok(())
 }

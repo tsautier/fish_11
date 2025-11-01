@@ -21,7 +21,7 @@ mod hook_socket;
 mod hook_ssl;
 mod socket_info;
 mod ssl_detection;
-mod ssl_inline_patch;
+// mod ssl_inline_patch; // NOTE: this experimental module has been moved to the /experimental directory.
 
 use std::collections::HashMap;
 use std::ffi::{c_int, c_void};
@@ -36,7 +36,7 @@ use windows::Win32::Foundation::HMODULE;
 use windows::Win32::Networking::WinSock::SOCKET;
 
 use crate::helpers_inject::{cleanup_hooks, init_logger};
-use crate::ssl_inline_patch::{install_ssl_inline_patches, uninstall_ssl_inline_patches};
+
 
 // Wrapper to make HMODULE Send + Sync
 #[derive(Clone, Copy)]
@@ -171,18 +171,9 @@ pub unsafe extern "system" fn DllMain(
             #[cfg(debug_assertions)]
             info!("DllMain: About to install SSL patches...");
 
-            // Install SSL hooks with error handling
-            /* unsafe {
-                if let Err(e) = install_ssl_inline_patches() {
-                    error!("Failed to install SSL patches: {}", e);
-                    #[cfg(debug_assertions)]
-                    error!("DllMain: SSL patch installation failed, continuing anyway...");
-                } else {
-                    info!("SSL patches installed successfully");
-                    #[cfg(debug_assertions)]
-                    info!("DllMain: SSL patches OK");
-                }
-            } */
+            // NOTE: experimental SSL inline patching was previously called here.
+            // It has been disabled due to instability and the code has been moved to /experimental/ssl_inline_patch.rs for reference.
+            // The stable hooking mechanism in hook_ssl.rs is used instead.
 
             #[cfg(debug_assertions)]
             info!("DllMain: Setting LOADED flag to true...");
@@ -207,15 +198,8 @@ pub unsafe extern "system" fn DllMain(
                 #[cfg(debug_assertions)]
                 info!("DllMain: Uninstalling SSL patches...");
 
-                // Uninstall SSL hooks
-                /* unsafe {
-                    if let Err(e) = uninstall_ssl_inline_patches() {
-                        error!("Failed to uninstall SSL patches: {}", e);
-                    } else {
-                        #[cfg(debug_assertions)]
-                        info!("DllMain: SSL patches uninstalled successfully");
-                    }
-                } */
+                // NOTE: uninstall for experimental SSL inline patching was previously called here.
+                // The code has been moved to /experimental/ssl_inline_patch.rs for reference.
 
                 #[cfg(debug_assertions)]
                 info!("DllMain: cleaning up hooks...");

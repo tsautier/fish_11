@@ -114,6 +114,8 @@ flowchart LR
 
 ### 5. Inline Patching (`ssl_inline_patch.rs`)
 
+**Note: This feature is currently disabled in the code (`DllMain`) but the underlying implementation exists.**
+
 Advanced SSL function patching for enhanced interception:
 
 - Binary-level function patching
@@ -136,7 +138,7 @@ sequenceDiagram
     activate D
     D->>D: Initialize logging system
     D->>D: Store DLL handle
-    D->>D: Install SSL inline patches
+    Note over D: SSL inline patching is currently disabled
     
     M->>D: LoadDll()
     D->>D: Install WinSock hooks
@@ -291,7 +293,7 @@ impl SocketInfo {
 
 ### Log Output Examples
 
-```
+```bash
 [INFO] FiSH_11 inject v11 (build date: 2025-01-01, build time: 12:00:00)
 [INFO] Installing Winsock hooks:
 [INFO] Found SSL_read (SSL_read) in libssl-3.dll
@@ -411,4 +413,4 @@ This component requires deep Windows system programming knowledge:
 - **Thread safety** and concurrency handling
 - **Windows DLL development** experience
 
-Contact: `fish11@lavache.com` for development questions.
+Contact: `guillaume@lavache.com` for development questions.
