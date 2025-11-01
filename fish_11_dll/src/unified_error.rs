@@ -170,8 +170,8 @@ pub enum DllError {
     InvalidState { current: String, required: String },
 
     /// Operation timeout
-    #[error("operation '{operation}' timed out after {duration_ms}ms")]
-    Timeout { operation: String, duration_ms: u64 },
+    #[error("operation '{operation}' timed out after {duration_secs}s during stage: {stage}")]
+    Timeout { operation: String, duration_secs: u64, stage: String },
 
     // ===== Network & Protocol Errors =====
     /// Invalid network name
@@ -183,6 +183,10 @@ pub enum DllError {
     ProtocolMismatch { expected: String, got: String },
 
     // ===== System Errors =====
+    /// Cryptographically secure random number generation failed
+    #[error("RNG failed: {context}")]
+    RngFailed { context: String },
+
     /// Internal error (should never happen in production)
     #[error("internal error: {0}")]
     Internal(String),

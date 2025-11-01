@@ -78,44 +78,44 @@ The core library exports the following functions for mIRC integration :
 
 ### Key management functions
 
-- `FiSH11_GenKey` - generate a new random encryption key for a nickname
-- `FiSH11_SetKey` - manually set an encryption key (base64 encoded)
-- `FiSH11_FileGetKey` - retrieve stored key for a nickname. If no key is found, it suggests initiating a key exchange.
-- `FiSH11_FileDelKey` - delete a stored key
-- `FiSH11_FileListKeys` - returns a formatted string of all stored keys, intended for script parsing. Output may be truncated if it exceeds buffer size.
-- `FiSH11_FileListKeysItem` - get specific key information
+- `FiSH11_GenKey` : generate a new random encryption key for a nickname
+- `FiSH11_SetKey` : manually set an encryption key (base64 encoded)
+- `FiSH11_FileGetKey` : retrieve stored key for a nickname. If no key is found, it suggests initiating a key exchange.
+- `FiSH11_FileDelKey` : delete a stored key
+- `FiSH11_FileListKeys` : returns a formatted string of all stored keys, intended for script parsing. Output may be truncated if it exceeds buffer size.
+- `FiSH11_FileListKeysItem` : get specific key information
 
 ### Encryption/decryption functions
 
-- `FiSH11_EncryptMsg` - Encrypt a message with ChaCha20-Poly1305
-- `FiSH11_DecryptMsg` - Decrypt a received message
-- `FiSH11_TestCrypt` - Test encryption/decryption cycle for diagnostics
-- `FiSH11_TestCrypt` - Test encryption/decryption cycle for diagnostics
+- `FiSH11_EncryptMsg` : encrypt a message with ChaCha20-Poly1305
+- `FiSH11_DecryptMsg` : decrypt a received message
+- `FiSH11_TestCrypt` : test encryption/decryption cycle for diagnostics
+- `FiSH11_TestCrypt` : test encryption/decryption cycle for diagnostics
 
 ### Key exchange functions
 
-- `FiSH11_ExchangeKey` - Initiate X25519 key exchange (generate and display public key)
-- `FiSH11_ProcessPublicKey` - Process received public key and compute shared secret
-- `FiSH11_ProcessPublicKey` - Process received public key and compute shared secret
+- `FiSH11_ExchangeKey` : initiate X25519 key exchange (generate and display public key)
+- `FiSH11_ProcessPublicKey` : process received public key and compute shared secret
+- `FiSH11_ProcessPublicKey` : process received public key and compute shared secret
 
 ### Utility functions
 
-- `FiSH11_GetVersion` - Display DLL version and build information
-- `FiSH11_GetKeyFingerprint` - Generate SHA-256 fingerprint for key verification
-- `FiSH11_GetConfigPath` - Get path to configuration file
-- `FiSH11_Help` - Display usage help and available commands
+- `FiSH11_GetVersion` : display DLL version and build information
+- `FiSH11_GetKeyFingerprint` : generate SHA-256 fingerprint for key verification
+- `FiSH11_GetConfigPath` : get path to configuration file
+- `FiSH11_Help` : display usage help and available commands
 
 ### Configuration functions
 
-- `FiSH11_SetMircDir` - Set the mIRC directory path to help locate the configuration file
-- `INI_GetBool` - Read a boolean value from the configuration file
-- `INI_GetString` - Read a string value from the configuration file
-- `INI_GetInt` - Read an integer value from the configuration file
+- `FiSH11_SetMircDir` : set the mIRC directory path to help locate the configuration file
+- `INI_GetBool` : read a boolean value from the configuration file
+- `INI_GetString` : read a string value from the configuration file
+- `INI_GetInt` : read an integer value from the configuration file
 
 ### Injection DLL functions
 
-- `FiSH11_InjectVersion` - Get injection DLL version
-- `FiSH11_InjectDebugInfo` - Get debugging information from injection system
+- `FiSH11_InjectVersion` : get injection DLL version
+- `FiSH11_InjectDebugInfo` : get debugging information from injection system
 
 ## Installation
 
@@ -314,13 +314,13 @@ fish_11_cli.exe -q fish_11.dll getversion
 
 ### Completed features
 
-- [x] Core encryption library with modern cryptography
+- [x] Core encryption library
 - [x] Windows WinSock hooking for transparent operation
 - [x] X25519 key exchange implementation
 - [x] ChaCha20-Poly1305 authenticated encryption
 - [x] HKDF key derivation for enhanced security
 - [x] SHA-256 key fingerprinting for verification
-- [x] Comprehensive mIRC script integration
+- [-] Comprehensive mIRC script integration (WIP)
 - [x] Command-line interface for testing
 - [x] Memory zeroization and constant-time operations
 - [x] Configuration persistence and key management
@@ -333,6 +333,7 @@ fish_11_cli.exe -q fish_11.dll getversion
 
 ### Future roadmap
 
+- [ ] **Log refactor** : rewrite all the loggin process for better debug
 - [ ] **Cross-platform CLI** : port to Linux/FreeBSD (eg. for eggdrop integration)
 - [ ] **Enhanced forward secrecy** : replace `StaticSecret` with `EphemeralSecret`
 - [ ] **Key rotation** : automatic key rotation with configurable intervals
@@ -346,9 +347,9 @@ fish_11_cli.exe -q fish_11.dll getversion
 ### Known issues
 
 - Key exchange timeout handling could be improved
-- Debug logging is only available in debug builds
 - The DLL in key exchange crash mIRC
-- Check if we can compile with 64bit with mIRC
+- Still a 32-bit DLL : due to mIRC limitation, still 32-bit ONLY, the 01/11/2025 update.
+
 
 ## Contributing
 
@@ -374,6 +375,6 @@ We welcome contributions! The project is actively developed and looking for :
 
 GNU GENERAL PUBLIC LICENSE, Version 3, 29 June 2007
 
-## Acknowledgments
+## Greetings
 
-This project is inspired by the original FiSH_10 IRC encryption tool, particularly the injection methodology from fish_inject. The modern Rust implementation provides enhanced security while maintaining compatibility with existing IRC infrastructure. Many thanks to the developpers of previous FiSH versions for their hard work.
+This project is inspired by the original FiSH_10 IRC encryption tool, particularly the injection methodology from fish_inject. Many thanks to the developpers of previous FiSH versions for their hard work !

@@ -213,7 +213,7 @@ pub extern "stdcall" fn FiSH11_TestCrypt(
                 s.to_owned()
             },
             Err(e) => {
-                error!("[FiSH11_TestCrypt] Invalid ANSI input: {}", e);
+                error!("[FiSH11_TestCrypt] invalid ANSI input: {}", e);
                 return MIRC_HALT;
             }
         }

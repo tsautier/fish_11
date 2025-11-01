@@ -16,31 +16,16 @@ use crate::config::save_config;
 use crate::config::{CONFIG, get_key_default, get_keypair, set_key_default, store_keypair};
 use crate::crypto::{KeyPair, format_public_key, generate_keypair};
 use crate::dll_function;
-use crate::dll_interface::{KEY_EXCHANGE_TIMEOUT_SECONDS, MIRC_HALT};
+use crate::dll_interface::KEY_EXCHANGE_TIMEOUT_SECONDS;
 use crate::unified_error::{DllError, DllResult};
 use crate::utils::normalize_nick;
 
 dll_function!(FiSH_ExchangeKey, data, {
-    // Initiates a secure key exchange by generating and displaying a public key for sharing
-    //
-    // This function implements the first step of the Diffie-Hellman key exchange protocol:
-    // 1. Checks if a key exists for the specified nickname, generating one if needed
-    // 2. Generates or retrieves a Curve25519 keypair
-    // 3. Formats the public key for sharing
-    // 4. Displays instructions for completing the key exchange
-    //
-    // # Arguments
-    // * `data` - Pointer to mIRC's buffer containing:
-    //   - On input: The nickname to exchange keys with
-    //   - On output: Public key and usage instructions
-    //
-    // # Returns
-    // Returns `MIRC_COMMAND` (2) to execute the echo command in mIRC
-    
-    // Initialize timeout tracking
+    // This function is time-sensitive as it's part of an interactive user workflow.
+    // A timeout ensures we don't block mIRC indefinitely if crypto operations hang.
     let start_time = Instant::now();
     let timeout = std::time::Duration::from_secs(KEY_EXCHANGE_TIMEOUT_SECONDS as u64);
-    
+
     // Parse and validate input
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
     let nickname = normalize_nick(input.trim());
@@ -51,15 +36,18 @@ dll_function!(FiSH_ExchangeKey, data, {
 
     info!("Key exchange initiated for nickname: {}", nickname);
 
-    // Step 1: Ensure we have an encryption key for this nickname
+    // --- Timeout Check 1 ---
+    // Ensure the process hasn't stalled before the first significant operation.
     check_timeout(start_time, timeout, "before key check")?;
     let key_was_generated = ensure_key_exists(&nickname)?;
 
-    // Step 2: Get or generate our keypair for DH exchange
+    // --- Timeout Check 2 ---
+    // Key generation can be slow; check again before the next step.
     check_timeout(start_time, timeout, "before keypair generation")?;
     let keypair = get_or_generate_keypair()?;
 
-    // Step 3: Validate the keypair
+    // --- Timeout Check 3 ---
+    // Final check before formatting the output.
     check_timeout(start_time, timeout, "before keypair validation")?;
     validate_keypair_safety(&keypair)?;
 
@@ -127,7 +115,7 @@ fn get_or_generate_keypair() -> DllResult<KeyPair> {
             Ok(kp)
         }
         Err(_) => {
-            {
+            
                 info!("No keypair found, generating new one");
                 let new_keypair = generate_keypair();
 
@@ -140,7 +128,7 @@ fn get_or_generate_keypair() -> DllResult<KeyPair> {
 
                 info!("Successfully generated and stored new keypair");
                 Ok(new_keypair)
-            }
+            
         }
     }
 }
@@ -152,11 +140,12 @@ fn validate_keypair_safety(keypair: &KeyPair) -> DllResult<()> {
 }
 
 /// Check if function has timed out
-fn check_timeout(start_time: Instant, timeout: std::time::Duration, _stage: &str) -> DllResult<()> {
+fn check_timeout(start_time: Instant, timeout: std::time::Duration, stage: &str) -> DllResult<()> {
     if start_time.elapsed() > timeout {
         Err(DllError::Timeout {
             operation: "Key Exchange".to_string(),
-            duration_ms: start_time.elapsed().as_millis() as u64,
+            duration_secs: timeout.as_secs(),
+            stage: stage.to_string(),
         })
     } else {
         Ok(())
@@ -166,7 +155,7 @@ fn check_timeout(start_time: Instant, timeout: std::time::Duration, _stage: &str
 /// Generate a secure random key with enhanced error recovery
 fn generate_secure_random_key() -> DllResult<[u8; 32]> {
     // Use a local OsRng instance and retry a few times. If RNG panics or fails,
-    // return an Internal error describing the failure so callers get a unified DllError.
+    // return a specific DllError instead of letting the panic propagate.
     for attempt in 1..=3 {
         let generation_result = std::panic::catch_unwind(|| {
             let mut key_bytes = [0u8; 32];
@@ -189,7 +178,9 @@ fn generate_secure_random_key() -> DllResult<[u8; 32]> {
         }
     }
 
-    Err(DllError::Internal("RNG failed after multiple attempts".to_string()))
+    Err(DllError::RngFailed {
+        context: "generating random key after 3 attempts".to_string(),
+    })
 }
 
 /// Validate a keypair using comprehensive checks
