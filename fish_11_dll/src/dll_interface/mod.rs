@@ -23,7 +23,6 @@ use std::ffi::{CStr, CString, c_char};
 use std::os::raw::c_int;
 use std::ptr;
 use std::sync::Mutex;
-
 pub(crate) const MIRC_HALT: c_int = 0;
 #[allow(dead_code)]
 pub(crate) const MIRC_CONTINUE: c_int = 1;

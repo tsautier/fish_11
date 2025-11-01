@@ -4,7 +4,6 @@
 //! for the entire DLL, replacing fragmented error types with a single unified system.
 //!
 
-
 use crate::buffer_utils;
 use std::error::Error;
 use std::ffi::{NulError, c_char};
@@ -46,6 +45,10 @@ pub enum DllError {
     /// Key has invalid length or format
     #[error("invalid key: {reason}")]
     KeyInvalid { reason: String },
+
+    /// Key has an invalid size
+    #[error("invalid key size: expected {expected} bytes, got {actual}")]
+    InvalidKeySize { expected: usize, actual: usize },
 
     /// Encryption operation failed
     #[error("encryption failed ({context}): {cause}")]
@@ -135,6 +138,10 @@ pub enum DllError {
         #[source]
         source: base64::DecodeError,
     },
+
+    /// Base64 decoding failed with context
+    #[error("base64 decoding failed ({context}): {cause}")]
+    Base64DecodeFailed { context: String, cause: String },
 
     /// Simple Base64 error wrapper (for use with #[from])
     #[error("base64 decoding failed: {0}")]
@@ -334,10 +341,7 @@ impl From<BufferError> for DllError {
 
 impl From<&str> for DllError {
     fn from(err: &str) -> Self {
-        DllError::InvalidInput {
-            param: "data".to_string(),
-            reason: err.to_string(),
-        }
+        DllError::InvalidInput { param: "data".to_string(), reason: err.to_string() }
     }
 }
 
