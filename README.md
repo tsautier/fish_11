@@ -80,9 +80,9 @@ The core library exports the following functions for mIRC integration :
 
 - `FiSH11_GenKey` - generate a new random encryption key for a nickname
 - `FiSH11_SetKey` - manually set an encryption key (base64 encoded)
-- `FiSH11_FileGetKey` - retrieve stored key for a nickname
+- `FiSH11_FileGetKey` - retrieve stored key for a nickname. If no key is found, it suggests initiating a key exchange.
 - `FiSH11_FileDelKey` - delete a stored key
-- `FiSH11_FileListKeys` - list all stored keys with metadata
+- `FiSH11_FileListKeys` - returns a formatted string of all stored keys, intended for script parsing. Output may be truncated if it exceeds buffer size.
 - `FiSH11_FileListKeysItem` - get specific key information
 
 ### Encryption/decryption functions
@@ -90,10 +90,12 @@ The core library exports the following functions for mIRC integration :
 - `FiSH11_EncryptMsg` - Encrypt a message with ChaCha20-Poly1305
 - `FiSH11_DecryptMsg` - Decrypt a received message
 - `FiSH11_TestCrypt` - Test encryption/decryption cycle for diagnostics
+- `FiSH11_TestCrypt` - Test encryption/decryption cycle for diagnostics
 
 ### Key exchange functions
 
 - `FiSH11_ExchangeKey` - Initiate X25519 key exchange (generate and display public key)
+- `FiSH11_ProcessPublicKey` - Process received public key and compute shared secret
 - `FiSH11_ProcessPublicKey` - Process received public key and compute shared secret
 
 ### Utility functions
@@ -102,6 +104,13 @@ The core library exports the following functions for mIRC integration :
 - `FiSH11_GetKeyFingerprint` - Generate SHA-256 fingerprint for key verification
 - `FiSH11_GetConfigPath` - Get path to configuration file
 - `FiSH11_Help` - Display usage help and available commands
+
+### Configuration functions
+
+- `FiSH11_SetMircDir` - Set the mIRC directory path to help locate the configuration file
+- `INI_GetBool` - Read a boolean value from the configuration file
+- `INI_GetString` - Read a string value from the configuration file
+- `INI_GetInt` - Read an integer value from the configuration file
 
 ### Injection DLL functions
 
@@ -352,7 +361,7 @@ We welcome contributions! The project is actively developed and looking for :
 - **Testing** with various IRC networks and scenarios
 - **Documentation** improvements and examples
 
-**Contact** : `fish11@lavache.com` for questions
+**Contact** : `guillaume@lavache.com` for questions
 
 ### Development setup
 
