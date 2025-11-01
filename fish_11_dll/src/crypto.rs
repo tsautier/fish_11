@@ -19,16 +19,6 @@ use zeroize::Zeroize;
 
 use crate::error::{FishError, Result};
 use crate::utils::{base64_decode, base64_encode, generate_random_bytes};
-use rand_core::RngCore;
-
-/// Fills a slice with cryptographically secure random bytes.
-pub fn fill_random_bytes(dest: &mut [u8]) -> Result<()> {
-    use rand_core::RngCore;
-    OsRng
-        .try_fill_bytes(dest)
-        .map_err(|e| FishError::CryptoError(format!("RNG failure: {}", e)))?;
-    Ok(())
-}
 
 // Constants
 pub const MAX_MESSAGE_SIZE: usize = 4096;

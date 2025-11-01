@@ -6,7 +6,7 @@ use winapi::shared::windef::HWND;
 
 use crate::config;
 use crate::dll_function;
-use crate::unified_error::DllError;
+use crate::unified_error::{DllError, DllResult};
 
 /// Gets a boolean value from the config file.
 /// Input: <key> [default_value]
