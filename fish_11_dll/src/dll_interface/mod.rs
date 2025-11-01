@@ -33,7 +33,13 @@ pub(crate) const MIRC_IDENTIFIER: c_int = 3;
 pub(crate) const MIRC_ERROR: c_int = 4;
 
 // Default maximum bytes that can be returned to mIRC
+// Default maximum bytes that can be returned to mIRC. We still cap
+// the runtime-reported buffer size to a safe maximum below.
 pub(crate) const DEFAULT_MIRC_BUFFER_SIZE: usize = 4096;
+// Maximum buffer size we will ever report to callers (including content, we'll
+// subtract one for the null terminator in get_buffer_size()). This prevents
+// accidentally writing too much to caller buffers; mIRC historically uses 900.
+pub(crate) const MAX_MIRC_BUFFER_SIZE: usize = 900;
 
 /// Timeout duration for key exchange operations in seconds
 pub const KEY_EXCHANGE_TIMEOUT_SECONDS: u64 = 10;
@@ -106,6 +112,7 @@ pub(crate) fn get_buffer_size() -> usize {
         })
     };
 
-    // Always leave room for null terminator
-    buffer_size.saturating_sub(1)
+    // Always leave room for null terminator, and cap to MAX_MIRC_BUFFER_SIZE
+    let available = buffer_size.saturating_sub(1);
+    std::cmp::min(available, MAX_MIRC_BUFFER_SIZE)
 }

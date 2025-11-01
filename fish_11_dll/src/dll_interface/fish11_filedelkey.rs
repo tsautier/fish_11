@@ -38,6 +38,19 @@ mod tests {
 
     fn call_delkey(input: &str, buffer_size: usize) -> (c_int, String) {
         let mut buffer = vec![0i8; buffer_size];
+
+        // Temporarily override the global MIRC_BUFFER_SIZE so write helpers
+        // will use the same size as our test allocation and won't write past
+        // the end of the vector, which would corrupt the heap.
+        let prev_size = match crate::dll_interface::MIRC_BUFFER_SIZE.lock() {
+            Ok(mut g) => {
+                let prev = *g;
+                *g = buffer_size;
+                Some(prev)
+            }
+            Err(_) => None,
+        };
+
         let c_input = CString::new(input).unwrap();
         let result = FiSH11_FileDelKey(
             ptr::null_mut(),
@@ -47,6 +60,11 @@ mod tests {
             0,
             0,
         );
+
+        // Restore previous global buffer size
+        if let Some(prev) = prev_size {
+            let _ = crate::dll_interface::MIRC_BUFFER_SIZE.lock().map(|mut g| *g = prev);
+        }
 
         let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
         (result, c_str.to_string_lossy().to_string())

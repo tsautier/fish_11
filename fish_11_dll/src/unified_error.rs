@@ -241,13 +241,15 @@ impl DllError {
         let error_msg = self.to_string();
         match std::ffi::CString::new(error_msg) {
             Ok(cstring) => {
-                let _ = buffer_utils::write_cstring_to_buffer(data, 900, &cstring);
+                let buf_size = crate::dll_interface::get_buffer_size();
+                let _ = buffer_utils::write_cstring_to_buffer(data, buf_size, &cstring);
             }
             Err(e) => {
                 log::error!("Failed to convert error message to CString: {}", e);
                 // Fallback: write generic error
                 let fallback = std::ffi::CString::new("Error: message contains null byte").unwrap();
-                let _ = buffer_utils::write_cstring_to_buffer(data, 900, &fallback);
+                let buf_size = crate::dll_interface::get_buffer_size();
+                let _ = buffer_utils::write_cstring_to_buffer(data, buf_size, &fallback);
             }
         }
 
@@ -385,7 +387,9 @@ macro_rules! dll_function {
                             Ok(s) => s,
                             Err(e) => return DllError::from(e).to_mirc_response($data),
                         };
-                        $crate::buffer_utils::write_cstring_to_buffer($data, 900, &cstring).ok();
+                        // Use the runtime-determined buffer size to avoid overwriting caller memory
+                        let buf_size = $crate::dll_interface::get_buffer_size();
+                        $crate::buffer_utils::write_cstring_to_buffer($data, buf_size, &cstring).ok();
                     }
                     $crate::dll_interface::MIRC_COMMAND
                 }

@@ -188,7 +188,7 @@ fn validate_keypair(keypair: &KeyPair) -> DllResult<()> {
     if bool::from(keypair.public_key.ct_eq(&public_zeros))
         || bool::from(keypair.private_key.expose_secret().ct_eq(&private_zeros))
     {
-        return Err(DllError::KeyInvalid { reason: "keypair contains all-zero key".to_string() });
+        return Err(DllError::KeyInvalid { reason: "keypair contains all zeros".to_string() });
     }
 
     // Check if public key is on the curve (basic validation)
