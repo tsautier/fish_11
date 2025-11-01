@@ -20,7 +20,7 @@ use crate::dll_interface::KEY_EXCHANGE_TIMEOUT_SECONDS;
 use crate::unified_error::{DllError, DllResult};
 use crate::utils::normalize_nick;
 
-dll_function!(FiSH_ExchangeKey, data, {
+dll_function!(FiSH11_ExchangeKey, data, {
     // This function is time-sensitive as it's part of an interactive user workflow.
     // A timeout ensures we don't block mIRC indefinitely if crypto operations hang.
     let start_time = Instant::now();
@@ -36,22 +36,22 @@ dll_function!(FiSH_ExchangeKey, data, {
 
     info!("Key exchange initiated for nickname: {}", nickname);
 
-    // --- Timeout Check 1 ---
+    // Timeout check 1
     // Ensure the process hasn't stalled before the first significant operation.
     check_timeout(start_time, timeout, "before key check")?;
     let key_was_generated = ensure_key_exists(&nickname)?;
 
-    // --- Timeout Check 2 ---
+    // Timeout check 2
     // Key generation can be slow; check again before the next step.
     check_timeout(start_time, timeout, "before keypair generation")?;
     let keypair = get_or_generate_keypair()?;
 
-    // --- Timeout Check 3 ---
+    // Timeout check 3
     // Final check before formatting the output.
     check_timeout(start_time, timeout, "before keypair validation")?;
     validate_keypair_safety(&keypair)?;
 
-    // Step 4: Format public key for sharing
+    // Step 4: format public key for sharing
     let formatted_key = format_public_key(&keypair.public_key);
 
     if !formatted_key.starts_with("FiSH11-PubKey:") {
@@ -62,7 +62,7 @@ dll_function!(FiSH_ExchangeKey, data, {
 
     debug!("Public key formatted successfully (length: {})", formatted_key.len());
 
-    // Step 5: Build the output message
+    // Step 5: build the output message
     let key_status = if key_was_generated {
         " (Note: a new encryption key was automatically generated)"
     } else {
@@ -115,20 +115,18 @@ fn get_or_generate_keypair() -> DllResult<KeyPair> {
             Ok(kp)
         }
         Err(_) => {
-            
-                info!("No keypair found, generating new one");
-                let new_keypair = generate_keypair();
+            info!("No keypair found, generating new one");
+            let new_keypair = generate_keypair();
 
-                // Store the new keypair
-                store_keypair(&new_keypair)?;
+            // Store the new keypair
+            store_keypair(&new_keypair)?;
 
-                // Persist configuration to disk
-                let config_guard = CONFIG.lock();
-                save_config(&*config_guard, None)?;
+            // Persist configuration to disk
+            let config_guard = CONFIG.lock();
+            save_config(&*config_guard, None)?;
 
-                info!("Successfully generated and stored new keypair");
-                Ok(new_keypair)
-            
+            info!("Successfully generated and stored new keypair");
+            Ok(new_keypair)
         }
     }
 }
@@ -178,9 +176,7 @@ fn generate_secure_random_key() -> DllResult<[u8; 32]> {
         }
     }
 
-    Err(DllError::RngFailed {
-        context: "generating random key after 3 attempts".to_string(),
-    })
+    Err(DllError::RngFailed { context: "generating random key after 3 attempts".to_string() })
 }
 
 /// Validate a keypair using comprehensive checks

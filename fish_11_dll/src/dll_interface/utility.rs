@@ -1,10 +1,8 @@
-use std::ffi::{CString, c_char};
+use std::ffi::c_char;
 use std::os::raw::c_int;
-use std::ptr;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use log::error;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 use winapi::shared::minwindef::BOOL;
@@ -12,61 +10,18 @@ use winapi::shared::windef::HWND;
 use x25519_dalek::PublicKey;
 
 use crate::dll_function;
-use crate::dll_interface::{MIRC_COMMAND, MIRC_HALT};
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 use crate::{buffer_utils, config};
 
-#[no_mangle]
-#[allow(non_snake_case)]
-/// Display the version information of the FiSH_11 DLL
-/// Can be used to test load of the DLL into mIRC
-pub extern "stdcall" fn FiSH11_GetVersion(
-    _m_wnd: HWND,
-    _a_wnd: HWND,
-    data: *mut c_char,
-    _parms: *mut c_char,
-    _show: BOOL,
-    _nopause: BOOL,
-) -> c_int {
+dll_function!(FiSH11_GetVersion, _data, {
     // Use the main version string that includes all information
-    let version_info =
-        format!("/echo -ts {} - Licensed under the GPL v3.", crate::FISH_MAIN_VERSION);
+    let version_info = format!("/echo -ts {} - Licensed under the GPL v3.", crate::FISH_MAIN_VERSION);
 
-    let command = match CString::new(version_info) {
-        Ok(cmd) => cmd,
-        Err(e) => {
-            error!("FiSH_11 : error : failed to create CString: {}", e);
-            return MIRC_HALT;
-        }
-    };
-    unsafe {
-        if !data.is_null() {
-            crate::buffer_utils::write_cstring_to_buffer(
-                data, 900, // Standard mIRC buffer size
-                &command,
-            )
-            .unwrap_or_else(|_| {
-                // Fallback if buffer write fails
-                ptr::copy_nonoverlapping(
-                    command.as_ptr(),
-                    data,
-                    command.as_bytes_with_nul().len().min(899), // Leave space for null terminator : buffer is 900 bytes MAX
-                );
-            });
-            // Only log at debug level so it doesn't appear in normal logging
-            log::debug!(
-                "FiSH_11 : command copied to data buffer: {}",
-                command.to_str().unwrap_or("FiSH_11 : error converting command to string")
-            );
-        } else {
-            error!("FiSH_11 : data buffer pointer is null.");
-            return MIRC_HALT;
-        }
-    }
+    log::debug!("FiSH11_GetVersion called, returning version: {}", crate::FISH_MAIN_VERSION);
 
-    MIRC_COMMAND
-}
+    Ok(version_info)
+});
 
 dll_function!(FiSH11_GetKeyFingerprint, data, {
     // Parse input to get the nickname
