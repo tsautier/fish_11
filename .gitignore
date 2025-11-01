@@ -28,4 +28,6 @@ copydll.bat
 .vscode
 .idea
 GEMINI.md
-fish.ini
+
+# Generated during rust tests
+fish_11_dll/fish_11.ini
