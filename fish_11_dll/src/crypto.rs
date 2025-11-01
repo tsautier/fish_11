@@ -21,7 +21,7 @@ use crate::error::{FishError, Result};
 use crate::utils::{base64_decode, base64_encode, generate_random_bytes};
 
 // Constants
-const MAX_MESSAGE_SIZE: usize = 4096;
+pub const MAX_MESSAGE_SIZE: usize = 4096;
 const MAX_CIPHERTEXT_SIZE: usize = MAX_MESSAGE_SIZE + 16 + 12; // message + auth tag + nonce
 
 // Global nonce cache for anti-replay protection

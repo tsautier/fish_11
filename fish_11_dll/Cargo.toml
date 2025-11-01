@@ -43,6 +43,7 @@ hex = "0.4.3"
 regex = "1.11.1"
 libc = "0.2.177"
 parking_lot = "0.12"       # More robust mutex implementation
+thiserror = "2.0"          # Derive Error and Display implementations
 
 [build-dependencies]
 vergen = { version = "9.0.6", features = [
