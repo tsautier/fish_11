@@ -4,7 +4,6 @@ use std::fs;
 use std::path::PathBuf;
 
 use configparser::ini::Ini;
-use directories::BaseDirs;
 use secrecy::ExposeSecret;
 
 use crate::config::models::{EntryData, FishConfig};
@@ -491,7 +490,7 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::models::{EntryData, Fish11Section, FishConfig, StartupSection};
+    use crate::config::models::{EntryData, FishConfig};
     use crate::utils::generate_random_bytes;
     use tempfile::NamedTempFile;
 
@@ -593,7 +592,11 @@ mod tests {
         // Call the function
         let path_result = get_config_path();
 
-        // Check that we got an error
-        assert!(path_result.is_err());
+        // Vérifie que le fallback fonctionne : le chemin doit être fish_11.ini dans le répertoire courant
+        assert!(path_result.is_ok());
+        let path = path_result.unwrap();
+        let mut expected_path = std::env::current_dir().unwrap();
+        expected_path.push("fish_11.ini");
+        assert_eq!(path, expected_path);
     }
 }
