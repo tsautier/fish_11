@@ -1,4 +1,4 @@
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::{CString, c_char};
 use std::os::raw::c_int;
 use std::ptr;
 
@@ -11,7 +11,10 @@ use winapi::shared::minwindef::BOOL;
 use winapi::shared::windef::HWND;
 use x25519_dalek::PublicKey;
 
+use crate::dll_function;
 use crate::dll_interface::{MIRC_COMMAND, MIRC_HALT};
+use crate::unified_error::DllError;
+use crate::utils::normalize_nick;
 use crate::{buffer_utils, config};
 
 #[no_mangle]
@@ -48,7 +51,7 @@ pub extern "stdcall" fn FiSH11_GetVersion(
                 ptr::copy_nonoverlapping(
                     command.as_ptr(),
                     data,
-                    command.as_bytes_with_nul().len().min(899), // Leave space for null terminator
+                    command.as_bytes_with_nul().len().min(899), // Leave space for null terminator : buffer is 900 bytes MAX
                 );
             });
             // Only log at debug level so it doesn't appear in normal logging
@@ -65,121 +68,46 @@ pub extern "stdcall" fn FiSH11_GetVersion(
     MIRC_COMMAND
 }
 
-/// Generates a key fingerprint for the specified nickname
-///
-/// This function produces a human-readable fingerprint for the encryption key associated
-/// with a nickname. The fingerprint can be used to verify key authenticity through a
-/// separate communications channel, helping prevent man-in-the-middle attacks.
-///
-/// # Arguments
-/// * `data` - Pointer to mIRC's buffer containing:
-///   - On input: The nickname to generate a fingerprint for
-///   - On output: The fingerprint string or an error message
-///
-/// # Returns
-/// Returns `MIRC_COMMAND` (2) to execute the echo command in mIRC
-///
-/// # Fingerprint Generation Process
-/// 1. Retrieves the 256-bit encryption key for the specified nickname
-/// 2. Hashes the key using SHA-256
-/// 3. Encodes the first 16 bytes of the hash in base64
-/// 4. Formats output for readability with spaces every 4 characters
-#[no_mangle]
-#[allow(non_snake_case)]
-pub extern "stdcall" fn FiSH11_GetKeyFingerprint(
-    _m_wnd: HWND,
-    _a_wnd: HWND,
-    data: *mut c_char,
-    _parms: *mut c_char,
-    _show: BOOL,
-    _nopause: BOOL,
-) -> c_int {
-    // Read nickname from input buffer
-    let nickname = unsafe {
-        if data.is_null() {
-            error!("Data buffer pointer is null");
-            return MIRC_HALT;
-        }
+dll_function!(FiSH11_GetKeyFingerprint, data, {
+    // Parse input to get the nickname
+    let input = unsafe { buffer_utils::parse_buffer_input(data)? };
+    let nickname = normalize_nick(input.trim());
 
-        match CStr::from_ptr(data).to_str() {
-            Ok(s) => s.trim().to_owned(),
-            Err(e) => {
-                error!("Invalid ANSI input: {}", e);
-                return MIRC_HALT;
-            }
-        }
-    };
     if nickname.is_empty() {
-        let error_msg = CString::new("Usage: /dll fish_11.dll FiSH11_GetKeyFingerprint <nickname>")
-            .expect("Failed to create usage message");
-
-        unsafe {
-            std::ptr::copy_nonoverlapping(
-                error_msg.as_ptr(),
-                data,
-                error_msg.as_bytes_with_nul().len(),
-            );
-        }
-
-        return MIRC_COMMAND;
-    } // Get the key for the nickname
-    match config::get_key_default(&nickname) {
-        Ok(key) => {
-            // Generate fingerprint using SHA-256
-            let mut hasher = Sha256::new();
-            hasher.update(&key);
-            let hash = hasher.finalize();
-
-            // Take first 16 bytes of the hash and encode as base64
-            let fp_base64 = BASE64.encode(&hash[0..16]);
-
-            // Format with spaces for readability (groups of 4 chars)
-            let mut formatted_fp = String::with_capacity(24); // 16 chars + 3 spaces
-            for (i, c) in fp_base64.chars().take(16).enumerate() {
-                if i > 0 && i % 4 == 0 {
-                    formatted_fp.push(' ');
-                }
-                formatted_fp.push(c);
-            } // Format the response message
-            let result = format!("/echo -ts Key fingerprint for {}: {}", nickname, formatted_fp);
-
-            unsafe {
-                crate::buffer_utils::write_string_to_buffer(data, 900, &result).unwrap_or_else(
-                    |_| {
-                        // Fallback on error
-                        let fallback = CString::new("/echo -ts Error generating fingerprint")
-                            .expect("Failed to create fingerprint error message");
-                        ptr::copy_nonoverlapping(
-                            fallback.as_ptr(),
-                            data,
-                            fallback.as_bytes_with_nul().len().min(899),
-                        );
-                    },
-                );
-            }
-        }
-        Err(_) => {
-            // Key not found or error occurred
-            let error_msg = format!("/echo -ts No key found for {}", nickname);
-
-            unsafe {
-                buffer_utils::write_string_to_buffer(data, 900, &error_msg).unwrap_or_else(|_| {
-                    // Fallback on error
-                    let fallback = CString::new("/echo -ts Key lookup error")
-                        .expect("Failed to create key lookup error message");
-                    ptr::copy_nonoverlapping(
-                        fallback.as_ptr(),
-                        data,
-                        fallback.as_bytes_with_nul().len().min(899),
-                    );
-                });
-            }
-        }
+        return Err(DllError::MissingParameter("nickname".to_string()));
     }
-    MIRC_COMMAND
-}
+
+    log::info!("Generating key fingerprint for: {}", nickname);
+
+    // Get the key for the nickname
+    let key = config::get_key_default(&nickname)?;
+
+    log::debug!("Retrieved key, generating SHA-256 hash");
+
+    // Generate fingerprint using SHA-256
+    let mut hasher = Sha256::new();
+    hasher.update(&key);
+    let hash = hasher.finalize();
+
+    // Take first 16 bytes of the hash and encode as base64
+    let fp_base64 = BASE64.encode(&hash[0..16]);
+
+    // Format with spaces for readability (groups of 4 chars)
+    let mut formatted_fp = String::with_capacity(24); // 16 chars + 3 spaces
+    for (i, c) in fp_base64.chars().take(16).enumerate() {
+        if i > 0 && i % 4 == 0 {
+            formatted_fp.push(' ');
+        }
+        formatted_fp.push(c);
+    }
+
+    log::info!("Generated fingerprint for {}: {}", nickname, formatted_fp);
+
+    Ok(format!("/echo -ts Key fingerprint for {}: {}", nickname, formatted_fp))
+});
 
 /// Validates that a public key is a valid Curve25519 point
+#[allow(dead_code)]
 fn validate_public_key(bytes: &[u8; 32]) -> crate::error::Result<()> {
     // Check that it's not all zeros using constant-time comparison
     if bool::from(bytes.ct_eq(&[0u8; 32])) {
