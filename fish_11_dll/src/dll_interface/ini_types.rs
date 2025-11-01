@@ -38,6 +38,7 @@ dll_function!(INI_GetBool, data, {
 /// Gets a string value from the config file.
 /// Input: <key> [default_value]
 dll_function!(INI_GetString, data, {
+    
     let input = unsafe { crate::buffer_utils::parse_buffer_input(data)? };
     let parts: Vec<&str> = input.splitn(2, ' ').collect();
 
