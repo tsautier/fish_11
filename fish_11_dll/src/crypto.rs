@@ -345,6 +345,8 @@ pub fn extract_public_key(formatted: &str) -> Result<[u8; 32]> {
 
     // Extract the base64 encoded part
     let encoded = &formatted[PREFIX.len()..];
+    // Trim surrounding whitespace/newlines which may come from mIRC or transport
+    let encoded = encoded.trim();
 
     // Decode the base64
     let key_data = base64_decode(encoded)
