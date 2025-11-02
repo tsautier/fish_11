@@ -1,11 +1,13 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
+use std::ffi::{CStr, CString, c_char};
+use std::os::raw::c_int;
+use std::ptr;
+use std::sync::Mutex;
 use std::time::Duration;
-pub(crate) mod core;
-pub mod dll_error;
+
 mod fish11_decryptmsg;
 mod fish11_encryptmsg;
-pub mod fish11_exchangekey;
 mod fish11_filedelkey;
 mod fish11_filegetkey;
 mod fish11_filelistkeys;
@@ -15,20 +17,20 @@ mod fish11_getconfigpath;
 mod fish11_help;
 mod fish11_setkey;
 mod fish11_setmircdir;
-pub mod function_template;
-pub mod ini_types;
 mod key_management;
 mod utility;
-use std::ffi::{CStr, CString, c_char};
-use std::os::raw::c_int;
-use std::ptr;
-use std::sync::Mutex;
+
+pub mod dll_error;
+pub mod fish11_exchangekey;
+pub mod function_template;
+pub mod ini_types;
+
+pub(crate) mod core;
 pub(crate) const MIRC_HALT: c_int = 0;
 #[allow(dead_code)]
 pub(crate) const MIRC_CONTINUE: c_int = 1;
 pub(crate) const MIRC_COMMAND: c_int = 2;
 pub(crate) const MIRC_IDENTIFIER: c_int = 3;
-
 #[allow(dead_code)]
 pub(crate) const MIRC_ERROR: c_int = 4;
 

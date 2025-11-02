@@ -7,7 +7,6 @@ use winapi::shared::windef::HWND;
 use crate::buffer_utils;
 use crate::config;
 use crate::dll_function;
-use crate::dll_interface::MIRC_COMMAND;
 use crate::unified_error::DllError;
 use crate::utils::{base64_encode, normalize_nick};
 
@@ -34,6 +33,7 @@ dll_function!(FiSH11_FileGetKey, data, {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dll_interface::MIRC_COMMAND;
     use std::ffi::{CStr, CString};
     use std::ptr;
 
@@ -65,13 +65,15 @@ mod tests {
         // Suppose "alice" exists in config
         let (code, msg) = call_getkey("alice", 256);
         assert_eq!(code, MIRC_COMMAND);
-        assert!(msg.contains("Key for alice:"));
+        // Structured check: message should start with echo and mention alice
+        assert!(msg.starts_with("/echo -ts Key for alice:"));
     }
 
     #[test]
     fn test_getkey_nickname_empty() {
         let (code, msg) = call_getkey("   ", 256);
         assert_eq!(code, MIRC_COMMAND);
+        // Structured check: message should mention missing parameter
         assert!(msg.to_lowercase().contains("missing parameter"));
     }
 
@@ -79,6 +81,7 @@ mod tests {
     fn test_getkey_key_not_found() {
         let (code, msg) = call_getkey("unknown_nick", 256);
         assert_eq!(code, MIRC_COMMAND);
+        // Structured check: message should mention no encryption key
         assert!(msg.to_lowercase().contains("no encryption key"));
     }
 
@@ -87,7 +90,8 @@ mod tests {
         let (code, msg) = call_getkey("alice", 8);
         // Should still return MIRC_COMMAND, but message will be truncated
         assert_eq!(code, MIRC_COMMAND);
-        assert!(msg.len() < 20); // Message is truncated
+        // Structured check: message is truncated
+        assert!(msg.len() < 20);
     }
 
     #[test]
@@ -113,6 +117,7 @@ mod tests {
 
         let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
         assert_eq!(result, MIRC_COMMAND);
+        // Structured check: message should mention null byte
         assert!(c_str.to_string_lossy().to_lowercase().contains("null byte"));
     }
 }

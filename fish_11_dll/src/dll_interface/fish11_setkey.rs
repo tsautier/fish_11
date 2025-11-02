@@ -8,14 +8,9 @@ use winapi::shared::windef::HWND;
 use crate::buffer_utils;
 use crate::config;
 use crate::dll_function;
-use crate::unified_error::{DllError, DllResult};
+use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 
-/// Manually sets an encryption key for a specified nickname.
-///
-/// This function allows direct configuration of a 256-bit encryption key for a nickname,
-/// provided as a base64-encoded string. The key will be used for all future encrypted
-/// communications with the specified nickname.
 dll_function!(FiSH11_SetKey, data, {
     // 1. Parse input: <nickname> <base64_key>
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };

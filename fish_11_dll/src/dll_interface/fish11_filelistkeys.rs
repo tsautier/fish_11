@@ -6,7 +6,6 @@ use winapi::shared::windef::HWND;
 
 use crate::config;
 use crate::dll_function;
-use crate::dll_interface::MIRC_COMMAND;
 use crate::unified_error::DllError;
 
 dll_function!(FiSH11_FileListKeys, _data, {
@@ -44,11 +43,15 @@ dll_function!(FiSH11_FileListKeys, _data, {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dll_interface::MIRC_COMMAND;
     use std::ffi::{CStr, CString};
     use std::ptr;
 
     fn call_listkeys(buffer_size: usize) -> (c_int, String) {
         let mut buffer = vec![0i8; buffer_size];
+        // Override buffer size for this test to prevent heap corruption
+        let prev_size = crate::dll_interface::override_buffer_size_for_test(buffer_size);
+
         let result = FiSH11_FileListKeys(
             ptr::null_mut(),
             ptr::null_mut(),
@@ -57,6 +60,9 @@ mod tests {
             0,
             0,
         );
+
+        // Restore previous buffer size
+        crate::dll_interface::restore_buffer_size_for_test(prev_size);
 
         let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
         (result, c_str.to_string_lossy().to_string())
@@ -67,6 +73,7 @@ mod tests {
         // Suppose there are keys in config
         let (code, msg) = call_listkeys(512);
         assert_eq!(code, MIRC_COMMAND);
+        // Structured check: message should mention FiSH Keys
         assert!(msg.contains("FiSH Keys"));
     }
 
@@ -75,6 +82,7 @@ mod tests {
         // Suppose config is empty
         let (code, msg) = call_listkeys(256);
         assert_eq!(code, MIRC_COMMAND);
+        // Structured check: message should mention No keys stored
         assert!(msg.contains("No keys stored"));
     }
 
@@ -82,6 +90,7 @@ mod tests {
     fn test_listkeys_buffer_too_small() {
         let (code, msg) = call_listkeys(8);
         assert_eq!(code, MIRC_COMMAND);
+        // Structured check: message is truncated
         assert!(msg.len() < 20);
     }
 
@@ -101,7 +110,7 @@ mod tests {
 
         let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
         assert_eq!(result, MIRC_COMMAND);
-        // Should not panic, message may be generic
+        // Structured check: message should not be empty
         assert!(!c_str.to_string_lossy().is_empty());
     }
 }

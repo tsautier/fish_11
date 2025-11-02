@@ -33,6 +33,7 @@ dll_function!(FiSH11_FileDelKey, data, {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dll_interface::MIRC_COMMAND;
     use std::ffi::{CStr, CString};
     use std::ptr;
 
@@ -64,13 +65,15 @@ mod tests {
         // Suppose "bob" exists in config
         let (code, msg) = call_delkey("bob", 256);
         assert_eq!(code, MIRC_COMMAND);
-        assert!(msg.contains("Key deleted for bob"));
+        // Structured check: message should start with echo and mention bob
+        assert!(msg.starts_with("/echo -ts Key deleted for bob"));
     }
 
     #[test]
     fn test_delkey_nickname_empty() {
         let (code, msg) = call_delkey("   ", 256);
         assert_eq!(code, MIRC_COMMAND);
+        // Structured check: message should mention missing parameter
         assert!(msg.to_lowercase().contains("missing parameter"));
     }
 
@@ -78,6 +81,7 @@ mod tests {
     fn test_delkey_key_not_found() {
         let (code, msg) = call_delkey("unknown_nick", 256);
         assert_eq!(code, MIRC_COMMAND);
+        // Structured check: message should mention no encryption key
         assert!(msg.to_lowercase().contains("no encryption key"));
     }
 
@@ -85,6 +89,7 @@ mod tests {
     fn test_delkey_buffer_too_small() {
         let (code, msg) = call_delkey("bob", 8);
         assert_eq!(code, MIRC_COMMAND);
+        // Structured check: message is truncated
         assert!(msg.len() < 20);
     }
 
@@ -92,10 +97,10 @@ mod tests {
     fn test_delkey_malformed_input() {
         let bad_input = unsafe { CString::from_vec_unchecked(vec![97, 0, 98]) }; // "a\0b"
         let mut buffer = vec![0i8; 256];
-        
+
         // Override buffer size for this test to prevent heap corruption
         let prev_size = crate::dll_interface::override_buffer_size_for_test(buffer.len());
-        
+
         let result = FiSH11_FileDelKey(
             ptr::null_mut(),
             ptr::null_mut(),
@@ -110,6 +115,7 @@ mod tests {
 
         let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
         assert_eq!(result, MIRC_COMMAND);
+        // Structured check: message should mention null byte
         assert!(c_str.to_string_lossy().to_lowercase().contains("null byte"));
     }
 }
