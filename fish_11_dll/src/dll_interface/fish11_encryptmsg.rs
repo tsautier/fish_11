@@ -95,8 +95,8 @@ mod tests {
     #[test]
     fn test_encryptmsg_invalid_key_length() {
         let nickname = "testuser2";
-        // Mauvaise taille de clé, on force le typage pour provoquer une erreur de compilation
-        // let key = [0u8; 16]; // Ceci ne compile pas, donc on vérifie que la fonction refuse les clés invalides autrement
+        // Wrong key size, we force typing to provoke a compilation error
+        // let key = [0u8; 16]; // This does not compile, so we verify that the function refuses invalid keys otherwise
         let result = config::get_key_default(nickname);
         assert!(result.is_err());
     }
