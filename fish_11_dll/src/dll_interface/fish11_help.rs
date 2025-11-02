@@ -4,39 +4,32 @@ use std::os::raw::c_int;
 use winapi::shared::minwindef::BOOL;
 use winapi::shared::windef::HWND;
 
-use crate::dll_function;
+use crate::dll_function_identifier;
 use crate::dll_interface::{CRATE_VERSION, CURRENT_YEAR};
-use crate::unified_error::{DllError, DllResult};
+use crate::unified_error::DllError;
 
 /// Displays help information about the DLL, including version and available commands.
 ///
-/// The output is a series of mIRC `/echo` commands joined by `|`.
-dll_function!(FiSH11_Help, _data, {
+/// The output is a plain help text with one line per entry.
+dll_function_identifier!(FiSH11_Help, _data, {
     let help_lines = [
-        format!(
-            "//echo -a === FiSH_11 v{}, secure chat for mIRC === ",
-            CRATE_VERSION
-        ),
-        format!(
-            "//echo -a | Written by [GuY], {}, licensed under the GPL v3.",
-            CURRENT_YEAR
-        ),
-        "//echo -a | ".to_string(), // Empty line
-        "//echo -a |     Commands:".to_string(),
-        "//echo -a |       FiSH11_GetVersion - Show version information".to_string(),
-        "//echo -a |       FiSH11_GenKey <nick> - Generate a random key".to_string(),
-        "//echo -a |       FiSH11_SetKey <nick> <key> - Set a key manually".to_string(),
-        "//echo -a |       FiSH11_FileGetKey <nick> - Get the key for a nickname".to_string(),
-        "//echo -a |       FiSH11_FileDelKey <nick> - Delete a key".to_string(),
-        "//echo -a |       FiSH11_FileListKeys - List all stored keys".to_string(),
-        "//echo -a |       FiSH11_EncryptMsg <nick> <message> - Encrypt a message".to_string(),
-        "//echo -a |       FiSH11_DecryptMsg <nick> <message> - Decrypt a message".to_string(),
-        "//echo -a |       FiSH11_ExchangeKey <nick> - Start key exchange".to_string(),
-        "//echo -a |       FiSH11_ProcessPublicKey <nick> <key> - Process received key".to_string(),
-        "//echo -a |       FiSH11_TestCrypt <message> - Test encryption".to_string(),
+        format!("=== FiSH_11 v{} - secure chat for mIRC ===", CRATE_VERSION),
+        format!("Written by [GuY], {} - licensed under the GPL v3.", CURRENT_YEAR),
+        "".to_string(), // Empty line
+        "Commands:".to_string(),
+        "  FiSH11_GetVersion : show version information".to_string(),
+        "  FiSH11_GenKey <nick> : generate a random key".to_string(),
+        "  FiSH11_SetKey <nick> <key> : set a key manually".to_string(),
+        "  FiSH11_FileGetKey <nick> : get the key for a nickname".to_string(),
+        "  FiSH11_FileDelKey <nick> : delete a key".to_string(),
+        "  FiSH11_FileListKeys : list all stored keys".to_string(),
+        "  FiSH11_EncryptMsg <nick> <message> : encrypt a message".to_string(),
+        "  FiSH11_DecryptMsg <nick> <message> : decrypt a message".to_string(),
+        "  FiSH11_ExchangeKey <nick> : Ssart key exchange".to_string(),
+        "  FiSH11_ProcessPublicKey <nick> <key> : process received key".to_string(),
+        "  FiSH11_TestCrypt <message> : test encryption".to_string(),
     ];
 
-    let mirc_commands_str = help_lines.join(" | ");
-
-    Ok(mirc_commands_str)
+    // Return as CRLF-separated plain lines so the mIRC helper can display them safely
+    Ok(help_lines.join("\r\n"))
 });

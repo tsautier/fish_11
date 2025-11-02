@@ -617,20 +617,24 @@ alias fish11_X25519_INIT {
     ; validate encoded length (base64 32 bytes -> 44 chars)
     var %enc = $mid(%pub, 12, 9999)
     if ($len(%enc) == 44) {
-      .notice %cur_contact X25519_INIT %pub
-      echo $color(Mode text) -tm %cur_contact *** FiSH_11: sent X25519_INIT to %cur_contact, waiting for reply...
-      .timer fish_timeout_ $+ %cur_contact 1 10 fish11_timeout_keyexchange %cur_contact
+  .notice %cur_contact X25519_INIT %pub
+  echo $color(Mode text) -tm %cur_contact *** FiSH_11: sent X25519_INIT to %cur_contact, waiting for reply...
+  ; Sanitize timer name (no spaces or special chars) and ensure contact is set
+  var %timer_name = $regsubex(%cur_contact, /[^A-Za-z0-9_]/g, _)
+  if (%timer_name != $null) .timer $+(fish_timeout_,%timer_name) 1 10 fish11_timeout_keyexchange %cur_contact
       return
     }
     else {
-      echo $color(Mode text) -at *** FiSH_11: invalid public token returned by DLL (bad length)
-      .timer fish_timeout_ $+ %cur_contact 1 10 fish11_timeout_keyexchange %cur_contact
+  echo $color(Mode text) -at *** FiSH_11: invalid public token returned by DLL (bad length)
+  var %timer_name = $regsubex(%cur_contact, /[^A-Za-z0-9_]/g, _)
+  if (%timer_name != $null) .timer $+(fish_timeout_,%timer_name) 1 10 fish11_timeout_keyexchange %cur_contact
       return
     }
   }
   ; Fallback: show what we got (safely) and start timer anyway
   echo $color(Mode text) -at *** FiSH_11: key exchange initiation returned: $qt(%pub)
-  .timer fish_timeout_ $+ %cur_contact 1 10 fish11_timeout_keyexchange %cur_contact
+  var %timer_name = $regsubex(%cur_contact, /[^A-Za-z0-9_]/g, _)
+  if (%timer_name != $null) .timer $+(fish_timeout_,%timer_name) 1 10 fish11_timeout_keyexchange %cur_contact
 }
 
 

@@ -5,7 +5,6 @@ use winapi::shared::minwindef::BOOL;
 use winapi::shared::windef::HWND;
 
 use crate::buffer_utils;
-use crate::dll_function;
 use crate::dll_function_identifier;
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
@@ -86,7 +85,7 @@ dll_function_identifier!(FiSH11_ProcessPublicKey, data, {
     Ok("1".to_string())
 });
 
-dll_function!(FiSH11_TestCrypt, data, {
+dll_function_identifier!(FiSH11_TestCrypt, data, {
     // Parse input message
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
 
@@ -142,7 +141,7 @@ dll_function!(FiSH11_TestCrypt, data, {
     log::info!("Encryption test completed successfully");
 
     Ok(format!(
-        "/echo -ts [TestCrypt] Original: {} | Encrypted: {} | Decrypted: {}",
+        "[TestCrypt] Original: {} | Encrypted: {} | Decrypted: {}",
         input_safe, encrypted_safe, decrypted_safe
     ))
 });
