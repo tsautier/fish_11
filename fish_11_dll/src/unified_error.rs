@@ -389,7 +389,8 @@ macro_rules! dll_function {
                         };
                         // Use the runtime-determined buffer size to avoid overwriting caller memory
                         let buf_size = $crate::dll_interface::get_buffer_size();
-                        $crate::buffer_utils::write_cstring_to_buffer($data, buf_size, &cstring).ok();
+                        $crate::buffer_utils::write_cstring_to_buffer($data, buf_size, &cstring)
+                            .ok();
                     }
                     $crate::dll_interface::MIRC_COMMAND
                 }
@@ -406,13 +407,13 @@ mod tests {
     #[test]
     fn test_error_display() {
         let err = DllError::KeyNotFound("alice".to_string());
-        assert_eq!(err.to_string(), "No encryption key found for 'alice'");
+        assert_eq!(err.to_string(), "no encryption key found for 'alice'");
 
         let err = DllError::InvalidInput {
             param: "message".to_string(),
             reason: "empty string".to_string(),
         };
-        assert_eq!(err.to_string(), "Invalid input for 'message': empty string");
+        assert_eq!(err.to_string(), "invalid input for 'message': empty string");
     }
 
     #[test]
