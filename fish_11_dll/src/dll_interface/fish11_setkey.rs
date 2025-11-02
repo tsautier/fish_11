@@ -96,7 +96,7 @@ mod tests {
 
     #[test]
     fn test_setkey_invalid_key_size() {
-        let key = [1u8; 16]; // Mauvaise taille
+        let key = [1u8; 16]; // Wrong size
         let base64_key = STANDARD.encode(&key);
         let decoded = STANDARD.decode(&base64_key).unwrap();
         assert_eq!(decoded.len(), 16);
