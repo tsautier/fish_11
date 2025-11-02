@@ -39,6 +39,10 @@ mod tests {
 
     fn call_getkey(input: &str, buffer_size: usize) -> (c_int, String) {
         let mut buffer = vec![0i8; buffer_size];
+
+        // Override buffer size for this test to prevent heap corruption
+        let prev_size = crate::dll_interface::override_buffer_size_for_test(buffer_size);
+
         let c_input = CString::new(input).unwrap();
         let result = FiSH11_FileGetKey(
             ptr::null_mut(),
@@ -48,6 +52,9 @@ mod tests {
             0,
             0,
         );
+
+        // Restore previous buffer size
+        crate::dll_interface::restore_buffer_size_for_test(prev_size);
 
         let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
         (result, c_str.to_string_lossy().to_string())
@@ -88,6 +95,10 @@ mod tests {
         // Input with null byte (should error)
         let bad_input = unsafe { CString::from_vec_unchecked(vec![97, 0, 98]) }; // "a\0b"
         let mut buffer = vec![0i8; 256];
+
+        // Override buffer size for this test to prevent heap corruption
+        let prev_size = crate::dll_interface::override_buffer_size_for_test(buffer.len());
+
         let result = FiSH11_FileGetKey(
             ptr::null_mut(),
             ptr::null_mut(),
@@ -96,6 +107,9 @@ mod tests {
             0,
             0,
         );
+
+        // Restore previous buffer size
+        crate::dll_interface::restore_buffer_size_for_test(prev_size);
 
         let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
         assert_eq!(result, MIRC_COMMAND);

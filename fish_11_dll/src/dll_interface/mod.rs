@@ -116,3 +116,29 @@ pub(crate) fn get_buffer_size() -> usize {
     let available = buffer_size.saturating_sub(1);
     std::cmp::min(available, MAX_MIRC_BUFFER_SIZE)
 }
+
+#[cfg(test)]
+/// Test helper: temporarily override both MIRC_BUFFER_SIZE and LOAD_INFO
+/// to ensure get_buffer_size() returns the test's actual buffer size.
+/// Returns the previous values so they can be restored.
+pub(crate) fn override_buffer_size_for_test(size: usize) -> Option<usize> {
+    use self::core::LOAD_INFO;
+
+    // Clear LOAD_INFO so get_buffer_size() will use MIRC_BUFFER_SIZE
+    let _ = LOAD_INFO.lock().ok().map(|mut guard| *guard = None);
+
+    // Set MIRC_BUFFER_SIZE to the test's buffer size
+    MIRC_BUFFER_SIZE.lock().ok().map(|mut g| {
+        let prev = *g;
+        *g = size;
+        prev
+    })
+}
+
+#[cfg(test)]
+/// Test helper: restore the buffer size after a test
+pub(crate) fn restore_buffer_size_for_test(prev_size: Option<usize>) {
+    if let Some(size) = prev_size {
+        let _ = MIRC_BUFFER_SIZE.lock().ok().map(|mut g| *g = size);
+    }
+}

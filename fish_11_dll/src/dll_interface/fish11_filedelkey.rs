@@ -39,17 +39,8 @@ mod tests {
     fn call_delkey(input: &str, buffer_size: usize) -> (c_int, String) {
         let mut buffer = vec![0i8; buffer_size];
 
-        // Temporarily override the global MIRC_BUFFER_SIZE so write helpers
-        // will use the same size as our test allocation and won't write past
-        // the end of the vector, which would corrupt the heap.
-        let prev_size = match crate::dll_interface::MIRC_BUFFER_SIZE.lock() {
-            Ok(mut g) => {
-                let prev = *g;
-                *g = buffer_size;
-                Some(prev)
-            }
-            Err(_) => None,
-        };
+        // Override buffer size for this test to prevent heap corruption
+        let prev_size = crate::dll_interface::override_buffer_size_for_test(buffer_size);
 
         let c_input = CString::new(input).unwrap();
         let result = FiSH11_FileDelKey(
@@ -61,10 +52,8 @@ mod tests {
             0,
         );
 
-        // Restore previous global buffer size
-        if let Some(prev) = prev_size {
-            let _ = crate::dll_interface::MIRC_BUFFER_SIZE.lock().map(|mut g| *g = prev);
-        }
+        // Restore previous buffer size
+        crate::dll_interface::restore_buffer_size_for_test(prev_size);
 
         let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
         (result, c_str.to_string_lossy().to_string())
@@ -103,6 +92,10 @@ mod tests {
     fn test_delkey_malformed_input() {
         let bad_input = unsafe { CString::from_vec_unchecked(vec![97, 0, 98]) }; // "a\0b"
         let mut buffer = vec![0i8; 256];
+        
+        // Override buffer size for this test to prevent heap corruption
+        let prev_size = crate::dll_interface::override_buffer_size_for_test(buffer.len());
+        
         let result = FiSH11_FileDelKey(
             ptr::null_mut(),
             ptr::null_mut(),
@@ -111,6 +104,9 @@ mod tests {
             0,
             0,
         );
+
+        // Restore previous buffer size
+        crate::dll_interface::restore_buffer_size_for_test(prev_size);
 
         let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
         assert_eq!(result, MIRC_COMMAND);
