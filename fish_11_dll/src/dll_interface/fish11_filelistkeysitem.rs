@@ -6,10 +6,10 @@ use winapi::shared::windef::HWND;
 
 use crate::buffer_utils;
 use crate::config;
-use crate::dll_function;
+use crate::dll_function_identifier;
 use crate::unified_error::DllError;
 
-dll_function!(FiSH11_FileListKeysItem, data, {
+dll_function_identifier!(FiSH11_FileListKeysItem, data, {
     // Parse input to get the index
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
 
@@ -34,7 +34,7 @@ dll_function!(FiSH11_FileListKeysItem, data, {
             index,
             keys_vec.len()
         );
-        return Ok("/echo -ts === End of keys list ===".to_string());
+        return Ok("=== End of keys list ===".to_string());
     }
 
     // Display current key
@@ -44,11 +44,11 @@ dll_function!(FiSH11_FileListKeysItem, data, {
     log::info!("Returning key info for nickname '{}' at index {}", nickname, index);
     log::debug!("Key details - Network: {}, Date: {:?}", net_display, date);
 
-    // Format the message with date if available
+    // Format the message with date if available (plain text, no /echo)
     let key_msg = if let Some(date_str) = date {
-        format!("/echo -ts   {} ({}) [Added: {}]", nickname, net_display, date_str)
+        format!("   {} ({}) [Added: {}]", nickname, net_display, date_str)
     } else {
-        format!("/echo -ts   {} ({})", nickname, net_display)
+        format!("   {} ({})", nickname, net_display)
     };
 
     Ok(key_msg)
