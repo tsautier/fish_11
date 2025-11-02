@@ -9,21 +9,21 @@ use winapi::shared::minwindef::BOOL;
 use winapi::shared::windef::HWND;
 use x25519_dalek::PublicKey;
 
-use crate::dll_function;
+use crate::dll_function_identifier;
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 use crate::{buffer_utils, config};
 
-dll_function!(FiSH11_GetVersion, _data, {
-    // Use the main version string that includes all information
-    let version_info = format!("/echo -ts {} - Licensed under the GPL v3.", crate::FISH_MAIN_VERSION);
+dll_function_identifier!(FiSH11_GetVersion, _data, {
+    // Return the main version string as data (no /echo)
+    let version_info = format!("{} - Licensed under the GPL v3.", crate::FISH_MAIN_VERSION);
 
     log::debug!("FiSH11_GetVersion called, returning version: {}", crate::FISH_MAIN_VERSION);
 
     Ok(version_info)
 });
 
-dll_function!(FiSH11_GetKeyFingerprint, data, {
+dll_function_identifier!(FiSH11_GetKeyFingerprint, data, {
     // Parse input to get the nickname
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
     let nickname = normalize_nick(input.trim());
@@ -58,7 +58,8 @@ dll_function!(FiSH11_GetKeyFingerprint, data, {
 
     log::info!("Generated fingerprint for {}: {}", nickname, formatted_fp);
 
-    Ok(format!("/echo -ts Key fingerprint for {}: {}", nickname, formatted_fp))
+    // Return the fingerprint string as data (no /echo)
+    Ok(format!("Key fingerprint for {}: {}", nickname, formatted_fp))
 });
 
 /// Validates that a public key is a valid Curve25519 point

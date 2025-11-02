@@ -6,11 +6,12 @@ use winapi::shared::windef::HWND;
 
 use crate::buffer_utils;
 use crate::dll_function;
+use crate::dll_function_identifier;
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 use crate::{config, crypto};
 
-dll_function!(FiSH11_ProcessPublicKey, data, {
+dll_function_identifier!(FiSH11_ProcessPublicKey, data, {
     // Parse input: <nickname> <received_key>
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
     let parts: Vec<&str> = input.splitn(2, ' ').collect();
@@ -80,7 +81,9 @@ dll_function!(FiSH11_ProcessPublicKey, data, {
 
     log::info!("Successfully completed key exchange with {}", nickname);
 
-    Ok(format!("/echo -ts Secure key exchange completed successfully with {}", nickname))
+    // Return a truthy identifier value (no leading /echo) so mIRC treats this as data
+    // The script checks the truthiness of $dll(..., FiSH11_ProcessPublicKey, ...)
+    Ok("1".to_string())
 });
 
 dll_function!(FiSH11_TestCrypt, data, {

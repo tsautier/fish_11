@@ -7,11 +7,11 @@ use winapi::shared::windef::HWND;
 
 use crate::buffer_utils;
 use crate::config;
-use crate::dll_function;
+use crate::dll_function_identifier;
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 
-dll_function!(FiSH11_SetKey, data, {
+dll_function_identifier!(FiSH11_SetKey, data, {
     // 1. Parse input: <nickname> <base64_key>
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
     let parts: Vec<&str> = input.splitn(2, ' ').collect();
@@ -56,10 +56,10 @@ dll_function!(FiSH11_SetKey, data, {
     // 4. Store the key, allowing overwrite.
     config::set_key(&nickname, &key, None, true)?;
 
-    let success_msg = format!("Key for {} was set successfully", nickname);
     log::info!("Successfully set key for {}", nickname);
 
-    Ok(format!("/echo -ts {}", success_msg))
+    // Return a truthy identifier value so mIRC treats this as success (no /echo)
+    Ok("1".to_string())
 });
 
 #[cfg(test)]
