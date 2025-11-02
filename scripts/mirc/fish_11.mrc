@@ -312,15 +312,24 @@ on ^*:NOTICE:X25519_INIT*:?:{
 
   ; Ensure our keypair exists and capture the DLL's returned formatted message
   var %our_pub = $dll(%Fish11DllFile, FiSH11_ExchangeKey, $nick)
-
+  if (%our_pub != $null) {
+    set %our_pub $replace(%our_pub, $chr(13) $+ $chr(10), $chr(32), $chr(13), $chr(32), $chr(10), $chr(32))
+    set %our_pub $strip(%our_pub)
+  }
   ; %our_pub should now be a token like FiSH11-PubKey:... if successful
 
   ; Process the received public key using the DLL which computes and stores the shared secret
   if ($dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $+($nick," ",%their_pub))) {
     ; If we have our public key token, send it as X25519_FINISH
     if (%our_pub != $null && $left(%our_pub,10) == FiSH11-PubKey:) {
-      .notice $nick X25519_FINISH %our_pub
-      echo $color(Mode text) -tm $nick *** FiSH_11: sent X25519_FINISH to $nick
+      var %enc2 = $mid(%our_pub, 12, 9999)
+      if ($len(%enc2) == 44) {
+        .notice $nick X25519_FINISH %our_pub
+        echo $color(Mode text) -tm $nick *** FiSH_11: sent X25519_FINISH to $nick
+      }
+      else {
+        echo $color(Mode text) -tm $nick *** FiSH_11: invalid public token returned by DLL (bad length)
+      }
     }
     else {
       echo $color(Mode text) -tm $nick *** FiSH_11: keypair generated but no public token returned from DLL
@@ -361,7 +370,7 @@ on ^*:NOTICE:X25519_FINISH*:?:{
     .timer fish_timeout_ $+ $nick off
 
     echo $color(Mode text) -tm $nick *** FiSH_11: key exchange complete with $nick
-    echo $color(Error) -tm $nick *** FiSH_11: WARNING: Key exchange complete, but the identity of $nick is NOT VERIFIED.
+    echo $color(Error) -tm $nick *** FiSH_11 WARNING: key exchange complete, but the identity of $nick is NOT VERIFIED.
     echo $color(Error) -tm $nick *** FiSH_11: use /fish_fp11 $nick to see their key fingerprint and verify it with them through a secure channel (e.g., voice call).
   }
   else {
@@ -408,7 +417,7 @@ on *:NICK:{
     
     ; If a key already exists for the new nick, warn user about conflict
     if ($len(%new_nick_key) > 4) {
-      echo $color(Error) -at *** FiSH_11: nick change conflict! You have a key for $nick, who is now $newnick. However, you ALREADY have a different key for $newnick. No keys were changed. Please resolve this manually.
+      echo $color(Error) -at *** FiSH_11: nick change conflict ! You have a key for $nick, who is now $newnick. However, you ALREADY have a different key for $newnick. No keys were changed. Please resolve this manually.
       unset %old_nick_key
       unset %new_nick_key
       return
@@ -586,7 +595,7 @@ alias fish11_X25519_INIT {
   ; If there's an existing exchange in progress, cancel it first
   if (%fish11.dh_ $+ [ %cur_contact ] == 1) {
     .timer fish_timeout_ $+ %cur_contact off
-    echo $color(Mode text) -at *** FiSH_11: Restarting key exchange with %cur_contact
+    echo $color(Mode text) -at *** FiSH_11: restarting key exchange with %cur_contact
   }
   
   set %fish11.dh_ $+ [ %cur_contact ] 1
@@ -598,15 +607,29 @@ alias fish11_X25519_INIT {
   ; X25519 handler (which listens for NOTICE X25519_INIT) can continue the flow.
   ; The DLL now returns the formatted token directly (FiSH11-PubKey:...)
   var %pub = $dll(%Fish11DllFile, FiSH11_ExchangeKey, %cur_contact)
-  if (%pub != $null && $left(%pub,10) == FiSH11-PubKey:) {
-    .notice %cur_contact X25519_INIT %pub
-    echo $color(Mode text) -tm %cur_contact *** FiSH_11: Sent X25519_INIT to %cur_contact, waiting for reply...
-    .timer fish_timeout_ $+ %cur_contact 1 10 fish11_timeout_keyexchange %cur_contact
-    return
+  ; sanitize return: remove CR/LF and trim whitespace to avoid accidental
+  ; multi-line content being interpreted as commands by mIRC
+  if (%pub != $null) {
+    set %pub $replace(%pub, $chr(13) $+ $chr(10), $chr(32), $chr(13), $chr(32), $chr(10), $chr(32))
+    set %pub $strip(%pub)
   }
-
-  ; Fallback: show what we got and start timer anyway
-  echo $color(Mode text) -at *** FiSH_11: Key exchange initiation returned: %pub
+  if (%pub != $null && $upper($left(%pub,10)) == FISH11-PUBKEY:) {
+    ; validate encoded length (base64 32 bytes -> 44 chars)
+    var %enc = $mid(%pub, 12, 9999)
+    if ($len(%enc) == 44) {
+      .notice %cur_contact X25519_INIT %pub
+      echo $color(Mode text) -tm %cur_contact *** FiSH_11: sent X25519_INIT to %cur_contact, waiting for reply...
+      .timer fish_timeout_ $+ %cur_contact 1 10 fish11_timeout_keyexchange %cur_contact
+      return
+    }
+    else {
+      echo $color(Mode text) -at *** FiSH_11: invalid public token returned by DLL (bad length)
+      .timer fish_timeout_ $+ %cur_contact 1 10 fish11_timeout_keyexchange %cur_contact
+      return
+    }
+  }
+  ; Fallback: show what we got (safely) and start timer anyway
+  echo $color(Mode text) -at *** FiSH_11: key exchange initiation returned: $qt(%pub)
   .timer fish_timeout_ $+ %cur_contact 1 10 fish11_timeout_keyexchange %cur_contact
 }
 
@@ -622,8 +645,8 @@ alias fish11_ProcessPublicKey {
   ; Process the public key
   if ($dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $1 $2-)) {
     echo $color(Mode text) -at *** FiSH_11: key exchange completed with $1
-    echo $color(Error) -at *** FiSH_11: WARNING: Key exchange complete, but the identity of $1 is NOT VERIFIED.
-    echo $color(Error) -at *** FiSH_11: Use /fish_fp11 $1 to see their key fingerprint and verify it with them through a secure channel (e.g., voice call).
+    echo $color(Error) -at *** FiSH_11 WARNING: key exchange complete, but the identity of $1 is NOT VERIFIED.
+    echo $color(Error) -at *** FiSH_11: use /fish_fp11 $1 to see their key fingerprint and verify it with them through a secure channel (e.g., voice call).
   }
   else {
     echo $color(Mode text) -at *** FiSH_11: key exchange failed with $1
@@ -719,7 +742,7 @@ alias fish11_decrypt {
     return %decrypted
   }
   else {
-    echo $color(Mode text) -at *** FiSH: Decryption failed for %cur_contact
+    echo $color(Mode text) -at *** FiSH: decryption failed for %cur_contact
     return $null
   }
 }
@@ -732,11 +755,11 @@ alias fish11_file_list_keys {
 
   ; Check the DLL exists before trying to call it
   if (!$isfile(%Fish11DllFile)) {
-    echo $color(Mode text) -at *** FiSH: Error - DLL not found: %Fish11DllFile
+    echo $color(Mode text) -at *** FiSH ERROR- DLL not found: %Fish11DllFile
     return
   }
     ; Log that we're about to call the function
-  echo $color(Mode text) -at *** FiSH: Listing keys...
+  echo $color(Mode text) -at *** FiSH: listing keys...
     ; Ensure MIRCDIR is set (should already be set at startup, but be safe)
   noop $dll(%Fish11DllFile, FiSH11_SetMircDir, $mircdir)
   
@@ -879,7 +902,7 @@ alias fish11_showfingerprint {
     var %colored_fp = 04 $+ %group1 $+  12 $+ %group2 $+  03 $+ %group3 $+  07 $+ %group4
     
     ; Display the colored fingerprint
-    echo $color(Mode text) -at *** FiSH_11: Key fingerprint for %target is: %colored_fp
+    echo $color(Mode text) -at *** FiSH_11: key fingerprint for %target is: %colored_fp
     
     ; Store for later
     set %fish11.lastfingerprint. $+ [ %target ] %colored_fp
@@ -922,7 +945,7 @@ alias fish11_prefix {
     ; Add quotes for INI string value
     var %value = " $+ $1- $+ "
     fish11_SetIniValue plain_prefix %value
-    echo $color(Mode text) -at *** FiSH: Plain-prefix set to $1-
+    echo $color(Mode text) -at *** FiSH: plain-prefix set to $1-
   }
 }
 
@@ -1042,13 +1065,41 @@ alias fish11_debug {
 }
 
 
+; Debug: capture raw return from FiSH11_ExchangeKey and display hex/quoted output
+alias fish11_debug_exchange {
+  if ($1 == $null) { echo 4 -a Usage: /fish11_debug_exchange <nick> | return }
+  var %nick = $1
+
+  ; Use $dll(...) to capture returned identifier string directly
+  var %raw_exch = $dll(%Fish11DllFile, FiSH11_ExchangeKey, %nick)
+
+  ; Show quoted version so we can see whitespace/newlines
+  echo 4 -a *** FiSH_11 DEBUG: raw quoted return: $qt(%raw_exch)
+
+  ; Replace common control chars with visible markers for quick glance
+  var %visible = $replace(%raw_exch, $chr(13) $+ $chr(10), <CRLF>, $chr(13), <CR>, $chr(10), <LF>, $chr(9), <TAB>)
+  echo 4 -a *** FiSH_11 DEBUG: visible: %visible
+
+  ; Print decimal codes for each character (limit 200 chars to avoid flooding)
+  var %limited = $left(%raw_exch, 200)
+  var %codes = $null
+  var %i = 1
+  while (%i <= $len(%limited)) {
+    var %c = $mid(%limited, %i, 1)
+    var %codes = %codes $+ $asc(%c) $+ " "
+    inc %i
+  }
+  echo 4 -a *** FiSH_11 DEBUG: decimal codes (first 200 chars): %codes
+}
+
+
 
 ; INI file viewer
 alias fish11_ViewIniFile {
   var %w = @iniviewer
   
   if (!$isfile(%fish_config_file)) {
-    echo $color(Mode text) -at *** FiSH: Config file not found: %fish_config_file
+    echo $color(Mode text) -at *** FiSH: config file not found: %fish_config_file
     return
   }
   
@@ -1342,7 +1393,7 @@ menu @iniviewer {
     }
 
     if (!$isfile(%temp_file)) {
-      echo $color(Error) -at *** FiSH: Error writing temporary file. Save aborted.
+      echo $color(Error) -at *** FiSH: error writing temporary file. Save aborted.
       return
     }
     
@@ -1354,7 +1405,7 @@ menu @iniviewer {
       echo $color(Mode text) -at *** FiSH: configuration saved
       .remove %backup_file
     } else {
-      echo $color(Error) -at *** FiSH: Error saving config, restoring from backup.
+      echo $color(Error) -at *** FiSH: error saving config, restoring from backup.
       .rename %backup_file %fish_config_file
     }
   }

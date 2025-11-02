@@ -400,6 +400,57 @@ macro_rules! dll_function {
     };
 }
 
+/// Similar to dll_function! but returns MIRC_IDENTIFIER instead of MIRC_COMMAND.
+/// Use this for functions that return data values (not mIRC commands to execute).
+/// The caller will receive the returned string as a value in $result/$dll(...).
+///
+/// # Example
+/// ```ignore
+/// dll_function_identifier!(FiSH11_GetData, data, {
+///     let input = parse_input(data)?;
+///     let result = compute_result(&input)?;
+///     Ok(result)
+/// });
+/// ```
+#[macro_export]
+macro_rules! dll_function_identifier {
+    ($name:ident, $data:ident, $body:block) => {
+        #[no_mangle]
+        #[allow(non_snake_case)]
+        pub extern "stdcall" fn $name(
+            _m_wnd: HWND,
+            _a_wnd: HWND,
+            $data: *mut c_char,
+            _parms: *mut c_char,
+            _show: BOOL,
+            _nopause: BOOL,
+        ) -> c_int {
+            use $crate::unified_error::DllResult;
+
+            fn inner($data: *mut c_char) -> DllResult<String> {
+                $body
+            }
+
+            match inner($data) {
+                Ok(result) => {
+                    unsafe {
+                        let cstring = match std::ffi::CString::new(result) {
+                            Ok(s) => s,
+                            Err(e) => return DllError::from(e).to_mirc_response($data),
+                        };
+                        // Use the runtime-determined buffer size to avoid overwriting caller memory
+                        let buf_size = $crate::dll_interface::get_buffer_size();
+                        $crate::buffer_utils::write_cstring_to_buffer($data, buf_size, &cstring)
+                            .ok();
+                    }
+                    $crate::dll_interface::MIRC_IDENTIFIER
+                }
+                Err(e) => unsafe { e.to_mirc_response($data) },
+            }
+        }
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
