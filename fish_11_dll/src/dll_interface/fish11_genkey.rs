@@ -6,12 +6,11 @@ use winapi::shared::windef::HWND;
 
 use crate::buffer_utils;
 use crate::config;
-use crate::dll_function;
-use crate::dll_interface::{MIRC_COMMAND, MIRC_HALT};
-use crate::unified_error::{DllError, DllResult};
+use crate::dll_function_identifier;
+use crate::unified_error::DllError;
 use crate::utils::{self, normalize_nick};
 
-dll_function!(FiSH11_GenKey, data, {
+dll_function_identifier!(FiSH11_GenKey, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
 
     let parts: Vec<&str> = input.splitn(2, ' ').collect();
@@ -38,8 +37,5 @@ dll_function!(FiSH11_GenKey, data, {
     // This will return a `DllError::DuplicateEntry` if the key already exists.
     config::set_key(&nickname, &key, network, false)?;
 
-    Ok(format!(
-        "/echo -ts New key pair generated successfully for {}",
-        nickname
-    ))
+    Ok(format!("New key pair generated successfully for {}", nickname))
 });
