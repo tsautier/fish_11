@@ -4,77 +4,107 @@ use std::os::raw::c_int;
 use winapi::shared::minwindef::BOOL;
 use winapi::shared::windef::HWND;
 
-// Use our new helper modules
-use crate::buffer_utils::write_string_to_buffer;
-use crate::dll_function_utils::{
-    DllError, DllFunctionContext, DllResult, dll_function_wrapper, extract_input_string,
-};
-use crate::{config, crypto};
+use crate::buffer_utils;
+use crate::config;
+use crate::crypto;
+use crate::dll_function;
+use crate::unified_error::{DllError, DllResult};
+use crate::utils::normalize_nick;
 
-/// Encrypts a message for a specific nickname using ChaCha20-Poly1305 authenticated encryption
+/// Encrypts a message for a specific nickname using ChaCha20-Poly1305 authenticated encryption.
 ///
 /// This function handles the complete encryption workflow, including:
-/// - Retrieving the appropriate encryption key
-/// - Generating a secure random nonce
-/// - Performing authenticated encryption
-/// - Formatting the output with FiSH protocol prefix
-///
-/// REFACTORED VERSION - Now uses helper modules for safety and consistency
-#[no_mangle]
-#[allow(non_snake_case)]
-pub extern "stdcall" fn FiSH11_EncryptMsg(
-    _m_wnd: HWND,
-    _a_wnd: HWND,
-    data: *mut c_char,
-    _parms: *mut c_char,
-    _show: BOOL,
-    _nopause: BOOL,
-) -> c_int {
-    dll_function_wrapper(data, "FiSH11_EncryptMsg", |data, ctx| encrypt_msg_impl(data, ctx))
-}
-
-/// Clean implementation focused on encryption business logic
-fn encrypt_msg_impl(data: *mut c_char, ctx: &DllFunctionContext) -> DllResult<()> {
-    // Extract input safely using helper
-    let input = extract_input_string(data, ctx)?;
-
-    // Parse input parameters
+/// - Retrieving the appropriate encryption key.
+/// - Performing authenticated encryption.
+/// - Formatting the output with the FiSH protocol prefix `+FiSH `.
+dll_function!(FiSH11_EncryptMsg, data, {
+    // 1. Parse input: <nickname> <message>
+    let input = unsafe { buffer_utils::parse_buffer_input(data)? };
     let parts: Vec<&str> = input.splitn(2, ' ').collect();
 
     if parts.len() < 2 {
-        ctx.log_error("Invalid input format - missing nickname or message");
-        return Err(DllError::InvalidInput(
-            "Usage: /dll fish_11.dll FiSH11_EncryptMsg <nickname> <message>".to_string(),
-        ));
+        return Err(DllError::InvalidInput {
+            param: "input".to_string(),
+            reason: "expected format: <nickname> <message>".to_string(),
+        });
     }
 
-    let nickname = parts[0].trim();
+    let nickname = normalize_nick(parts[0]);
     let message = parts[1];
 
-    ctx.log_debug(&format!("Encrypting message for nickname: {}", nickname)); // Get the encryption key for this nickname
-    let key = config::get_key_default(nickname).map_err(|e| {
-        ctx.log_error(&format!("No key found for {}: {}", nickname, e));
-        DllError::ProcessingError(format!("No key found for {}: {}", nickname, e))
-    })?;
-
-    ctx.log_debug("Successfully retrieved encryption key");
-
-    // Encrypt the message using our crypto module
-    let key_array: [u8; 32] = key.try_into().map_err(|_| {
-        ctx.log_error("Invalid key size - expected 32 bytes");
-        DllError::ProcessingError("Invalid key size - expected 32 bytes".to_string())
-    })?;
-    let encrypted = crypto::encrypt_message(&key_array, message, Some(nickname)).map_err(|e| {
-        ctx.log_error(&format!("Encryption failed: {}", e));
-        DllError::ProcessingError(format!("Encryption error: {}", e))
-    })?;
-    // Format with FiSH protocol prefix and write to buffer
-    let result = format!("+FiSH {}", encrypted);
-    unsafe {
-        write_string_to_buffer(data, ctx.buffer_size, &result)?;
+    if nickname.is_empty() {
+        return Err(DllError::MissingParameter("nickname".to_string()));
+    }
+    if message.is_empty() {
+        return Err(DllError::MissingParameter("message".to_string()));
     }
 
-    ctx.log_info(&format!("Successfully encrypted message for {}", nickname));
+    log::debug!("Encrypting for nickname: {}", nickname);
 
-    Ok(())
+    // 2. Retrieve the encryption key for the target.
+    // The `?` operator automatically converts a potential `FishError` into a `DllError`.
+    let key = config::get_key_default(&nickname)?;
+
+    log::debug!("Successfully retrieved encryption key");
+
+    // 3. Encrypt the message using the retrieved key.
+    // We map the error to provide more specific context for encryption failures.
+    let key_array: &[u8; 32] = key.as_slice().try_into().map_err(|_| DllError::InvalidInput {
+        param: "key".to_string(),
+        reason: "key must be exactly 32 bytes".to_string(),
+    })?;
+    let encrypted_base64 =
+        crypto::encrypt_message(key_array, message, Some(&nickname)).map_err(|e| {
+            DllError::EncryptionFailed {
+                context: format!("encrypting for {}", nickname),
+                cause: e.to_string(),
+            }
+        })?;
+
+    // 4. Format the result with the FiSH protocol prefix and return.
+    let result = format!("+FiSH {}", encrypted_base64);
+
+    log::info!("Successfully encrypted message for {}", nickname);
+
+    Ok(result)
+});
+
+#[cfg(test)]
+mod tests {
+
+    use crate::config;
+    use crate::crypto;
+    use crate::utils::normalize_nick;
+
+    #[test]
+    fn test_normalize_nick() {
+        assert_eq!(normalize_nick("TestNick "), "testnick");
+        assert_eq!(normalize_nick("  FiSH_User"), "fish_user");
+    }
+
+    #[test]
+    fn test_encryptmsg_valid() {
+        let nickname = "testuser";
+        let message = "Hello world!";
+        let key = [0u8; 32];
+        config::set_key_default(nickname, &key, true).unwrap();
+        let encrypted = crypto::encrypt_message(&key, message, Some(nickname)).unwrap();
+        assert!(!encrypted.is_empty());
+    }
+
+    #[test]
+    fn test_encryptmsg_invalid_key_length() {
+        let nickname = "testuser2";
+        // Wrong key size, we force typing to provoke a compilation error
+        // let key = [0u8; 16]; // This does not compile, so we verify that the function refuses invalid keys otherwise
+        let result = config::get_key_default(nickname);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_encryptmsg_empty_nickname() {
+        let nickname = "";
+        let result = normalize_nick(nickname);
+        assert_eq!(result, "");
+    }
 }

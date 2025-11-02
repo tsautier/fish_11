@@ -1,10 +1,8 @@
 //! File storage operations for configuration
-
 use std::fs;
 use std::path::PathBuf;
 
 use configparser::ini::Ini;
-use directories::BaseDirs;
 use secrecy::ExposeSecret;
 
 use crate::config::models::{EntryData, FishConfig};
@@ -60,7 +58,7 @@ pub fn get_config_path() -> Result<PathBuf> {
         }
         Err(e) => {
             log::warn!("get_config_path: MIRCDIR environment variable not found: {}", e);
-            
+
             // FALLBACK: Use current directory if MIRCDIR is not set
             // This prevents crashes and allows the DLL to work even if the environment variable is missing
             let mut path = match std::env::current_dir() {
@@ -72,12 +70,12 @@ pub fn get_config_path() -> Result<PathBuf> {
                 }
             };
             path.push("fish_11.ini");
-            
+
             log::warn!(
                 "get_config_path: using fallback config path (current directory): {}",
                 path.display()
             );
-            
+
             Ok(path)
         }
     }
@@ -188,15 +186,15 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
     match ini.load(&config_path) {
         Ok(_) => {
             log::debug!("load_config: INI file loaded successfully from {}", config_path.display());
-            log::debug!("load_config: Sections found: {:?}", ini.sections());
-            log::debug!("load_config: Full INI map: {:?}", ini.get_map_ref());
+            log::debug!("load_config: sections found: {:?}", ini.sections());
+            log::debug!("load_config: full INI map: {:?}", ini.get_map_ref());
 
             #[cfg(debug_assertions)]
             log::info!("load_config: INI file parsed successfully");
         }
         Err(e) => {
             #[cfg(debug_assertions)]
-            log::error!("load_config: Failed to load INI file: {}", e);
+            log::error!("load_config: failed to load INI file: {}", e);
 
             return Err(FishError::ConfigError(format!("Failed to load config: {}", e)));
         }
@@ -205,7 +203,7 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
     // Check if we've timed out after loading ini
     if start_time.elapsed() > timeout {
         #[cfg(debug_assertions)]
-        log::error!("load_config: Timeout after INI load");
+        log::error!("load_config: timeout after INI load");
 
         return Err(FishError::ConfigError(
             "Configuration loading timed out after ini load".to_string(),
@@ -213,7 +211,7 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
     }
 
     #[cfg(debug_assertions)]
-    log::info!("load_config: Processing [Keys] section...");
+    log::info!("load_config: processing [Keys] section...");
 
     // Load [Keys] section (case-insensitive)
     for key in ["Keys", "keys"] {
@@ -228,10 +226,10 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
     }
 
     #[cfg(debug_assertions)]
-    log::info!("load_config: Loaded {} keys", config.keys.len());
+    log::info!("load_config: loaded {} keys", config.keys.len());
 
     #[cfg(debug_assertions)]
-    log::info!("load_config: Processing [KeyPair] section...");
+    log::info!("load_config: processing [KeyPair] section...");
 
     // Load [KeyPair] section (case-insensitive)
     for key in ["KeyPair", "keypair"] {
@@ -244,7 +242,7 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
     }
 
     #[cfg(debug_assertions)]
-    log::info!("load_config: Processing [NickNetworks] section...");
+    log::info!("load_config: processing [NickNetworks] section...");
 
     // Load [NickNetworks] section (case-insensitive)
     for key in ["NickNetworks", "nicknetworks"] {
@@ -259,7 +257,7 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
     }
 
     #[cfg(debug_assertions)]
-    log::info!("load_config: Processing [FiSH11] section...");
+    log::info!("load_config: processing [FiSH11] section...");
 
     // Load [FiSH11] section (case-insensitive)
     for section_key in ["FiSH11", "fish11"] {
@@ -323,7 +321,7 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
 
         // Check if this is a valid entry section (contains @ indicating network format)
         if section_name.contains('@') {
-            println!("DEBUG:   -> Processing entry section: '{}'", section_name);
+            println!("DEBUG:   -> processing entry section: '{}'", section_name);
 
             // Transform chan_ prefix back to # for channels
             let entry_key = if section_name.starts_with("chan_") {
@@ -335,26 +333,26 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
             let mut entry = EntryData::default();
 
             if let Some(key_value) = ini.get(&section_name, "key") {
-                println!("DEBUG:     Found key: '{}'", key_value);
+                println!("DEBUG:     found key: '{}'", key_value);
                 entry.key = Some(key_value.to_string());
             } else {
-                println!("DEBUG:     No key found for section '{}'", section_name);
+                println!("DEBUG:     no key found for section '{}'", section_name);
             }
 
             if let Some(date_value) = ini.get(&section_name, "date") {
-                println!("DEBUG:     Found date: '{}'", date_value);
+                println!("DEBUG:     found date: '{}'", date_value);
                 entry.date = Some(date_value.to_string());
             } else {
-                println!("DEBUG:     No date found for section '{}'", section_name);
+                println!("DEBUG:     no date found for section '{}'", section_name);
             }
             config.entries.insert(entry_key.clone(), entry);
-            println!("DEBUG:     Inserted entry for: '{}'", entry_key);
+            println!("DEBUG:     inserted entry for: '{}'", entry_key);
         } else {
-            println!("DEBUG:   -> Skipping non-entry section (no @): '{}'", section_name);
+            println!("DEBUG:   -> skipping non-entry section (no @): '{}'", section_name);
         }
     }
 
-    println!("DEBUG: Finished processing sections. Total entries loaded: {}", config.entries.len());
+    println!("DEBUG: finished processing sections. Total entries loaded: {}", config.entries.len());
 
     Ok(config)
 }
@@ -491,7 +489,7 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::models::{EntryData, Fish11Section, FishConfig, StartupSection};
+    use crate::config::models::{EntryData, FishConfig};
     use crate::utils::generate_random_bytes;
     use tempfile::NamedTempFile;
 
@@ -593,7 +591,11 @@ mod tests {
         // Call the function
         let path_result = get_config_path();
 
-        // Check that we got an error
-        assert!(path_result.is_err());
+        // Vérifie que le fallback fonctionne : le chemin doit être fish_11.ini dans le répertoire courant
+        assert!(path_result.is_ok());
+        let path = path_result.unwrap();
+        let mut expected_path = std::env::current_dir().unwrap();
+        expected_path.push("fish_11.ini");
+        assert_eq!(path, expected_path);
     }
 }

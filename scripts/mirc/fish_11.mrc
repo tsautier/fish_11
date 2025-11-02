@@ -15,7 +15,7 @@ on *:START: {
 }
 
 alias fish11_startup {
-  echo 4 -a *** FiSH_11 SECURITY WARNING: for your safety, ensure your mIRC installation and this script are located in a secure, write-protected directory to prevent malicious DLLs from being loaded.
+  echo 4 -a *** FiSH_11 SECURITY NOTICE : this script relies on 2 external DLL files. Only use trusted, signed versions from official sources. Never run this script if you suspect your system has been compromised.
 
   var %exe_dir = $nofile($mircexe)
 

@@ -4,78 +4,120 @@ use std::os::raw::c_int;
 use winapi::shared::minwindef::BOOL;
 use winapi::shared::windef::HWND;
 
+use crate::buffer_utils;
 use crate::config;
-// Use our new helper modules for clean implementation
-use crate::dll_function_utils::{
-    DllError, DllFunctionContext, DllResult, dll_function_wrapper, extract_input_string,
-};
+use crate::dll_function;
+use crate::unified_error::DllError;
 use crate::utils::{base64_encode, normalize_nick};
 
-/// Retrieves and displays the encryption key for a specified nickname
-///
-/// This function looks up the stored encryption key for a given nickname and returns it
-/// in base64-encoded format. The key can be used for manual encryption/decryption or
-/// for key sharing purposes.
-///
-/// REFACTORED VERSION - Now uses helper modules for safety and consistency
-#[no_mangle]
-#[allow(non_snake_case)]
-pub extern "stdcall" fn FiSH11_FileGetKey(
-    _m_wnd: HWND,
-    _a_wnd: HWND,
-    data: *mut c_char,
-    _parms: *mut c_char,
-    _show: BOOL,
-    _nopause: BOOL,
-) -> c_int {
-    dll_function_wrapper(data, "FiSH11_FileGetKey", |data, ctx| file_get_key_impl(data, ctx))
-}
-
-/// Clean implementation focused on key retrieval business logic
-fn file_get_key_impl(data: *mut c_char, ctx: &DllFunctionContext) -> DllResult<()> {
-    // Extract input safely using helper
-    let input = extract_input_string(data, ctx)?;
-
-    if input.trim().is_empty() {
-        ctx.log_error("Invalid input format - missing nickname");
-        return Err(DllError::InvalidInput(
-            "Usage: /dll fish_11.dll FiSH11_FileGetKey <nickname>".to_string(),
-        ));
-    }
+dll_function!(FiSH11_FileGetKey, data, {
+    let input = unsafe { buffer_utils::parse_buffer_input(data)? };
 
     let nickname = normalize_nick(input.trim());
-    ctx.log_debug(&format!("Retrieving key for nickname: {}", nickname)); // Look up the key
-
-    match config::get_key_default(&nickname) {
-        Ok(key) => {
-            ctx.log_debug("Key found, encoding as base64");
-            let base64_key = base64_encode(&key);
-            let result = format!("/echo -ts Key for {}: {}", nickname, base64_key);
-
-            unsafe {
-                crate::buffer_utils::write_string_to_buffer(data, ctx.buffer_size, &result)?;
-            }
-
-            ctx.log_info(&format!("Successfully retrieved key for {}", nickname));
-        }
-        Err(e) => {
-            ctx.log_warn(&format!("Key lookup failed for {}: {}", nickname, e));
-
-            // Instead of calling exchange function recursively, just inform user
-            ctx.log_debug(&format!(
-                "No key found for {} - user should initiate key exchange",
-                nickname
-            ));
-            let error_msg = format!(
-                "/echo -ts No key found for {}. Use: /dll fish_11.dll FiSH11_ExchangeKey {}",
-                nickname, nickname
-            );
-
-            unsafe {
-                crate::buffer_utils::write_string_to_buffer(data, ctx.buffer_size, &error_msg)?;
-            }
-        }
+    if nickname.is_empty() {
+        return Err(DllError::MissingParameter("nickname".to_string()));
     }
 
-    Ok(())
+    log::debug!("Retrieving key for nickname: {}", nickname);
+
+    // The `?` operator will automatically convert the error from `config::get_key_default`
+    // into our `DllError` type, thanks to the `From<FishError>` implementation.
+    let key = config::get_key_default(&nickname)?;
+
+    log::debug!("Key found, encoding as base64");
+    let base64_key = base64_encode(&key);
+
+    Ok(format!("/echo -ts Key for {}: {}", nickname, base64_key))
+});
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dll_interface::MIRC_COMMAND;
+    use std::ffi::{CStr, CString};
+    use std::ptr;
+
+    fn call_getkey(input: &str, buffer_size: usize) -> (c_int, String) {
+        let mut buffer = vec![0i8; buffer_size];
+
+        // Override buffer size for this test to prevent heap corruption
+        let prev_size = crate::dll_interface::override_buffer_size_for_test(buffer_size);
+
+        let c_input = CString::new(input).unwrap();
+        let result = FiSH11_FileGetKey(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            buffer.as_mut_ptr(),
+            c_input.as_ptr() as *mut c_char,
+            0,
+            0,
+        );
+
+        // Restore previous buffer size
+        crate::dll_interface::restore_buffer_size_for_test(prev_size);
+
+        let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
+        (result, c_str.to_string_lossy().to_string())
+    }
+
+    #[test]
+    fn test_getkey_normal() {
+        // Suppose "alice" exists in config
+        let (code, msg) = call_getkey("alice", 256);
+        assert_eq!(code, MIRC_COMMAND);
+        // Structured check: message should start with echo and mention alice
+        assert!(msg.starts_with("/echo -ts Key for alice:"));
+    }
+
+    #[test]
+    fn test_getkey_nickname_empty() {
+        let (code, msg) = call_getkey("   ", 256);
+        assert_eq!(code, MIRC_COMMAND);
+        // Structured check: message should mention missing parameter
+        assert!(msg.to_lowercase().contains("missing parameter"));
+    }
+
+    #[test]
+    fn test_getkey_key_not_found() {
+        let (code, msg) = call_getkey("unknown_nick", 256);
+        assert_eq!(code, MIRC_COMMAND);
+        // Structured check: message should mention no encryption key
+        assert!(msg.to_lowercase().contains("no encryption key"));
+    }
+
+    #[test]
+    fn test_getkey_buffer_too_small() {
+        let (code, msg) = call_getkey("alice", 8);
+        // Should still return MIRC_COMMAND, but message will be truncated
+        assert_eq!(code, MIRC_COMMAND);
+        // Structured check: message is truncated
+        assert!(msg.len() < 20);
+    }
+
+    #[test]
+    fn test_getkey_malformed_input() {
+        // Input with null byte (should error)
+        let bad_input = unsafe { CString::from_vec_unchecked(vec![97, 0, 98]) }; // "a\0b"
+        let mut buffer = vec![0i8; 256];
+
+        // Override buffer size for this test to prevent heap corruption
+        let prev_size = crate::dll_interface::override_buffer_size_for_test(buffer.len());
+
+        let result = FiSH11_FileGetKey(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            buffer.as_mut_ptr(),
+            bad_input.as_ptr() as *mut c_char,
+            0,
+            0,
+        );
+
+        // Restore previous buffer size
+        crate::dll_interface::restore_buffer_size_for_test(prev_size);
+
+        let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
+        assert_eq!(result, MIRC_COMMAND);
+        // Structured check: message should mention null byte
+        assert!(c_str.to_string_lossy().to_lowercase().contains("null byte"));
+    }
 }

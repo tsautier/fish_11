@@ -1,119 +1,116 @@
+use std::ffi::c_char;
+use std::os::raw::c_int;
+
 use winapi::shared::minwindef::BOOL;
 use winapi::shared::windef::HWND;
 
-use crate::buffer_utils::write_string_to_buffer;
-use crate::dll_function_utils::{DllFunctionContext, DllResult, dll_function_wrapper};
-use crate::dll_interface::{c_char, c_int};
+use crate::config;
+use crate::dll_function;
+use crate::unified_error::DllError;
 
-/// Lists all stored encryption keys in a formatted output for mIRC
-///
-/// This function retrieves all stored keys from the configuration file and formats them
-/// into a series of mIRC /echo commands that display:
-/// - The initialization time of the configuration
-/// - Each stored key with its associated nickname, network (if available), and creation date
-/// - Proper formatting with separators for readability
-#[no_mangle]
-#[allow(non_snake_case)]
-pub extern "stdcall" fn FiSH11_FileListKeys(
-    _m_wnd: HWND,
-    _a_wnd: HWND,
-    data: *mut c_char,
-    _parms: *mut c_char,
-    _show: BOOL,
-    _nopause: BOOL,
-) -> c_int {
-    dll_function_wrapper(data, "FiSH11_FileListKeys", |data, ctx| {
-        fish11_filelistkeys_impl(data, ctx)
-    })
-}
+dll_function!(FiSH11_FileListKeys, _data, {
+    log::info!("Starting key listing");
 
-fn fish11_filelistkeys_impl(data: *mut c_char, ctx: &DllFunctionContext) -> DllResult<()> {
-    // Validate input pointer
-    if data.is_null() {
-        return Err(crate::buffer_utils::BufferError::NullPointer.into());
+    let keys = config::list_keys()?;
+
+    if keys.is_empty() {
+        return Ok("/echo -ts FiSH: No keys stored.".to_string());
     }
 
-    // Use a conservative buffer size to prevent crashes
-    let safe_buffer_size = ctx.buffer_size.min(4096); // Cap at 4KB for safety
-    if safe_buffer_size < 100 {
-        ctx.log_error("Buffer size too small for key listing");
-        let error_msg = "Buffer too small for key listing";
-        unsafe {
-            crate::buffer_utils::write_string_to_buffer(data, safe_buffer_size, error_msg)?;
-        }
-        return Ok(());
+    // We will build a multi-line response for mIRC to process.
+    // mIRC can handle multiple commands separated by `|`.
+    let mut commands = Vec::new();
+    commands.push("echo -ts --- FiSH Keys ---".to_string());
+
+    for (nickname, network, _key_type, date) in keys {
+        let net_display =
+            if network.is_empty() || network == "default" { "default" } else { &network };
+
+        let key_info = if let Some(date_str) = date {
+            format!("Key: {:<20} | Network: {:<15} | Added: {}", nickname, net_display, date_str)
+        } else {
+            format!("Key: {:<20} | Network: {:<15}", nickname, net_display)
+        };
+        commands.push(format!("echo -ts {}", key_info));
     }
 
-    ctx.log_info(&format!("Starting key listing with buffer size: {}", safe_buffer_size));
+    commands.push("echo -ts -------------------".to_string());
 
-    match crate::config::list_keys() {
-        Ok(keys) => {
-            ctx.log_info(&format!("Retrieved {} keys", keys.len()));
-            if keys.is_empty() {
-                let message = "FiSH: No keys stored.";
-                unsafe {
-                    write_string_to_buffer(data, safe_buffer_size, message)?;
-                }
-                return Ok(());
-            }
+    // Join all echo commands with `|` to be executed sequentially by mIRC.
+    Ok(commands.join(" | "))
+});
 
-            // For mIRC compatibility, we'll format the output differently
-            // Instead of returning /echo commands, return formatted text that mIRC script will handle
-            let mut output = String::new();
-            output.push_str("FiSH Keys:");
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dll_interface::MIRC_COMMAND;
+    use std::ffi::{CStr, CString};
+    use std::ptr;
 
-            // Add startup time if available
-            if let Ok(startup_time) = crate::config::get_startup_time_formatted() {
-                output.push_str(&format!("\nFiSH: configuration initialized: {}", startup_time));
-            }
+    fn call_listkeys(buffer_size: usize) -> (c_int, String) {
+        let mut buffer = vec![0i8; buffer_size];
+        // Override buffer size for this test to prevent heap corruption
+        let prev_size = crate::dll_interface::override_buffer_size_for_test(buffer_size);
 
-            output.push_str("\n------------------------");
+        let result = FiSH11_FileListKeys(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            buffer.as_mut_ptr(),
+            ptr::null_mut(),
+            0,
+            0,
+        );
 
-            let mut keys_added = 0;
-            let mut truncated = false;
+        // Restore previous buffer size
+        crate::dll_interface::restore_buffer_size_for_test(prev_size);
 
-            // Calculate safe output size - leave room for footer and safety margin
-            let footer_size = 200;
-            let max_content_size = safe_buffer_size.saturating_sub(footer_size);
-
-            for (nickname, network, _key_type, date) in &keys {
-                let net_display =
-                    if network.is_empty() || network == "default" { "default" } else { network };
-                let key_info = if let Some(date_str) = date {
-                    format!("\nKey: {} | Network: {} | Added: {}", nickname, net_display, date_str)
-                } else {
-                    format!("\nKey: {} | Network: {}", nickname, net_display)
-                };
-
-                // Check if adding this line would exceed buffer
-                if output.len() + key_info.len() > max_content_size {
-                    truncated = true;
-                    break;
-                }
-
-                output.push_str(&key_info);
-                keys_added += 1;
-            }
-
-            // Add footer
-            output.push_str("\n------------------------");
-            output.push_str(&format!("\nDisplayed: {} of {} keys", keys_added, keys.len()));
-
-            if truncated {
-                output.push_str("\n(Output truncated due to buffer size)");
-            }
-            unsafe {
-                write_string_to_buffer(data, safe_buffer_size, &output)?;
-            }
-        }
-        Err(e) => {
-            ctx.log_error(&format!("Failed to list keys: {}", e));
-            let error_message = format!("FiSH Error: Failed to retrieve keys ({})", e);
-            unsafe {
-                write_string_to_buffer(data, safe_buffer_size, &error_message)?;
-            }
-        }
+        let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
+        (result, c_str.to_string_lossy().to_string())
     }
 
-    Ok(())
+    #[test]
+    fn test_listkeys_normal() {
+        // Suppose there are keys in config
+        let (code, msg) = call_listkeys(512);
+        assert_eq!(code, MIRC_COMMAND);
+        // Structured check: message should mention FiSH Keys
+        assert!(msg.contains("FiSH Keys"));
+    }
+
+    #[test]
+    fn test_listkeys_no_keys() {
+        // Suppose config is empty
+        let (code, msg) = call_listkeys(256);
+        assert_eq!(code, MIRC_COMMAND);
+        // Structured check: message should mention No keys stored
+        assert!(msg.contains("No keys stored"));
+    }
+
+    #[test]
+    fn test_listkeys_buffer_too_small() {
+        let (code, msg) = call_listkeys(8);
+        assert_eq!(code, MIRC_COMMAND);
+        // Structured check: message is truncated
+        assert!(msg.len() < 20);
+    }
+
+    #[test]
+    fn test_listkeys_malformed_input() {
+        // Should not crash even if _data is a bad pointer
+        let mut buffer = vec![0i8; 256];
+        let bad_input = unsafe { CString::from_vec_unchecked(vec![97, 0, 98]) };
+        let result = FiSH11_FileListKeys(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            buffer.as_mut_ptr(),
+            bad_input.as_ptr() as *mut c_char,
+            0,
+            0,
+        );
+
+        let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
+        assert_eq!(result, MIRC_COMMAND);
+        // Structured check: message should not be empty
+        assert!(!c_str.to_string_lossy().is_empty());
+    }
 }

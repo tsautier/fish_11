@@ -1,318 +1,145 @@
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::c_char;
 use std::os::raw::c_int;
-use std::{ptr, str};
 
-use log::{error, info};
 use winapi::shared::minwindef::BOOL;
 use winapi::shared::windef::HWND;
 
-use crate::dll_interface::{MIRC_COMMAND, MIRC_HALT, get_buffer_size};
+use crate::buffer_utils;
+use crate::dll_function;
+use crate::unified_error::DllError;
+use crate::utils::normalize_nick;
 use crate::{config, crypto};
 
-/// Processes a received public key to establish a shared secret for encrypted communication
-///
-/// This function completes the Diffie-Hellman key exchange by:
-/// 1. Extracting the peer's public key from the formatted string
-/// 2. Retrieving our own keypair from storage
-/// 3. Computing a shared secret using Curve25519
-/// 4. Storing the derived key for future encrypted communication
-#[no_mangle]
-#[allow(non_snake_case)]
-pub extern "stdcall" fn FiSH11_ProcessPublicKey(
-    _m_wnd: HWND,
-    _a_wnd: HWND,
-    data: *mut c_char,
-    _parms: *mut c_char,
-    _show: BOOL,
-    _nopause: BOOL,
-) -> c_int {
-    let buffer_size = get_buffer_size();
-
-    // Read input parameters
-    let input = unsafe {
-        if data.is_null() {
-            error!("/echo -ts Data buffer pointer is null");
-            return MIRC_HALT;
-        }
-        match CStr::from_ptr(data).to_str() {
-            Ok(s) => s.to_owned(),
-            Err(e) => {
-                error!("/echo -ts Invalid ANSI input: {}", e);
-                return MIRC_HALT;
-            }
-        }
-    };
-
+dll_function!(FiSH11_ProcessPublicKey, data, {
+    // Parse input: <nickname> <received_key>
+    let input = unsafe { buffer_utils::parse_buffer_input(data)? };
     let parts: Vec<&str> = input.splitn(2, ' ').collect();
 
     if parts.len() < 2 {
-        let error_msg = CString::new(
-            "Usage: /dll fish_11.dll FiSH11_ProcessPublicKey <nickname> <received_key>",
-        )
-        .expect("Error message should not contain null bytes");
-
-        unsafe {
-            ptr::write_bytes(data as *mut u8, 0, buffer_size);
-
-            let bytes = error_msg.as_bytes_with_nul();
-            let copy_len = bytes.len().min(buffer_size - 1);
-            std::ptr::copy_nonoverlapping(bytes.as_ptr(), data as *mut u8, copy_len);
-            *data.add(copy_len) = 0;
-        }
-
-        return MIRC_COMMAND;
+        return Err(DllError::InvalidInput {
+            param: "input".to_string(),
+            reason: "expected format: <nickname> <received_key>".to_string(),
+        });
     }
 
-    let nickname = parts[0].trim();
+    let nickname = normalize_nick(parts[0]);
     let received_pubkey_str = parts[1].trim();
 
+    if nickname.is_empty() {
+        return Err(DllError::MissingParameter("nickname".to_string()));
+    }
+    if received_pubkey_str.is_empty() {
+        return Err(DllError::MissingParameter("received_key".to_string()));
+    }
+
+    log::info!("Processing public key for nickname: {}", nickname);
+
     // Extract the received public key
-    let their_public_key = match crypto::extract_public_key(received_pubkey_str) {
-        Ok(key) => key,
-        Err(_) => {
-            let error_msg =
-                CString::new("/echo -ts Invalid public key format. Should be FiSH11-PubKey:...")
-                    .expect("Static string contains no null bytes");
+    let their_public_key = crypto::extract_public_key(received_pubkey_str).map_err(|e| {
+        DllError::KeyInvalid { reason: format!("invalid public key format: {}", e) }
+    })?;
 
-            unsafe {
-                ptr::write_bytes(data as *mut u8, 0, buffer_size);
-
-                let bytes = error_msg.as_bytes_with_nul();
-                let copy_len = bytes.len().min(buffer_size - 1);
-                std::ptr::copy_nonoverlapping(bytes.as_ptr(), data as *mut u8, copy_len);
-                *data.add(copy_len) = 0;
-            }
-
-            return MIRC_COMMAND;
-        }
-    };
+    log::debug!("Successfully extracted public key");
 
     // Get our keypair
-    let keypair = match config::get_keypair() {
-        Ok(kp) => kp,
-        Err(_) => {
-            let error_msg = CString::new(
-                "/echo -ts No keypair found. Generate one first with FiSH11_ExchangeKey.",
-            )
-            .expect("Static string contains no null bytes");
+    let keypair = config::get_keypair().map_err(|_| {
+        DllError::KeyNotFound(
+            "local keypair (generate one first with FiSH11_ExchangeKey)".to_string(),
+        )
+    })?;
 
-            unsafe {
-                ptr::write_bytes(data as *mut u8, 0, buffer_size);
+    log::debug!("Retrieved local keypair");
 
-                let bytes = error_msg.as_bytes_with_nul();
-                let copy_len = bytes.len().min(buffer_size - 1);
-                std::ptr::copy_nonoverlapping(bytes.as_ptr(), data as *mut u8, copy_len);
-                *data.add(copy_len) = 0;
-            }
+    // Compute the shared secret using Curve25519 Diffie-Hellman
+    let shared_secret = crypto::compute_shared_secret(&keypair.private_key, &their_public_key)
+        .map_err(|e| {
+            DllError::KeyExchangeFailed(format!("failed to compute shared secret: {}", e))
+        })?;
 
-            return MIRC_COMMAND;
-        }
-    };
+    log::debug!("Computed shared secret successfully");
 
-    // Compute the shared secret
-    let shared_secret = match crypto::compute_shared_secret(&keypair.private_key, &their_public_key)
-    {
-        Ok(secret) => secret,
-        Err(e) => {
-            let error_msg = CString::new(format!("/echo -ts Error computing shared secret: {}", e))
-                .expect("Error message contains no null bytes");
-
-            unsafe {
-                ptr::write_bytes(data as *mut u8, 0, buffer_size);
-
-                let bytes = error_msg.as_bytes_with_nul();
-                let copy_len = bytes.len().min(buffer_size - 1);
-                std::ptr::copy_nonoverlapping(bytes.as_ptr(), data as *mut u8, copy_len);
-                *data.add(copy_len) = 0;
-            }
-
-            return MIRC_COMMAND;
-        }
-    };
-
-    // Store the shared secret with duplicate handling
-    let store_result = match crate::config::set_key(nickname, &shared_secret, None, false) {
+    // Store the shared secret with intelligent duplicate handling:
+    // - First try without overwrite (fail if key exists)
+    // - If duplicate detected, update it as part of key exchange protocol
+    let store_result = match config::set_key(&nickname, &shared_secret, None, false) {
         Ok(_) => Ok(()),
-        Err(crate::error::FishError::DuplicateEntry(nick)) => {
-            info!("/echo -ts Updating existing key for {} as part of key exchange", nick);
-            crate::config::set_key(nickname, &shared_secret, None, true)
+        Err(crate::error::FishError::DuplicateEntry(ref nick)) => {
+            log::info!("Updating existing key for {} as part of key exchange", nick);
+            config::set_key(&nickname, &shared_secret, None, true)
         }
         Err(e) => Err(e),
     };
 
-    match store_result {
-        Ok(_) => {
-            let success_msg = CString::new(format!(
-                "/echo -ts Secure key exchange completed successfully with {}",
-                nickname
-            ))
-            .expect("Formatted string contains no null bytes");
+    // Convert FishError to DllError for the final result
+    store_result.map_err(|e| match e {
+        crate::error::FishError::DuplicateEntry(nick) => DllError::KeyInvalid {
+            reason: format!("key for {} already exists and couldn't be updated", nick),
+        },
+        _ => DllError::ConfigMalformed(format!("error storing key: {}", e)),
+    })?;
 
-            unsafe {
-                ptr::write_bytes(data as *mut u8, 0, buffer_size);
+    log::info!("Successfully completed key exchange with {}", nickname);
 
-                let bytes = success_msg.as_bytes_with_nul();
-                let copy_len = bytes.len().min(buffer_size - 1);
-                std::ptr::copy_nonoverlapping(bytes.as_ptr(), data as *mut u8, copy_len);
-                *data.add(copy_len) = 0;
-            }
-        }
-        Err(e) => {
-            let error_msg_content = match e {
-                crate::error::FishError::DuplicateEntry(nick) => {
-                    format!("/echo -ts Key for {} already exists and couldn\'t be updated", nick)
-                }
-                _ => format!("/echo -ts Error storing key: {}", e),
-            };
-            let error_msg =
-                CString::new(error_msg_content).expect("Error message contains no null bytes");
+    Ok(format!("/echo -ts Secure key exchange completed successfully with {}", nickname))
+});
 
-            unsafe {
-                ptr::write_bytes(data as *mut u8, 0, buffer_size);
+dll_function!(FiSH11_TestCrypt, data, {
+    // Parse input message
+    let input = unsafe { buffer_utils::parse_buffer_input(data)? };
 
-                let bytes = error_msg.as_bytes_with_nul();
-                let copy_len = bytes.len().min(buffer_size - 1);
-                std::ptr::copy_nonoverlapping(bytes.as_ptr(), data as *mut u8, copy_len);
-                *data.add(copy_len) = 0;
-            }
-        }
-    }
-
-    MIRC_COMMAND
-}
-
-/// Tests the encryption/decryption cycle with a randomly generated key
-///
-/// This diagnostic function demonstrates the encryption workflow by:
-/// 1. Generating a random 32-byte key
-/// 2. Encrypting the input message
-/// 3. Decrypting the result
-/// 4. Displaying all three values for verification
-#[no_mangle]
-#[allow(non_snake_case)]
-pub extern "stdcall" fn FiSH11_TestCrypt(
-    _m_wnd: HWND,
-    _a_wnd: HWND,
-    data: *mut c_char,
-    _parms: *mut c_char,
-    _show: BOOL,
-    _nopause: BOOL,
-) -> c_int {
-    let buffer_size = get_buffer_size();
-    log::debug!("[FiSH11_TestCrypt] called");
-
-    // Read input parameters
-    let input = unsafe {
-        if data.is_null() {
-            error!("[FiSH11_TestCrypt] Data buffer pointer is null");
-            return MIRC_HALT;
-        }
-        match CStr::from_ptr(data).to_str() {
-            Ok(s) => {
-                log::debug!("[FiSH11_TestCrypt] input string: {}", s);
-                s.to_owned()
-            },
-            Err(e) => {
-                error!("[FiSH11_TestCrypt] Invalid ANSI input: {}", e);
-                return MIRC_HALT;
-            }
-        }
-    };
     if input.is_empty() {
-        log::debug!("[FiSH11_TestCrypt] input is empty");
-        let error_msg =
-            CString::new("/echo -ts Usage: /dll fish_11.dll FiSH11_TestCrypt <message>")
-                .expect("Failed to create TestCrypt usage message");
-
-        unsafe {
-            ptr::write_bytes(data as *mut u8, 0, buffer_size);
-
-            let bytes = error_msg.as_bytes_with_nul();
-            let copy_len = bytes.len().min(buffer_size - 1);
-            std::ptr::copy_nonoverlapping(bytes.as_ptr(), data as *mut u8, copy_len);
-            *data.add(copy_len) = 0;
-        }
-
-        return MIRC_COMMAND;
+        return Err(DllError::MissingParameter("message".to_string()));
     }
-    log::debug!("[FiSH11_TestCrypt] input not empty, generating key");
+
+    log::debug!("Testing encryption/decryption cycle with message: {}", input);
+
+    // Generate a random 32-byte key for testing
+    let key_bytes = crate::utils::generate_random_bytes(32);
     let mut key = [0u8; 32];
-    crate::utils::generate_random_bytes(32).iter().enumerate().for_each(|(i, &b)| key[i] = b);
-    log::debug!("[FiSH11_TestCrypt] generated key: {:x?}", key);
+    key.copy_from_slice(&key_bytes);
+
+    log::debug!("Generated random test key: {:02x?}", &key[..8]); // Log first 8 bytes only
+
     // Encrypt the message
-    let encrypted = match crypto::encrypt_message(&key, &input, None) {
-        Ok(e) => {
-            log::debug!("[FiSH11_TestCrypt] encrypted: {}", e);
-            e
-        },
-        Err(e) => {
-            error!("[FiSH11_TestCrypt] Encryption failed: {}", e);
-            let error_msg = CString::new(format!("/echo -ts Encryption failed: {}", e))
-                .expect("Failed to create encryption error message");
+    let encrypted = crypto::encrypt_message(&key, &input, None).map_err(|e| {
+        DllError::EncryptionFailed { context: "test encryption".to_string(), cause: e.to_string() }
+    })?;
 
-            unsafe {
-                ptr::write_bytes(data as *mut u8, 0, buffer_size);
+    log::debug!("Successfully encrypted message");
 
-                let bytes = error_msg.as_bytes_with_nul();
-                let copy_len = bytes.len().min(buffer_size - 1);
-                std::ptr::copy_nonoverlapping(bytes.as_ptr(), data as *mut u8, copy_len);
-                *data.add(copy_len) = 0;
-            }
+    // Decrypt the message to verify the cycle
+    let decrypted = crypto::decrypt_message(&key, &encrypted).map_err(|e| {
+        DllError::DecryptionFailed { context: "test decryption".to_string(), cause: e.to_string() }
+    })?;
 
-            return MIRC_COMMAND;
-        }
-    };
+    log::debug!("Successfully decrypted message");
 
-    // Decrypt the message
-    let decrypted = match crypto::decrypt_message(&key, &encrypted) {
-        Ok(d) => {
-            log::debug!("[FiSH11_TestCrypt] decrypted: {}", d);
-            d
-        },
-        Err(e) => {
-            error!("[FiSH11_TestCrypt] Decryption failed: {}", e);
-            let error_msg = CString::new(format!("/echo -ts Decryption failed: {}", e))
-                .expect("Failed to create decryption error message");
+    // Verify that decryption matches original
+    if decrypted != input {
+        log::warn!("Decryption mismatch: expected '{}', got '{}'", input, decrypted);
+        return Err(DllError::DecryptionFailed {
+            context: "verification".to_string(),
+            cause: "decrypted message does not match original".to_string(),
+        });
+    }
 
-            unsafe {
-                ptr::write_bytes(data as *mut u8, 0, buffer_size);
-
-                let bytes = error_msg.as_bytes_with_nul();
-                let copy_len = bytes.len().min(buffer_size - 1);
-                std::ptr::copy_nonoverlapping(bytes.as_ptr(), data as *mut u8, copy_len);
-                *data.add(copy_len) = 0;
-            }
-
-            return MIRC_COMMAND;
-        }
-    };
-    log::debug!("[FiSH11_TestCrypt] preparing result");
-    // Limite la taille et filtre les caractères non imprimables
-    fn safe_str(s: &str) -> String {
+    // Sanitize strings for safe display (replace non-printable characters)
+    fn safe_display(s: &str, max_len: usize) -> String {
         s.chars()
+            .take(max_len)
             .map(|c| if c.is_ascii_graphic() || c == ' ' { c } else { '?' })
-            .collect::<String>()
+            .collect()
     }
-    let maxlen = 512;
-    let input_safe = safe_str(&input).chars().take(maxlen).collect::<String>();
-    let encrypted_safe = safe_str(&encrypted).chars().take(maxlen).collect::<String>();
-    let decrypted_safe = safe_str(&decrypted).chars().take(maxlen).collect::<String>();
-    let result_str = format!(
-        "/echo -ts Original: {} | Encrypted: {} | Decrypted: {}",
-        input_safe,
-        encrypted_safe,
-        decrypted_safe
-    );
-    // Version minimale qui fonctionne :
-    let result_str = format!(
-        "/echo -ts Original: {} | Encrypted: {} | Decrypted: {}",
-        input,
-        encrypted,
-        decrypted
-    );
-    let result = CString::new(result_str).unwrap_or_else(|_| CString::new("/echo -ts [FiSH11] Error: invalid result").unwrap());
-    unsafe {
-        crate::buffer_utils::write_cstring_to_buffer(data, 900, &result).ok();
-    }
-    MIRC_COMMAND
-}
+
+    let max_display_len = 100;
+    let input_safe = safe_display(&input, max_display_len);
+    let encrypted_safe = safe_display(&encrypted, max_display_len);
+    let decrypted_safe = safe_display(&decrypted, max_display_len);
+
+    log::info!("Encryption test completed successfully");
+
+    Ok(format!(
+        "/echo -ts [TestCrypt] Original: {} | Encrypted: {} | Decrypted: {}",
+        input_safe, encrypted_safe, decrypted_safe
+    ))
+});

@@ -4,80 +4,42 @@ use std::os::raw::c_int;
 use winapi::shared::minwindef::BOOL;
 use winapi::shared::windef::HWND;
 
-use crate::buffer_utils::write_string_to_buffer;
+use crate::buffer_utils;
 use crate::config;
-use crate::dll_function_utils::{
-    DllError, DllFunctionContext, DllResult, dll_function_wrapper, extract_input_string,
-};
+use crate::dll_function;
+use crate::dll_interface::{MIRC_COMMAND, MIRC_HALT};
+use crate::unified_error::{DllError, DllResult};
+use crate::utils::{self, normalize_nick};
 
-/// Generates and stores a cryptographically secure random key for a nickname
-///
-/// This function creates a new 256-bit encryption key using the system's cryptographic
-/// random number generator and associates it with the specified nickname. The key can
-/// optionally be tagged with a network identifier for organizational purposes.
+dll_function!(FiSH11_GenKey, data, {
+    let input = unsafe { buffer_utils::parse_buffer_input(data)? };
 
-#[no_mangle]
-#[allow(non_snake_case)]
-pub extern "stdcall" fn FiSH11_GenKey(
-    _m_wnd: HWND,
-    _a_wnd: HWND,
-    data: *mut c_char,
-    _parms: *mut c_char,
-    _show: BOOL,
-    _nopause: BOOL,
-) -> c_int {
-    dll_function_wrapper(data, "FiSH11_GenKey", |data, ctx| gen_key_impl(data, ctx))
-}
-
-/// Clean implementation focused on key generation business logic
-fn gen_key_impl(data: *mut c_char, ctx: &DllFunctionContext) -> DllResult<()> {
-    // Extract input safely using helper
-    let input = extract_input_string(data, ctx)?;
-
-    // Parse input parameters
     let parts: Vec<&str> = input.splitn(2, ' ').collect();
+    let nickname = normalize_nick(parts.get(0).unwrap_or(&"").trim());
 
-    if parts.is_empty() || parts[0].is_empty() {
-        ctx.log_error("Invalid input format - missing nickname");
-        return Err(DllError::InvalidInput(
-            "Usage: /dll fish_11.dll FiSH11_GenKey <nickname> [network]".to_string(),
-        ));
+    if nickname.is_empty() {
+        return Err(DllError::MissingParameter("nickname".to_string()));
     }
 
-    let nickname = parts[0].trim();
     let network = parts.get(1).map(|s| s.trim());
 
-    ctx.log_debug(&format!("Generating key for nickname: {} (network: {:?})", nickname, network)); // Generate a cryptographically secure random key using OsRng
+    log::debug!(
+        "Generating key for nickname: {} (network: {:?})",
+        nickname,
+        network
+    );
+
+    // 1. Generate a cryptographically secure random key.
     let mut key = [0u8; 32];
-    let random_bytes = crate::utils::generate_random_bytes(32);
+    let random_bytes = utils::generate_random_bytes(32);
     key.copy_from_slice(&random_bytes);
 
-    ctx.log_debug("Random key generated successfully, storing...");
+    // 2. Store the key, with overwrite disabled to prevent accidental data loss.
+    // This will return a `DllError::DuplicateEntry` if the key already exists.
+    config::set_key(&nickname, &key, network, false)?;
 
-    // Store the key with duplicate protection (overwrite=false for safety)
-    match config::set_key(nickname, &key, network, false) {
-        Ok(_) => {
-            let success_msg = format!("Random key generated for {}", nickname);
-            unsafe {
-                write_string_to_buffer(data, ctx.buffer_size, &success_msg)?;
-            }
-            ctx.log_info(&format!("Successfully generated and stored key for {}", nickname));
-        }
-        Err(e) => {
-            let error_msg_content = match e {
-                crate::error::FishError::DuplicateEntry(nick) => {
-                    format!("Key for {} already exists. Use /fish_setkey11 to update.", nick)
-                }
-                _ => format!("Error setting key: {}", e),
-            };
-
-            ctx.log_warn(&format!("Key generation issue: {}", error_msg_content));
-            unsafe {
-                write_string_to_buffer(data, ctx.buffer_size, &error_msg_content)?;
-            }
-        }
-    }
-
-    Ok(())
-}
-
+    Ok(format!(
+        "/echo -ts New key pair generated successfully for {}",
+        nickname
+    ))
+});

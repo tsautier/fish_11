@@ -1,150 +1,132 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
-use std::time::Duration;
 
 use winapi::shared::minwindef::BOOL;
 use winapi::shared::windef::HWND;
 
 use crate::config;
-use crate::dll_interface::function_template::{FunctionConfig, execute_dll_function};
+use crate::dll_function;
+use crate::unified_error::{DllError, DllResult};
 
-/// Function to get a boolean value from the config file
-#[no_mangle]
-#[allow(non_snake_case)]
-pub extern "stdcall" fn INI_GetBool(
-    _m_wnd: HWND,
-    _a_wnd: HWND,
-    data: *mut c_char,
-    _parms: *mut c_char,
-    _show: BOOL,
-    _nopause: BOOL,
-) -> c_int {
-    let config = FunctionConfig {
-        name: "INI_GetBool",
-        timeout: Duration::from_secs(2),
-        validate_input: true,
-        log_entry_exit: false, // Reduce logging for frequent operations
+/// Gets a boolean value from the config file.
+/// Input: <key> [default_value]
+dll_function!(INI_GetBool, data, {
+    let input = unsafe { crate::buffer_utils::parse_buffer_input(data)? };
+    let parts: Vec<&str> = input.splitn(2, ' ').collect();
+
+    let key = parts.get(0).map_or("", |k| k.trim());
+    if key.is_empty() {
+        return Err(DllError::MissingParameter("key".to_string()));
+    }
+
+    let default = parts.get(1).map_or(false, |d| d.trim().parse::<i32>().unwrap_or(0) != 0);
+
+    let config = config::get_fish11_config()?;
+
+    let value = match key.to_lowercase().as_str() {
+        "process_incoming" => config.process_incoming,
+        "process_outgoing" => config.process_outgoing,
+        "encrypt_notice" => config.encrypt_notice,
+        "encrypt_action" => config.encrypt_action,
+        "no_fish10_legacy" => config.no_fish10_legacy,
+        _ => default,
     };
 
-    execute_dll_function(data, config, |input, _trace_id| {
-        // Parse key and default value
-        let parts: Vec<&str> = input.splitn(2, ' ').collect();
-        let (key, default) = match parts.as_slice() {
-            [key] => (key.trim(), false),
-            [key, default] => (key.trim(), default.trim().parse::<i32>().unwrap_or(0) != 0),
-            _ => return Err("Invalid parameter format".to_string()),
-        };
+    Ok(if value { "1" } else { "0" }.to_string())
+});
 
-        // Get configuration
-        let config = config::get_fish11_config().map_err(|e| format!("Config error: {}", e))?;
+/// Gets a string value from the config file.
+/// Input: <key> [default_value]
+dll_function!(INI_GetString, data, {
+    let input = unsafe { crate::buffer_utils::parse_buffer_input(data)? };
+    let parts: Vec<&str> = input.splitn(2, ' ').collect();
 
-        // Map key to config value
-        let value = match key.to_lowercase().as_str() {
-            "process_incoming" => config.process_incoming,
-            "process_outgoing" => config.process_outgoing,
-            "encrypt_notice" => config.encrypt_notice,
-            "encrypt_action" => config.encrypt_action,
-            "no_fish10_legacy" => config.no_fish10_legacy,
+    let key = parts.get(0).map_or("", |k| k.trim());
+    if key.is_empty() {
+        return Err(DllError::MissingParameter("key".to_string()));
+    }
+
+    let default = parts.get(1).map_or("", |d| d.trim());
+
+    let value = match config::get_fish11_config() {
+        Ok(config) => match key.to_lowercase().as_str() {
+            "plain_prefix" => config.plain_prefix,
+            "mark_encrypted" => config.mark_encrypted,
+            _ => default.to_string(),
+        },
+        Err(_) => default.to_string(),
+    };
+
+    Ok(value)
+});
+
+/// Gets an integer value from the config file.
+/// Input: <key> [default_value]
+dll_function!(INI_GetInt, data, {
+    let input = unsafe { crate::buffer_utils::parse_buffer_input(data)? };
+    let parts: Vec<&str> = input.splitn(2, ' ').collect();
+
+    let key = parts.get(0).map_or("", |k| k.trim());
+    if key.is_empty() {
+        return Err(DllError::MissingParameter("key".to_string()));
+    }
+
+    let default = parts.get(1).map_or(0, |d| d.trim().parse::<i32>().unwrap_or(0));
+
+    let value = match config::get_fish11_config() {
+        Ok(config) => match key.to_lowercase().as_str() {
+            "mark_position" => config.mark_position as i32,
             _ => default,
-        };
-
-        Ok(if value { "1" } else { "0" })
-    })
-}
-
-/// Function to get a string value from the config file
-#[no_mangle]
-#[allow(non_snake_case)]
-pub extern "stdcall" fn INI_GetString(
-    _m_wnd: HWND,
-    _a_wnd: HWND,
-    data: *mut c_char,
-    _parms: *mut c_char,
-    _show: BOOL,
-    _nopause: BOOL,
-) -> c_int {
-    let config = FunctionConfig {
-        name: "INI_GetString",
-        timeout: Duration::from_secs(2),
-        validate_input: true,
-        log_entry_exit: false,
+        },
+        Err(_) => default,
     };
 
-    execute_dll_function(data, config, |input, _trace_id| {
-        log::debug!("INI_GetString: closure started, input='{}'", input);
-        
-        // Split into key and optional default
-        let parts: Vec<&str> = input.splitn(2, ' ').collect();
-        let key = parts.get(0).map_or("", |s| s.trim());
-        let default = parts.get(1).map_or("", |s| s.trim());
+    Ok(value.to_string())
+});
 
-        log::debug!("INI_GetString: parsed key='{}', default='{}'", key, default);
+#[cfg(test)]
+mod tests {
 
-        // Try to read from config
-        log::debug!("INI_GetString: calling get_fish11_config()...");
-        let config_result = match config::get_fish11_config() {
-            Ok(config) => {
-                log::debug!("INI_GetString: get_fish11_config() succeeded, matching key...");
-                match key {
-                    "plain_prefix" => {
-                        log::debug!("INI_GetString: matched plain_prefix");
-                        config.plain_prefix.clone()
-                    },
-                    "mark_encrypted" => {
-                        log::debug!("INI_GetString: matched mark_encrypted");
-                        config.mark_encrypted.clone()
-                    },
-                    _ => {
-                        log::debug!("INI_GetString: key '{}' not matched, using default", key);
-                        default.to_string()
-                    },
-                }
-            },
-            Err(e) => {
-                log::error!("INI_GetString: get_fish11_config() failed: {:?}", e);
-                default.to_string()
-            },
+    use crate::config::Fish11Section;
+    use crate::config::settings::*;
+
+    fn setup_config() {
+        let config = Fish11Section {
+            process_incoming: true,
+            process_outgoing: false,
+            plain_prefix: "plain:".to_string(),
+            encrypt_notice: true,
+            encrypt_action: false,
+            mark_position: 42,
+            mark_encrypted: "[ENCRYPTED]".to_string(),
+            no_fish10_legacy: true,
         };
+        update_fish11_config(config).unwrap();
+    }
 
-        log::debug!("INI_GetString: config_result='{}'", config_result);
-        log::debug!("INI_GetString: returning Ok");
-        Ok(config_result)
-    })
-}
+    #[test]
+    fn test_should_process_incoming() {
+        setup_config();
+        assert_eq!(should_process_incoming().unwrap(), true);
+    }
 
-/// Function to get an integer value from the config file
-#[no_mangle]
-#[allow(non_snake_case)]
-pub extern "stdcall" fn INI_GetInt(
-    _m_wnd: HWND,
-    _a_wnd: HWND,
-    data: *mut c_char,
-    _parms: *mut c_char,
-    _show: BOOL,
-    _nopause: BOOL,
-) -> c_int {
-    let config = FunctionConfig {
-        name: "INI_GetInt",
-        timeout: Duration::from_secs(2),
-        validate_input: true,
-        log_entry_exit: false,
-    };
+    #[test]
+    fn test_should_process_outgoing() {
+        setup_config();
+        assert_eq!(should_process_outgoing().unwrap(), false);
+    }
 
-    execute_dll_function(data, config, |input, _trace_id| {
-        // Split into key and optional default
-        let parts: Vec<&str> = input.splitn(2, ' ').collect();
-        let key = parts.get(0).map_or("", |s| s.trim());
-        let default = parts.get(1).map_or(0, |s| s.trim().parse::<i32>().unwrap_or(0));
+    #[test]
+    fn test_get_plain_prefix() {
+        setup_config();
+        assert_eq!(get_plain_prefix().unwrap(), "plain:");
+    }
 
-        // Try to read from config
-        let config_result = match config::get_fish11_config() {
-            Ok(config) => match key {
-                "mark_position" => config.mark_position as i32,
-                _ => default,
-            },
-            Err(_) => default,
-        };
-
-        Ok(config_result.to_string())
-    })
+    #[test]
+    fn test_get_encryption_mark() {
+        setup_config();
+        let (pos, mark) = get_encryption_mark().unwrap();
+        assert_eq!(pos, 42);
+        assert_eq!(mark, "[ENCRYPTED]");
+    }
 }

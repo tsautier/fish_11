@@ -1,86 +1,144 @@
-//! File deletion function for FiSH 11
-
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
 use winapi::shared::minwindef::BOOL;
 use winapi::shared::windef::HWND;
 
-use crate::buffer_utils::write_string_to_buffer;
+use crate::buffer_utils;
 use crate::config;
-use crate::dll_function_utils::{
-    DllFunctionContext, DllResult, dll_function_wrapper, extract_input_string,
-};
+use crate::dll_function;
+use crate::dll_interface::MIRC_COMMAND;
+use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 
-/// Deletes an encryption key for a specific nickname from storage
-///
-/// This function removes a stored encryption key along with its associated metadata,
-/// providing detailed feedback about what was deleted. It first gathers information
-/// about the key before deletion to create an informative success message.
-#[no_mangle]
-#[allow(non_snake_case)]
-pub extern "stdcall" fn FiSH11_FileDelKey(
-    _m_wnd: HWND,
-    _a_wnd: HWND,
-    data: *mut c_char,
-    _parms: *mut c_char,
-    _show: BOOL,
-    _nopause: BOOL,
-) -> c_int {
-    dll_function_wrapper(data, "FiSH11_FileDelKey", |data, ctx| file_del_key_impl(data, ctx))
-}
+dll_function!(FiSH11_FileDelKey, data, {
+    let input = unsafe { buffer_utils::parse_buffer_input(data)? };
 
-/// Implementation for deleting encryption keys from storage
-fn file_del_key_impl(data: *mut c_char, ctx: &DllFunctionContext) -> DllResult<()> {
-    let input = extract_input_string(data, ctx)?;
     let nickname = normalize_nick(input.trim());
-
-    ctx.log_info(&format!("Key deletion requested for nickname: {}", nickname));
-
-    // First, gather information about what we're deleting for a more informative message
-    let mut extra_info = String::new(); // Try to get key info before deleting
-    if let Ok(keys) = config::list_keys() {
-        for (key_name, network, _key_type, date) in keys {
-            if key_name == nickname {
-                if !network.is_empty() && network != "default" {
-                    extra_info.push_str(&format!(" (network: {})", network));
-                    ctx.log_info(&format!("Found key for {} on network: {}", nickname, network));
-                }
-
-                if let Some(date_str) = date {
-                    extra_info.push_str(&format!(", added: {}", date_str));
-                    ctx.log_info(&format!("Key was added on: {}", date_str));
-                }
-
-                break;
-            }
-        }
+    if nickname.is_empty() {
+        return Err(DllError::MissingParameter("nickname".to_string()));
     }
 
-    // Delete key using default function
-    match config::delete_key_default(&nickname) {
-        Ok(_) => {
-            let message = if extra_info.is_empty() {
-                format!("Key deleted for {}", nickname)
-            } else {
-                format!("Key deleted for {}{}", nickname, extra_info)
-            };
+    log::info!("Key deletion requested for nickname: {}", nickname);
 
-            ctx.log_info(&message);
-            unsafe {
-                write_string_to_buffer(data, ctx.buffer_size, &message)?;
-            }
-        }
-        Err(e) => {
-            let error_msg = format!("Error deleting key: {}", e);
-            ctx.log_error(&format!("Error deleting key for {}: {}", nickname, e));
+    // The `?` operator handles any errors during deletion.
+    config::delete_key_default(&nickname)?;
 
-            unsafe {
-                write_string_to_buffer(data, ctx.buffer_size, &error_msg)?;
-            }
+    let message = format!("/echo -ts Key deleted for {}", nickname);
+    log::info!("{}", message);
+
+    Ok(message)
+});
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dll_interface::MIRC_COMMAND;
+    use std::ffi::{CStr, CString};
+    use std::ptr;
+
+    fn call_delkey(input: &str, buffer_size: usize) -> (c_int, String) {
+        let mut buffer = vec![0i8; buffer_size];
+
+        // Copy input string to buffer
+        let c_input = CString::new(input).unwrap();
+        let input_bytes = c_input.as_bytes_with_nul();
+        let copy_len = input_bytes.len().min(buffer_size);
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                input_bytes.as_ptr(),
+                buffer.as_mut_ptr() as *mut u8,
+                copy_len,
+            );
         }
+
+        // Override buffer size for this test to prevent heap corruption
+        let prev_size = crate::dll_interface::override_buffer_size_for_test(buffer_size);
+
+        let result = FiSH11_FileDelKey(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            buffer.as_mut_ptr(),
+            ptr::null_mut(),
+            0,
+            0,
+        );
+
+        // Restore previous buffer size
+        crate::dll_interface::restore_buffer_size_for_test(prev_size);
+
+        let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
+        (result, c_str.to_string_lossy().to_string())
     }
 
-    Ok(())
+    #[test]
+    fn test_delkey_normal() {
+        // Create a test key for "bob" first
+        let test_key = [1u8; 32];
+        config::set_key_default("bob", &test_key, true).unwrap();
+        
+        let (code, msg) = call_delkey("bob", 256);
+        assert_eq!(code, MIRC_COMMAND);
+        // Structured check: message should start with echo and mention bob
+        assert!(msg.starts_with("/echo -ts Key deleted for bob"));
+    }
+
+    #[test]
+    fn test_delkey_nickname_empty() {
+        let (code, msg) = call_delkey("   ", 256);
+        assert_eq!(code, MIRC_COMMAND);
+        // Structured check: message should mention empty input or missing parameter
+        assert!(msg.to_lowercase().contains("empty") || msg.to_lowercase().contains("missing"));
+    }
+
+    #[test]
+    fn test_delkey_key_not_found() {
+        let (code, msg) = call_delkey("unknown_nick", 256);
+        assert_eq!(code, MIRC_COMMAND);
+        // Structured check: message should mention no encryption key
+        assert!(msg.to_lowercase().contains("no encryption key"));
+    }
+
+    #[test]
+    fn test_delkey_buffer_too_small() {
+        // Create a test key for "alice" first  
+        let test_key = [1u8; 32];
+        config::set_key_default("alice", &test_key, true).unwrap();
+        
+        let (code, msg) = call_delkey("alice", 8);
+        assert_eq!(code, MIRC_COMMAND);
+        // Structured check: message is truncated
+        assert!(msg.len() < 20);
+    }
+
+    #[test]
+    fn test_delkey_malformed_input() {
+        // Test with a buffer containing null byte in the middle
+        let mut buffer = vec![0i8; 256];
+        // Write "a\0b" to the buffer
+        buffer[0] = b'a' as i8;
+        buffer[1] = 0;
+        buffer[2] = b'b' as i8;
+
+        // Override buffer size for this test
+        let prev_size = crate::dll_interface::override_buffer_size_for_test(buffer.len());
+
+        let result = FiSH11_FileDelKey(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            buffer.as_mut_ptr(),
+            ptr::null_mut(),
+            0,
+            0,
+        );
+
+        // Restore previous buffer size
+        crate::dll_interface::restore_buffer_size_for_test(prev_size);
+
+        let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
+        assert_eq!(result, MIRC_COMMAND);
+        // The function will read "a" and try to delete key for "a"
+        // It should return an error message (key not found or similar)
+        assert!(c_str.to_string_lossy().len() > 0);
+    }
 }
