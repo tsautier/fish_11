@@ -292,72 +292,82 @@ on *:NOTICE:*:*:{
 
 ; === KEY EXCHANGE PROTOCOL HANDLERS ===
 on ^*:NOTICE:X25519_INIT*:?:{
-  ; 25519 base64 encoded public key should be 44 chars
-  if ($len($2) == 44) {
-    query $nick
-    echo $color(Mode text) -tm $nick *** FiSH_11: Received X25519 public key from $nick $+ , sending mine...
-    
-    ; Generate our key pair
-    var %tempkey = $dll(%Fish11DllFile, FiSH_ExchangeKey11, none)
-    if (%tempkey) {
-      %fish11.prv_key = $gettok(%tempkey, 1, 32)
-      %fish11.pub_key = $gettok(%tempkey, 2, 32)
-      unset %tempkey
-      
-      ; Process the received key
-      var %secret = $dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $+($nick," ",$2))
-      
-      ; Send our public key back
-      .notice $nick X25519_FINISH %fish11.pub_key
-      
-      ; Set the computed shared key
-      fish11_setkey $nick %secret
-      
-      unset %fish11.prv_key
-      unset %fish11.pub_key
-      unset %secret
+  ; Normalize incoming public key: accept either raw base64 (44 chars) or the
+  ; formatted token "FiSH11-PubKey:...". FiSH11_ProcessPublicKey expects the
+  ; formatted token, so wrap raw base64 when necessary.
+  var %their_pub = $2
+  if ($left(%their_pub,10) != FiSH11-PubKey:) {
+    if ($len(%their_pub) == 44) {
+      set %their_pub FiSH11-PubKey:%their_pub
     }
     else {
-      echo $color(Mode text) -tm $nick *** FiSH_11: error generating key pair
+      ; Not a known pubkey format — ignore
+      halt
     }
   }
+
+  ; Notify user and ensure we have our own keypair
+  query $nick
+  echo $color(Mode text) -tm $nick *** FiSH_11: received X25519 public key from $nick, generating/responding with our public key...
+
+  ; Ensure our keypair exists and capture the DLL's returned formatted message
+  var %our_pub = $dll(%Fish11DllFile, FiSH11_ExchangeKey, $nick)
+
+  ; %our_pub should now be a token like FiSH11-PubKey:... if successful
+
+  ; Process the received public key using the DLL which computes and stores the shared secret
+  if ($dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $+($nick," ",%their_pub))) {
+    ; If we have our public key token, send it as X25519_FINISH
+    if (%our_pub != $null && $left(%our_pub,10) == FiSH11-PubKey:) {
+      .notice $nick X25519_FINISH %our_pub
+      echo $color(Mode text) -tm $nick *** FiSH_11: sent X25519_FINISH to $nick
+    }
+    else {
+      echo $color(Mode text) -tm $nick *** FiSH_11: keypair generated but no public token returned from DLL
+    }
+  }
+  else {
+    echo $color(Mode text) -tm $nick *** FiSH_11: error processing received public key
+  }
+
   halt
 }
 
 
 
 on ^*:NOTICE:X25519_FINISH*:?:{
+  ; Ensure an exchange is in progress
   if (%fish11.dh_ $+ [ $nick ] != 1) {
     echo "*** FiSH_11: no key exchange in progress!"
     halt
   }
-  
-  if ($len($2) > 178 && $len($2) < 182) {
-    if ($len(%fish11.prv_key) == 180 || $len(%fish11.prv_key) == 181) {
-      ; Process the received public key with our private key
-      var %secret = $dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $+($nick," ",$2))
-        if (%secret) {
-        ; Set the computed shared key
-        fish11_setkey $nick %secret
-        
-        ; Clean up
-        unset %fish11.dh_ $+ [ $nick ]
-        unset %fish11.prv_key
-        unset %fish11.pub_key
-        unset %secret
-        
-        ; Cancel any pending timeout timer for this nick
-        .timer fish_timeout_ $+ $nick off
-        
-        echo $color(Mode text) -tm $nick *** FiSH_11: key exchange complete with $nick
-        echo $color(Error) -tm $nick *** FiSH_11: WARNING: Key exchange complete, but the identity of $nick is NOT VERIFIED.
-        echo $color(Error) -tm $nick *** FiSH_11: Use /fish_fp11 $nick to see their key fingerprint and verify it with them through a secure channel (e.g., voice call).
-      }
-      else {
-        echo $color(Mode text) -tm $nick *** FiSH_11: error processing key exchange
-      }
+
+  ; Normalize incoming pubkey token if needed
+  var %their_pub = $2
+  if ($left(%their_pub,10) != FiSH11-PubKey:) {
+    if ($len(%their_pub) == 44) {
+      set %their_pub FiSH11-PubKey:%their_pub
+    }
+    else {
+      echo $color(Mode text) -tm $nick *** FiSH_11: received invalid public key format
+      halt
     }
   }
+
+  ; Process the received public key using the DLL which computes and stores the shared secret
+  if ($dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $+($nick," ",%their_pub))) {
+    ; Clean up state
+    unset %fish11.dh_ $+ [ $nick ]
+    .timer fish_timeout_ $+ $nick off
+
+    echo $color(Mode text) -tm $nick *** FiSH_11: key exchange complete with $nick
+    echo $color(Error) -tm $nick *** FiSH_11: WARNING: Key exchange complete, but the identity of $nick is NOT VERIFIED.
+    echo $color(Error) -tm $nick *** FiSH_11: use /fish_fp11 $nick to see their key fingerprint and verify it with them through a secure channel (e.g., voice call).
+  }
+  else {
+    echo $color(Mode text) -tm $nick *** FiSH_11: error processing key exchange
+  }
+
   halt
 }
 
@@ -378,8 +388,8 @@ alias fish11_timeout_keyexchange {
     unset %fish11.dh_ $+ [ %contact ]
     
     ; Notify user of timeout with instructions
-    echo $color(Mode text) -at *** FiSH_11: Key exchange with %contact timed out after $KEY_EXCHANGE_TIMEOUT_SECONDS seconds
-    echo $color(Mode text) -at *** FiSH_11: To try again, use: /fish11_X25519_INIT %contact
+    echo $color(Mode text) -at *** FiSH_11: key exchange with %contact timed out after $KEY_EXCHANGE_TIMEOUT_SECONDS seconds
+    echo $color(Mode text) -at *** FiSH_11: to try again, use: /fish11_X25519_INIT %contact
   }
 }
 
@@ -398,7 +408,7 @@ on *:NICK:{
     
     ; If a key already exists for the new nick, warn user about conflict
     if ($len(%new_nick_key) > 4) {
-      echo $color(Error) -at *** FiSH_11: Nick Change Conflict! You have a key for $nick, who is now $newnick. However, you ALREADY have a different key for $newnick. No keys were changed. Please resolve this manually.
+      echo $color(Error) -at *** FiSH_11: nick change conflict! You have a key for $nick, who is now $newnick. However, you ALREADY have a different key for $newnick. No keys were changed. Please resolve this manually.
       unset %old_nick_key
       unset %new_nick_key
       return
@@ -406,7 +416,7 @@ on *:NICK:{
     
     ; Store the key under the new nickname
     if ($dll(%Fish11DllFile, FiSH11_SetKey, $+($network," ",$newnick," ",%old_nick_key))) {
-      echo $color(Mode text) -at *** FiSH_11: Key for $nick has been moved to new nick $newnick.
+      echo $color(Mode text) -at *** FiSH_11: key for $nick has been moved to new nick $newnick.
       ; Remove the key from the old nickname to prevent reuse by another user
       noop $dll(%Fish11DllFile, FiSH11_FileDelKey, $+($network," ",$nick))
     }
@@ -433,7 +443,7 @@ on *:JOIN:#:{
       echo $color(Mode text) -at *** FiSH_11: topic encryption enabled for $chan
     }
     ; DEBUG : log the key for debugging purposes
-    echo $color(Mode text) -at *** FiSH_11: Key for $chan is %theKey
+    echo $color(Mode text) -at *** FiSH_11: key for $chan is %theKey
   }
 }
 
@@ -580,12 +590,23 @@ alias fish11_X25519_INIT {
   }
   
   set %fish11.dh_ $+ [ %cur_contact ] 1
-  
-  ; Execute the key exchange function and store result
-  .dll %Fish11DllFile FiSH11_ExchangeKey %cur_contact
-  
-  ; The function sends the public key to the mIRC window directly
-  ; Set the timeout timer using the constant KEY_EXCHANGE_TIMEOUT_SECONDS from the DLL (10 seconds)
+
+  ; Call the DLL exchange function and capture returned text (if any).
+  ; The DLL will generate a keypair and return a formatted string containing
+  ; the public key token in the form "FiSH11-PubKey:...". We extract that
+  ; token and send it as a NOTICE prefixed with X25519_INIT so the peer's
+  ; X25519 handler (which listens for NOTICE X25519_INIT) can continue the flow.
+  ; The DLL now returns the formatted token directly (FiSH11-PubKey:...)
+  var %pub = $dll(%Fish11DllFile, FiSH11_ExchangeKey, %cur_contact)
+  if (%pub != $null && $left(%pub,10) == FiSH11-PubKey:) {
+    .notice %cur_contact X25519_INIT %pub
+    echo $color(Mode text) -tm %cur_contact *** FiSH_11: Sent X25519_INIT to %cur_contact, waiting for reply...
+    .timer fish_timeout_ $+ %cur_contact 1 10 fish11_timeout_keyexchange %cur_contact
+    return
+  }
+
+  ; Fallback: show what we got and start timer anyway
+  echo $color(Mode text) -at *** FiSH_11: Key exchange initiation returned: %pub
   .timer fish_timeout_ $+ %cur_contact 1 10 fish11_timeout_keyexchange %cur_contact
 }
 

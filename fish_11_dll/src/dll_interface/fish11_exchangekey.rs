@@ -62,21 +62,20 @@ dll_function!(FiSH11_ExchangeKey, data, {
 
     debug!("Public key formatted successfully (length: {})", formatted_key.len());
 
-    // Step 5: build the output message
-    let key_status = if key_was_generated {
-        " (Note: a new encryption key was automatically generated)"
+    // Return the formatted public key token directly so callers (like the mIRC
+    // script) can use it programmatically instead of parsing a verbose /echo
+    // message. Keep logging for UX and debugging.
+    if key_was_generated {
+        info!(
+            "Key exchange setup completed for {} (generated new key)",
+            nickname
+        );
     } else {
-        ""
-    };
+        info!("Key exchange setup completed successfully for {}", nickname);
+    }
 
-    let message = format!(
-        "/echo -ts Your public key (send this to {}){}: {} | Exchange will timeout in {} seconds if no response",
-        nickname, key_status, formatted_key, KEY_EXCHANGE_TIMEOUT_SECONDS
-    );
-
-    info!("Key exchange setup completed successfully for {}", nickname);
-
-    Ok(message)
+    // Return only the token, e.g. "FiSH11-PubKey:BASE64..."
+    Ok(formatted_key)
 });
 
 // ========== HELPER FUNCTIONS ==========
