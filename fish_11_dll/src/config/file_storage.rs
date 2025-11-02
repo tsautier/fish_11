@@ -187,7 +187,7 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
         Ok(_) => {
             log::debug!("load_config: INI file loaded successfully from {}", config_path.display());
             log::debug!("load_config: sections found: {:?}", ini.sections());
-            log::debug!("load_config: iull INI map: {:?}", ini.get_map_ref());
+            log::debug!("load_config: full INI map: {:?}", ini.get_map_ref());
 
             #[cfg(debug_assertions)]
             log::info!("load_config: INI file parsed successfully");
