@@ -1245,16 +1245,17 @@ impl SocketInfo {
         
         /// Build trampoline with enhanced safety
         unsafe fn build_trampoline(
-            trampoline: &mut AlignedTrampoline,
+            trampoline_ptr: *mut AlignedTrampoline,
             original_bytes: &[u8],
             return_addr: u64,
         ) -> Result<(), String> {
-            // Clear trampoline buffer
+            // Safety: caller must ensure exclusive access to trampoline_ptr
+            let trampoline = &mut *trampoline_ptr;
             trampoline.buf.fill(0);
-        
+
             // Copy original instructions
             ptr::copy_nonoverlapping(original_bytes.as_ptr(), trampoline.buf.as_mut_ptr(), JMP_SIZE);
-        
+
             // Create jump back to original function + JMP_SIZE
             let mut jmp_back = [0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xE0]; // mov rax, addr; jmp rax
             jmp_back[2..10].copy_from_slice(&return_addr.to_le_bytes());
@@ -1264,14 +1265,14 @@ impl SocketInfo {
                 trampoline.buf.as_mut_ptr().add(JMP_SIZE),
                 JMP_SIZE,
             );
-        
+
             // Make trampoline executable
             change_memory_protection(
                 trampoline.buf.as_mut_ptr() as *mut c_void,
                 TRAMPOLINE_SIZE,
                 PAGE_EXECUTE_READ,
             )?;
-        
+
             Ok(())
         }
         
@@ -1356,37 +1357,36 @@ impl SocketInfo {
             // Save original bytes
             ptr::copy_nonoverlapping(
                 ssl_read as *const u8,
-                SSL_READ_ORIG_BYTES.as_mut_ptr(),
+                addr_of_mut!(SSL_READ_ORIG_BYTES).cast::<u8>(),
                 JMP_SIZE,
             );
             ptr::copy_nonoverlapping(
                 ssl_write as *const u8,
-                SSL_WRITE_ORIG_BYTES.as_mut_ptr(),
+                addr_of_mut!(SSL_WRITE_ORIG_BYTES).cast::<u8>(),
                 JMP_SIZE,
             );
         
             // Build trampolines
             let read_ret_addr = (ssl_read as usize + JMP_SIZE) as u64;
             let write_ret_addr = (ssl_write as usize + JMP_SIZE) as u64;
-        
-            build_trampoline(&mut SSL_READ_TRAMPOLINE, &SSL_READ_ORIG_BYTES, read_ret_addr)?;
-            build_trampoline(&mut SSL_WRITE_TRAMPOLINE, &SSL_WRITE_ORIG_BYTES, write_ret_addr)?;
+            build_trampoline(addr_of_mut!(SSL_READ_TRAMPOLINE), &SSL_READ_ORIG_BYTES, read_ret_addr)?;
+            build_trampoline(addr_of_mut!(SSL_WRITE_TRAMPOLINE), &SSL_WRITE_ORIG_BYTES, write_ret_addr)?;
         
             // Store original function pointers
-            ORIG_SSL_READ = Some(mem::transmute(SSL_READ_TRAMPOLINE.buf.as_ptr()));
-            ORIG_SSL_WRITE = Some(mem::transmute(SSL_WRITE_TRAMPOLINE.buf.as_ptr()));
+            ORIG_SSL_READ = Some(mem::transmute(addr_of!(SSL_READ_TRAMPOLINE).cast::<u8>().add(0)));
+            ORIG_SSL_WRITE = Some(mem::transmute(addr_of!(SSL_WRITE_TRAMPOLINE).cast::<u8>().add(0)));
         
             // Apply patches
             patch_function(
                 ssl_read as *mut u8,
                 my_ssl_read as *const u8,
-                &mut SSL_READ_ORIG_BYTES,
+                &mut *addr_of_mut!(SSL_READ_ORIG_BYTES),
             )?;
             
             patch_function(
                 ssl_write as *mut u8,
                 my_ssl_write as *const u8,
-                &mut SSL_WRITE_ORIG_BYTES,
+                &mut *addr_of_mut!(SSL_WRITE_ORIG_BYTES),
             )?;
         
             *patched = true;
@@ -1417,8 +1417,10 @@ impl SocketInfo {
             }
         
             // Restore original functions
-            unpatch_function(ssl_read as *mut u8, &SSL_READ_ORIG_BYTES)?;
-            unpatch_function(ssl_write as *mut u8, &SSL_WRITE_ORIG_BYTES)?;
+            let ssl_read_orig = std::slice::from_raw_parts(addr_of!(SSL_READ_ORIG_BYTES).cast::<u8>(), JMP_SIZE);
+            let ssl_write_orig = std::slice::from_raw_parts(addr_of!(SSL_WRITE_ORIG_BYTES).cast::<u8>(), JMP_SIZE);
+            unpatch_function(ssl_read as *mut u8, ssl_read_orig)?;
+            unpatch_function(ssl_write as *mut u8, ssl_write_orig)?;
         
             // Clear function pointers
             ORIG_SSL_READ = None;
@@ -1426,12 +1428,12 @@ impl SocketInfo {
         
             // Make trampolines non-executable
             let _ = change_memory_protection(
-                SSL_READ_TRAMPOLINE.buf.as_mut_ptr() as *mut c_void,
+                addr_of_mut!(SSL_READ_TRAMPOLINE).cast::<c_void>(),
                 TRAMPOLINE_SIZE,
                 PAGE_READONLY,
             );
             let _ = change_memory_protection(
-                SSL_WRITE_TRAMPOLINE.buf.as_mut_ptr() as *mut c_void,
+                addr_of_mut!(SSL_WRITE_TRAMPOLINE).cast::<c_void>(),
                 TRAMPOLINE_SIZE,
                 PAGE_READONLY,
             );
