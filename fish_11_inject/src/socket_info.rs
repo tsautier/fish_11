@@ -1227,12 +1227,12 @@ impl SocketInfo {
 
         // Parse extensions
         while pos + 4 <= extensions_end {
-            //! ssl_inline_patch.rs
-            //! Inline patching for SSL_read and SSL_write (64-bit Windows, OpenSSL)
-            //! Enhanced version based on C++ implementation
-            //!
-            //! Written by [GuY], 2025. GPL v3.
-            //! This file is part of the FiSH_11 project.
+            // ssl_inline_patch.rs
+            // Inline patching for SSL_read and SSL_write (64-bit Windows, OpenSSL)
+            // Enhanced version based on C++ implementation
+            //
+            // Written by [GuY], 2025. GPL v3.
+            // This file is part of the FiSH_11 project.
 
             use std::mem;
             use std::ptr::{self, addr_of, addr_of_mut};
@@ -1263,6 +1263,7 @@ impl SocketInfo {
             static mut ORIG_SSL_WRITE: Option<SslWriteFn> = None;
 
             #[repr(align(16))]
+            #[allow(dead_code)]
             pub struct AlignedTrampoline {
                 buf: [u8; TRAMPOLINE_SIZE],
             }

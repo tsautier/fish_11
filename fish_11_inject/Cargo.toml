@@ -22,7 +22,8 @@ windows = { version = "0.62.2", features = [
 ] }
 
 # For hooking
-retour = { git = "https://github.com/Hpmason/retour-rs.git" }
+# Forked from : https://github.com/Hpmason/retour-rs.git to be sure it is maintained and working
+retour = { git = "https://github.com/ggielly/retour-rs.git" }
 
 # Utility
 lazy_static = "1.5.0"
