@@ -298,94 +298,69 @@ on *:NOTICE:*:*:{
 
 ; === KEY EXCHANGE PROTOCOL HANDLERS ===
 on ^*:NOTICE:X25519_INIT*:?:{
-  ; Normalize incoming public key: accept either raw base64 (44 chars) or the
-  ; formatted token "FiSH11-PubKey:...". FiSH11_ProcessPublicKey expects the
-  ; formatted token, so wrap raw base64 when necessary.
-  var %their_pub = $2
-  if ($left(%their_pub,10) != FiSH11-PubKey:) {
-    if ($len(%their_pub) == 44) {
-      set %their_pub FiSH11-PubKey:%their_pub
-    }
-    else {
-      ; Not a known pubkey format — ignore
-      halt
-    }
+  ; This event triggers when someone initiates a key exchange with us.
+  ; $1 = X25519_INIT, $2- = public key token from peer
+  var %their_pub = $2-
+
+  ; Validate incoming key format using regex for robustness.
+  if (!$regex(%their_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/=]{44}/i)) {
+    echo $color(Mode text) -tm $nick *** FiSH_11: received invalid INIT key format from $nick
+    halt
   }
 
-  ; Notify user and ensure we have our own keypair
   query $nick
-  echo $color(Mode text) -tm $nick *** FiSH_11: received X25519 public key from $nick, generating/responding with our public key...
+  echo $color(Mode text) -tm $nick *** FiSH_11: received X25519 public key from $nick, responding...
 
-  ; Ensure our keypair exists and capture the DLL's returned formatted message
+  ; 1. Generate our own keypair (or get existing one). The DLL returns our public key token.
   var %our_pub = $dll(%Fish11DllFile, FiSH11_ExchangeKey, $nick)
-  if (%our_pub != $null) {
-    set %our_pub $replace(%our_pub, $chr(13) $+ $chr(10), $chr(32), $chr(13), $chr(32), $chr(10), $chr(32))
-    set %our_pub $strip(%our_pub)
-  }
-  ; %our_pub should now be a token like FiSH11-PubKey:... if successful
 
-  ; Process the received public key using the DLL which computes and stores the shared secret
-  if ($dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $+($nick," ",%their_pub))) {
-    ; If we have our public key token, send it as X25519_FINISH
-    if (%our_pub != $null && $left(%our_pub,10) == FiSH11-PubKey:) {
-      var %enc2 = $mid(%our_pub, 12, 9999)
-      if ($len(%enc2) == 44) {
-        .notice $nick X25519_FINISH %our_pub
-        echo $color(Mode text) -tm $nick *** FiSH_11: sent X25519_FINISH to $nick
-      }
-      else {
-        echo $color(Mode text) -tm $nick *** FiSH_11: invalid public token returned by DLL (bad length)
-      }
+  ; 2. Process their public key. This computes and saves the shared secret.
+  if ($dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $nick %their_pub)) {
+    ; 3. If successful, send our public key back to them so they can complete the exchange.
+    if ($regex(%our_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/=]{44}/i)) {
+      .notice $nick X25519_FINISH %our_pub
+      echo $color(Mode text) -tm $nick *** FiSH_11: sent X25519_FINISH to $nick
     }
     else {
-      echo $color(Mode text) -tm $nick *** FiSH_11: keypair generated but no public token returned from DLL
+      echo $color(Mode text) -tm $nick *** FiSH_11: ERROR - could not generate our own public key to send in reply. DLL returned: $qt(%our_pub)
     }
   }
   else {
-    echo $color(Mode text) -tm $nick *** FiSH_11: error processing received public key
+    echo $color(Mode text) -tm $nick *** FiSH_11: ERROR - failed to process public key from $nick
   }
 
   halt
 }
 
-
-
 on ^*:NOTICE:X25519_FINISH*:?:{
-  ; Ensure an exchange is in progress
+  ; This event triggers when a peer responds to our key exchange initiation.
+  ; $1 = X25519_FINISH, $2- = public key token from peer
+
+  ; Ensure an exchange is in progress with this user.
   if (%fish11.dh_ $+ [ $nick ] != 1) {
-    echo "*** FiSH_11: no key exchange in progress!"
+    echo -at *** FiSH_11: received a FINISH notice, but no key exchange was in progress with $nick $+ .
     halt
   }
 
-  ; Normalize incoming pubkey token if needed
-  var %their_pub = $2
-  if ($left(%their_pub,10) != FiSH11-PubKey:) {
-    if ($len(%their_pub) == 44) {
-      set %their_pub FiSH11-PubKey:%their_pub
+  var %their_pub = $2-
+
+  ; Use regex to validate the key format from the peer.
+  if ($regex(%their_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/=]{44}/i)) {
+    ; Process the received public key. The DLL computes and stores the shared secret.
+    if ($dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $nick %their_pub)) {
+      ; Success! Clean up state variables.
+      unset %fish11.dh_ $+ [ $nick ]
+
+      echo $color(Mode text) -tm $nick *** FiSH_11: key exchange complete with $nick
+      echo $color(Error) -tm $nick *** FiSH_11 WARNING: key exchange complete, but the identity of $nick is NOT VERIFIED.
+      echo $color(Error) -tm $nick *** FiSH_11: use /fish_fp11 $nick to see their key fingerprint and verify it with them through a secure channel.
     }
     else {
-      echo $color(Mode text) -tm $nick *** FiSH_11: received invalid public key format
-      halt
+      echo $color(Mode text) -tm $nick *** FiSH_11: ERROR - processing peer's public key failed.
     }
   }
-
-  ; Process the received public key using the DLL which computes and stores the shared secret
-  if ($dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $+($nick," ",%their_pub))) {
-    ; Clean up state
-  unset %fish11.dh_ $+ [ $nick ]
-  ; sanitize timer name for nick and stop it; ensure fallback if empty
-  var %timer_name = $regsubex($nick, /[^A-Za-z0-9_]/g, _)
-  if (%timer_name == $null) { set %timer_name _anon_$rand(1000,9999) }
-  ; sanitize timer name used for stop (remove quotes/equals just in case)
-  var %stop_timer_name = $replace($+(fish_timeout_,%timer_name), $chr(34), $null, $chr(61), $null)
-  .timer %stop_timer_name off
-
-    echo $color(Mode text) -tm $nick *** FiSH_11: key exchange complete with $nick
-    echo $color(Error) -tm $nick *** FiSH_11 WARNING: key exchange complete, but the identity of $nick is NOT VERIFIED.
-    echo $color(Error) -tm $nick *** FiSH_11: use /fish_fp11 $nick to see their key fingerprint and verify it with them through a secure channel (e.g., voice call).
-  }
   else {
-    echo $color(Mode text) -tm $nick *** FiSH_11: error processing key exchange
+    echo $color(Mode text) -tm $nick *** FiSH_11: received invalid FINISH key format from $nick $+ : $qt(%their_pub)
   }
 
   halt
@@ -616,7 +591,7 @@ alias fish11_X25519_INIT {
   ; hidden characters or whitespace returned by the DLL.
   if ($regex(%pub, /^FiSH11-PubKey:[A-Za-z0-9+\/=]{44}/i)) {
     .notice %cur_contact X25519_INIT %pub
-    echo $color(Mode text) -tm %cur_contact *** FiSH_11: sent X25519_INIT to %cur_contact, waiting for reply...
+    echo $color(Mode text) -tm %cur_contact *** FiSH_11: sent X25519_INIT to %cur_contact $+ , waiting for reply...
   }
   else {
     ; Fallback: show what we got (safely)
