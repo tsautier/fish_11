@@ -335,9 +335,8 @@ on ^*:NOTICE:X25519_INIT*:?:{
 on ^*:NOTICE:X25519_FINISH*:?:{
   ; This event triggers when a peer responds to our key exchange initiation.
   ; $1 = X25519_FINISH, $2- = public key token from peer
-
-  ; Ensure an exchange is in progress with this user.
-  if (%fish11.dh_ $+ [ $nick ] != 1) {
+  ; Ensure an exchange is in progress with this user by checking the hash table.
+  if ($hget(fish11.dh, $nick).item != 1) {
     echo -at *** FiSH_11: received a FINISH notice, but no key exchange was in progress with $nick $+ .
     halt
   }
@@ -349,7 +348,7 @@ on ^*:NOTICE:X25519_FINISH*:?:{
     ; Process the received public key. The DLL computes and stores the shared secret.
     if ($dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $nick %their_pub)) {
       ; Success! Clean up state variables.
-      unset %fish11.dh_ $+ [ $nick ]
+      hdel fish11.dh $nick
 
       echo $color(Mode text) -tm $nick *** FiSH_11: key exchange complete with $nick
       echo $color(Error) -tm $nick *** FiSH_11 WARNING: key exchange complete, but the identity of $nick is NOT VERIFIED.
@@ -377,12 +376,12 @@ alias fish11_timeout_keyexchange {
   
   var %contact = $1
   
-  ; Check if key exchange is still in progress
-  if (%fish11.dh_ $+ [ %contact ] == 1) {
-    ; Clean up variables
-    unset %fish11.dh_ $+ [ %contact ]
+  ; Check if key exchange is still in progress.
+  if ($hget(fish11.dh, %contact).item == 1) {
+    ; Clean up variables.
+    hdel fish11.dh %contact
     
-    ; Notify user of timeout with instructions
+    ; Notify user of timeout with instructions.
     echo $color(Mode text) -at *** FiSH_11: key exchange with %contact timed out after $KEY_EXCHANGE_TIMEOUT_SECONDS seconds
     echo $color(Mode text) -at *** FiSH_11: to try again, use: /fish11_X25519_INIT %contact
   }
@@ -583,7 +582,8 @@ alias fish11_X25519_INIT {
     echo $color(Mode text) -at *** FiSH_11: restarting key exchange with %cur_contact
   }
 
-  set %fish11.dh_ $+ [ %cur_contact ] 1
+  ; Use a hash table to track in-progress exchanges.
+  hadd -m fish11.dh %cur_contact 1
 
   var %pub = $dll(%Fish11DllFile, FiSH11_ExchangeKey, %cur_contact)
 
