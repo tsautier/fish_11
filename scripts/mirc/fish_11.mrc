@@ -376,7 +376,9 @@ on ^*:NOTICE:X25519_FINISH*:?:{
   ; sanitize timer name for nick and stop it; ensure fallback if empty
   var %timer_name = $regsubex($nick, /[^A-Za-z0-9_]/g, _)
   if (%timer_name == $null) { set %timer_name _anon_$rand(1000,9999) }
-  .timer $+(fish_timeout_,%timer_name) off
+  ; sanitize timer name used for stop (remove quotes/equals just in case)
+  var %stop_timer_name = $replace($+(fish_timeout_,%timer_name), $chr(34), $null, $chr(61), $null)
+  .timer %stop_timer_name off
 
     echo $color(Mode text) -tm $nick *** FiSH_11: key exchange complete with $nick
     echo $color(Error) -tm $nick *** FiSH_11 WARNING: key exchange complete, but the identity of $nick is NOT VERIFIED.
@@ -606,7 +608,9 @@ alias fish11_X25519_INIT {
     ; sanitize timer name (no spaces or special chars) and ensure fallback
     var %timer_name = $regsubex(%cur_contact, /[^A-Za-z0-9_]/g, _)
     if (%timer_name == $null) { set %timer_name _anon_$rand(1000,9999) }
-    .timer $+(fish_timeout_,%timer_name) off
+  ; sanitize timer name used for stop (remove quotes/equals just in case)
+  var %stop_timer_name = $replace($+(fish_timeout_,%timer_name), $chr(34), $null, $chr(61), $null)
+  .timer %stop_timer_name off
     echo $color(Mode text) -at *** FiSH_11: restarting key exchange with %cur_contact
   }
   
@@ -657,9 +661,11 @@ alias fish11_X25519_INIT {
     }
   }
   echo 4 -a DEBUG : fish11 full timer ascii= %full_timer_ascii
-  echo 4 -a DEBUG : fish11 about to start timer (%KEY_EXCHANGE_TIMEOUT_SECONDS sec)
-  ; Start a named single-shot timer: name [time] <repetitions> <interval> <command>
-  .timer %full_timer_name 0 1 %KEY_EXCHANGE_TIMEOUT_SECONDS fish11_timeout_keyexchange %cur_contact
+  ; Sanitize the computed full timer name (strip quotes and equals) before use
+  var %full_timer_name = $replace(%full_timer_name, $chr(34), $null, $chr(61), $null)
+  echo 4 -a DEBUG : fish11 sanitized full timer= $qt(%full_timer_name)
+  ; Use unnamed auto-ID timer to avoid all name parsing issues
+  .timer 1 %KEY_EXCHANGE_TIMEOUT_SECONDS fish11_timeout_keyexchange %cur_contact
       return
     }
     else {
@@ -688,8 +694,11 @@ alias fish11_X25519_INIT {
     }
   }
   echo 4 -a DEBUG : fish11 full timer ascii= %full_timer_ascii
-  ; Start a named single-shot timer: name [time] <repetitions> <interval> <command>
-  .timer %full_timer_name 0 1 %KEY_EXCHANGE_TIMEOUT_SECONDS fish11_timeout_keyexchange %cur_contact
+  ; Sanitize the computed full timer name (strip quotes and equals) before use
+  var %full_timer_name = $replace(%full_timer_name, $chr(34), $null, $chr(61), $null)
+  echo 4 -a DEBUG : fish11 sanitized full timer= $qt(%full_timer_name)
+  ; Use unnamed auto-ID timer to avoid all name parsing issues
+  .timer 1 %KEY_EXCHANGE_TIMEOUT_SECONDS fish11_timeout_keyexchange %cur_contact
       return
     }
   }
@@ -719,8 +728,11 @@ alias fish11_X25519_INIT {
     }
   }
   echo 4 -a DEBUG : fish11 full timer ascii= %full_timer_ascii
-  ; Start a named single-shot timer: name [time] <repetitions> <interval> <command>
-  .timer %full_timer_name 0 1 %KEY_EXCHANGE_TIMEOUT_SECONDS fish11_timeout_keyexchange %cur_contact
+  ; Sanitize the computed full timer name (strip quotes and equals) before use
+  var %full_timer_name = $replace(%full_timer_name, $chr(34), $null, $chr(61), $null)
+  echo 4 -a DEBUG : fish11 sanitized full timer= $qt(%full_timer_name)
+  ; Use unnamed auto-ID timer to avoid all name parsing issues
+  .timer 1 %KEY_EXCHANGE_TIMEOUT_SECONDS fish11_timeout_keyexchange %cur_contact
 }
 
 
