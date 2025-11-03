@@ -25,7 +25,7 @@ dll_function_identifier!(FiSH11_Help, _data, {
         "  FiSH11_FileListKeys : list all stored keys".to_string(),
         "  FiSH11_EncryptMsg <nick> <message> : encrypt a message".to_string(),
         "  FiSH11_DecryptMsg <nick> <message> : decrypt a message".to_string(),
-        "  FiSH11_ExchangeKey <nick> : Ssart key exchange".to_string(),
+        "  FiSH11_ExchangeKey <nick> : Start key exchange".to_string(),
         "  FiSH11_ProcessPublicKey <nick> <key> : process received key".to_string(),
         "  FiSH11_TestCrypt <message> : test encryption".to_string(),
     ];
