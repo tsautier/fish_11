@@ -1,6 +1,5 @@
-use std::ffi::{CStr, c_char};
+use std::ffi::c_char;
 use std::os::raw::c_int;
-use std::ptr;
 
 use winapi::shared::minwindef::BOOL;
 use winapi::shared::windef::HWND;

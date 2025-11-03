@@ -1,2 +1,0 @@
-// NOTE: this file has been moved to /experimental/ssl_inline_patch.rs and is not part of the build.
-// It is kept here as a placeholder to avoid breaking file-based lookups, but its content is in the experimental directory.

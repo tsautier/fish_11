@@ -8,7 +8,7 @@ use crate::buffer_utils;
 use crate::config;
 use crate::crypto;
 use crate::dll_function_identifier;
-use crate::unified_error::{DllError, DllResult};
+use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 
 /// Encrypts a message for a specific nickname using ChaCha20-Poly1305 authenticated encryption.

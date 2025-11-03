@@ -6,8 +6,7 @@ use winapi::shared::windef::HWND;
 
 use crate::buffer_utils;
 use crate::dll_function_identifier;
-use crate::dll_interface::{MIRC_COMMAND, MIRC_HALT};
-use crate::unified_error::{DllError, DllResult};
+use crate::unified_error::DllError;
 
 dll_function_identifier!(FiSH11_SetMircDir, data, {
     // unsafe is required here because we are dereferencing a raw pointer from C.
