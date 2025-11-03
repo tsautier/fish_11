@@ -923,6 +923,9 @@ impl SocketInfo {
                     line_buffer.push_str(line);
                     line_buffer.push_str("\r\n");
 
+                    // Process the line through the engines (decryption happens here)
+                    self.on_incoming_irc_line(self.socket, &mut line_buffer);
+
                     bytes_processed += line_buffer.len();
 
                     // Robust lock handling for stats with recovery strategy
@@ -1548,5 +1551,13 @@ impl SocketInfo {
             pos += ext_len;
         }
         None
+    }
+
+    pub fn get_processed_buffer(&self) -> Vec<u8> {
+        self.processed_incoming_buffer.lock().iter().cloned().collect()
+    }
+
+    pub fn clear_processed_buffer(&self) {
+        self.processed_incoming_buffer.lock().clear();
     }
 }

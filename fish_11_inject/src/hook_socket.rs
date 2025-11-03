@@ -99,62 +99,20 @@ pub unsafe extern "system" fn hooked_recv(
             error!("Error processing received lines: {:?}", e);
         }
 
-        // Read processed data back to mIRC's buffer
-        let bytes_copied = socket_info
-            .read_processed_data(std::slice::from_raw_parts_mut(buf as *mut u8, len as usize));
-        trace!(
-            "Socket {}: [RECV HOOK] Full incoming buffer ({} bytes): {:02X?}",
-            s,
-            data_slice.len(),
-            data_slice
-        );
-        if let Ok(data_str) = std::str::from_utf8(data_slice) {
-            trace!("Socket {}: [RECV HOOK] UTF-8: {}", s, data_str.trim_end());
-        } else {
-            trace!("Socket {}: [RECV HOOK] Non-UTF8 data", s);
+        // Read processed data back into mIRC's buffer.
+        // This is the critical step where decrypted data replaces the original encrypted data.
+        let processed_buffer = socket_info.get_processed_buffer();
+        let bytes_to_copy = std::cmp::min(len as usize, processed_buffer.len());
+
+        if bytes_to_copy > 0 {
+            let target_buf = std::slice::from_raw_parts_mut(buf as *mut u8, bytes_to_copy);
+            target_buf.copy_from_slice(&processed_buffer[..bytes_to_copy]);
         }
-        if data_slice.len() > 128 {
-            let mut hasher = Sha256::new();
-            hasher.update(data_slice);
-            let hash = hasher.finalize();
-            trace!(
-                "Socket {}: [RECV HOOK] Large buffer: len={} SHA256={:x} preview={:02X?}",
-                s,
-                data_slice.len(),
-                hash,
-                &data_slice[..32.min(data_slice.len())]
-            );
-        }
-        
-        #[cfg(debug_assertions)]
-        {
-            // Log the processed data that will be returned to mIRC
-            debug!(
-                "[RECV DEBUG] Socket {}: returning {} bytes to mIRC after processing",
-                s, bytes_copied
-            );
-            
-            if bytes_copied > 0 {
-                let processed_slice = std::slice::from_raw_parts(buf as *const u8, bytes_copied);
-                let preview_len = std::cmp::min(64, processed_slice.len());
-                debug!(
-                    "[RECV DEBUG] Socket {}: processed hex preview (first {} bytes): {:02X?}",
-                    s, preview_len, &processed_slice[..preview_len]
-                );
-                
-                if let Ok(text) = std::str::from_utf8(processed_slice) {
-                    let sanitized: String = text.chars()
-                        .map(|c| if c.is_control() && c != '\r' && c != '\n' && c != '\t' { '.' } else { c })
-                        .collect();
-                    debug!(
-                        "[RECV DEBUG] Socket {}: processed UTF-8 content (sanitized): {:?}",
-                        s, sanitized
-                    );
-                }
-            }
-        }
-        
-        return bytes_copied as c_int;
+
+        // After reading, clear the processed buffer for the next round.
+        socket_info.clear_processed_buffer();
+
+        return bytes_to_copy as c_int;
     }
 
     bytes_received

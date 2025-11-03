@@ -148,7 +148,7 @@ $SendahJob = Start-Job -Name Sender -ScriptBlock {
     if ($encToken) {
         Write-Output "Sender encrypted message: $encToken"
         # Now ask receiver to decrypt (simulate by invoking CLI as receiver)
-        $decOut = & $cliPath $dllPath decrypt $rname $encToken | Out-String -Width 4096
+        $decOut = & $cliPath $dllPath decrypt $sname $encToken | Out-String -Width 4096
         "[$(Get-Date -Format o)] Sender (simulate receiver) decrypt output:`n$decOut" | Out-File -FilePath $logFile -Append
         Write-Output "Simulated decrypt output: $decOut"
     } else {

@@ -68,8 +68,8 @@ pub unsafe fn write_cstring_to_buffer(
     // This prevents writing beyond the actual allocated buffer in tests
     let safe_len = copy_len.min(900); // Cap at mIRC limit
 
-    // Clear only the bytes we'll use
-    ptr::write_bytes(data as *mut u8, 0, safe_len);
+    // Clear the entire buffer to prevent garbage data
+    ptr::write_bytes(data as *mut u8, 0, buffer_size);
 
     // Copy data
     ptr::copy_nonoverlapping(bytes.as_ptr(), data as *mut u8, safe_len);

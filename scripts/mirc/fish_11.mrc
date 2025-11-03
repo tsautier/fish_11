@@ -73,10 +73,7 @@ alias fish11_startup {
   ; Key exchange timeout (seconds) - keep in sync with DLL constant; can be overridden by user
   if (%KEY_EXCHANGE_TIMEOUT_SECONDS == $null) { set %KEY_EXCHANGE_TIMEOUT_SECONDS 10 }
   
-    ; Register events for incoming messages
-  .signal *:TEXT:*:*:fish11_incoming_text
-  .signal *:ACTION:*:*:fish11_incoming_action
-  .signal *:NOTICE:*:*:fish11_incoming_notice
+
   
 }
 
@@ -342,80 +339,7 @@ on *:JOIN:#:{
 
 
 ; === SIGNAL HANDLERS ===
-alias fish11_incoming_text {
-  ; $1 = nick, $2 = target, $3- = message
-  var %process_incoming = $dll(%Fish11DllFile, INI_GetBool, process_incoming 1)
-  if (%process_incoming == 0) { return }
 
-  if ($regex($3-, /^\+FiSH /)) {
-    var %key_target = $iif($2 ischan, $2, $1)
-    echo -at DEBUG DECRYPT: Trying to decrypt for target: %key_target with message: $3-
-    var %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, %key_target $3-)
-    echo -at DEBUG DECRYPT: DLL returned: $qt(%decrypted)
-
-    if ($left(%decrypted, 5) != Error) {
-      var %mark_pos = $dll(%Fish11DllFile, INI_GetInt, mark_position 1)
-      var %mark_txt = $dll(%Fish11DllFile, INI_GetString, mark_encrypted 12$chr(183))
-      var %display = $iif(%mark_pos == 1, %mark_txt $+ %decrypted, %decrypted $+ %mark_txt)
-      var %safe_display = $strip(%display, b,c,i,k,o,r,u)
-      echo $color(encrypted text) -t $iif($2 ischan, $2, $1) <$1> %safe_display
-      halt
-    }
-    else {
-      echo -at DEBUG DECRYPT: Decryption condition failed.
-    }
-  }
-}
-
-alias fish11_incoming_action {
-  ; $1 = nick, $2 = target, $3- = message
-  var %process_incoming = $dll(%Fish11DllFile, INI_GetBool, process_incoming 1)
-  if (%process_incoming == 0) { return }
-
-  if ($regex($3-, /^\+FiSH /)) {
-    var %key_target = $iif($2 ischan, $2, $1)
-    echo -at DEBUG DECRYPT: Trying to decrypt for target: %key_target with message: $3-
-    var %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, %key_target $3-)
-    echo -at DEBUG DECRYPT: DLL returned: $qt(%decrypted)
-
-    if ($left(%decrypted, 5) != Error) {
-      var %mark_pos = $dll(%Fish11DllFile, INI_GetInt, mark_position 1)
-      var %mark_txt = $dll(%Fish11DllFile, INI_GetString, mark_encrypted 12$chr(183))
-      var %display = $iif(%mark_pos == 1, %mark_txt $+ %decrypted, %decrypted $+ %mark_txt)
-      var %safe_display = $strip(%display, b,c,i,k,o,r,u)
-      echo $color(action text) -t $iif($2 ischan, $2, $1) * $1 %safe_display
-      halt
-    }
-    else {
-      echo -at DEBUG DECRYPT: Decryption condition failed.
-    }
-  }
-}
-
-alias fish11_incoming_notice {
-  ; $1 = nick, $2 = target, $3- = message
-  var %process_incoming = $dll(%Fish11DllFile, INI_GetBool, process_incoming 1)
-  if (%process_incoming == 0) { return }
-
-  if ($regex($3-, /^\+FiSH /)) {
-    var %key_target = $iif($2 ischan, $2, $1)
-    echo -at DEBUG DECRYPT: Trying to decrypt for target: %key_target with message: $3-
-    var %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, %key_target $3-)
-    echo -at DEBUG DECRYPT: DLL returned: $qt(%decrypted)
-
-    if ($left(%decrypted, 5) != Error) {
-      var %mark_pos = $dll(%Fish11DllFile, INI_GetInt, mark_position 1)
-      var %mark_txt = $dll(%Fish11DllFile, INI_GetString, mark_encrypted 12$chr(183))
-      var %display = $iif(%mark_pos == 1, %mark_txt $+ %decrypted, %decrypted $+ %mark_txt)
-      var %safe_display = $strip(%display, b,c,i,k,o,r,u)
-      echo $color(notice text) -t $iif($2 ischan, $2, $1) -$1- %safe_display
-      halt
-    }
-    else {
-      echo -at DEBUG DECRYPT: Decryption condition failed.
-    }
-  }
-}
 
 
 
