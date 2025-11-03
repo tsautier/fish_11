@@ -602,136 +602,28 @@ alias fish11_writekey {
 alias fish11_X25519_INIT {
   if (($1 == /query) || ($1 == $null)) var %cur_contact = $active
   else var %cur_contact = $1
-  
+
   ; If there's an existing exchange in progress, cancel it first
   if (%fish11.dh_ $+ [ %cur_contact ] == 1) {
-    ; sanitize timer name (no spaces or special chars) and ensure fallback
-    var %timer_name = $regsubex(%cur_contact, /[^A-Za-z0-9_]/g, _)
-    if (%timer_name == $null) { set %timer_name _anon_$rand(1000,9999) }
-  ; sanitize timer name used for stop (remove quotes/equals just in case)
-  var %stop_timer_name = $replace($+(fish_timeout_,%timer_name), $chr(34), $null, $chr(61), $null)
-  .timer %stop_timer_name off
     echo $color(Mode text) -at *** FiSH_11: restarting key exchange with %cur_contact
   }
-  
+
   set %fish11.dh_ $+ [ %cur_contact ] 1
 
-  ; Call the DLL exchange function and capture returned text (if any).
-  ; The DLL will generate a keypair and return a formatted string containing
-  ; the public key token in the form "FiSH11-PubKey:...". We extract that
-  ; token and send it as a NOTICE prefixed with X25519_INIT so the peer's
-  ; X25519 handler (which listens for NOTICE X25519_INIT) can continue the flow.
-  ; The DLL now returns the formatted token directly (FiSH11-PubKey:...)
   var %pub = $dll(%Fish11DllFile, FiSH11_ExchangeKey, %cur_contact)
-  ; sanitize return: remove CR/LF and trim whitespace to avoid accidental
-  ; multi-line content being interpreted as commands by mIRC
-  if (%pub != $null) {
-    set %pub $replace(%pub, $chr(13) $+ $chr(10), $chr(32), $chr(13), $chr(32), $chr(10), $chr(32))
-    set %pub $strip(%pub)
+
+  ; Use regex to validate the entire key format. This is more robust against
+  ; hidden characters or whitespace returned by the DLL.
+  if ($regex(%pub, /^FiSH11-PubKey:[A-Za-z0-9+\/=]{44}/i)) {
+    .notice %cur_contact X25519_INIT %pub
+    echo $color(Mode text) -tm %cur_contact *** FiSH_11: sent X25519_INIT to %cur_contact, waiting for reply...
   }
-  if (%pub != $null && $upper($left(%pub,10)) == FISH11-PUBKEY:) {
-    ; validate encoded length (base64 32 bytes -> 44 chars)
-    var %enc = $mid(%pub, 12, 9999)
-    if ($len(%enc) == 44) {
-      .notice %cur_contact X25519_INIT %pub
-      echo $color(Mode text) -tm %cur_contact *** FiSH_11: sent X25519_INIT to %cur_contact, waiting for reply...
-    ; Sanitize timer name (no spaces or special chars) and ensure contact is set
-  var %timer_name = $regsubex(%cur_contact, /[^A-Za-z0-9_]/g, _)
-  if (%timer_name == $null) { set %timer_name _anon_$rand(1000,9999) }
-  var %pub_preview = $regsubex($left(%pub,80), /[^A-Za-z0-9+\/=]/g, )
-  ; Build debug variables explicitly so functions are evaluated before echo
-  var %timer_len = $len(%timer_name)
-  var %timer_ok = $iif($regex(%timer_name,/^[A-Za-z0-9_]+$/),OK,BAD)
-  var %full_timer_name = $+(fish_timeout_,%timer_name)
-  var %full_timer_q = $qt(%full_timer_name)
-  var %full_timer_len = $len(%full_timer_name)
-  var %full_timer_first = $asc($mid(%full_timer_name,1,1))
-  var %full_timer_last = $asc($mid(%full_timer_name,$len(%full_timer_name),1))
-  echo 4 -a DEBUG : fish11 timer: contact= $+ %cur_contact name= $+ %timer_name len= $+ %timer_len valid= $+ %timer_ok
-  echo 4 -a DEBUG : fish11 full timer= %full_timer_q len= $+ %full_timer_len first= $+ %full_timer_first last= $+ %full_timer_last
-  ; Detailed ASCII dump of the full timer name to detect hidden/control characters
-  var %i = 1
-  var %full_timer_ascii = $null
-  if ($len(%full_timer_name) > 0) {
-    var %full_timer_ascii = $asc($mid(%full_timer_name,1,1))
-    inc %i
-    while (%i <= $len(%full_timer_name)) {
-      var %full_timer_ascii = $+(%full_timer_ascii,',',$asc($mid(%full_timer_name,%i,1)))
-      inc %i
-    }
+  else {
+    ; Fallback: show what we got (safely)
+    echo $color(Mode text) -at *** FiSH_11: ERROR - key exchange initiation failed. DLL returned: $qt(%pub)
   }
-  echo 4 -a DEBUG : fish11 full timer ascii= %full_timer_ascii
-  ; Sanitize the computed full timer name (strip quotes and equals) before use
-  var %full_timer_name = $replace(%full_timer_name, $chr(34), $null, $chr(61), $null)
-  echo 4 -a DEBUG : fish11 sanitized full timer= $qt(%full_timer_name)
-  ; Use unnamed auto-ID timer to avoid all name parsing issues
-  .timer 1 %KEY_EXCHANGE_TIMEOUT_SECONDS fish11_timeout_keyexchange %cur_contact
-      return
-    }
-    else {
-      echo $color(Mode text) -at *** FiSH_11: invalid public token returned by DLL (bad length)
-    var %timer_name = $regsubex(%cur_contact, /[^A-Za-z0-9_]/g, _)
-    if (%timer_name == $null) { set %timer_name _anon_$rand(1000,9999) }
-  var %pub_preview = $regsubex($left(%pub,80), /[^A-Za-z0-9+\/=]/g, )
-  var %timer_len = $len(%timer_name)
-  var %timer_ok = $iif($regex(%timer_name,/^[A-Za-z0-9_]+$/),OK,BAD)
-  var %full_timer_name = $+(fish_timeout_,%timer_name)
-  var %full_timer_q = $qt(%full_timer_name)
-  var %full_timer_len = $len(%full_timer_name)
-  var %full_timer_first = $asc($mid(%full_timer_name,1,1))
-  var %full_timer_last = $asc($mid(%full_timer_name,$len(%full_timer_name),1))
-  echo 4 -a DEBUG : fish11 timer: contact= $+ %cur_contact name= $+ %timer_name len= $+ %timer_len valid= $+ %timer_ok
-  echo 4 -a DEBUG : fish11 full timer= %full_timer_q len= $+ %full_timer_len first= $+ %full_timer_first last= $+ %full_timer_last
-  ; Detailed ASCII dump of the full timer name to detect hidden/control characters
-  var %i = 1
-  var %full_timer_ascii = $null
-  if ($len(%full_timer_name) > 0) {
-    var %full_timer_ascii = $asc($mid(%full_timer_name,1,1))
-    inc %i
-    while (%i <= $len(%full_timer_name)) {
-      var %full_timer_ascii = $+(%full_timer_ascii,',',$asc($mid(%full_timer_name,%i,1)))
-      inc %i
-    }
-  }
-  echo 4 -a DEBUG : fish11 full timer ascii= %full_timer_ascii
-  ; Sanitize the computed full timer name (strip quotes and equals) before use
-  var %full_timer_name = $replace(%full_timer_name, $chr(34), $null, $chr(61), $null)
-  echo 4 -a DEBUG : fish11 sanitized full timer= $qt(%full_timer_name)
-  ; Use unnamed auto-ID timer to avoid all name parsing issues
-  .timer 1 %KEY_EXCHANGE_TIMEOUT_SECONDS fish11_timeout_keyexchange %cur_contact
-      return
-    }
-  }
-  ; Fallback: show what we got (safely) and start timer anyway
-  echo $color(Mode text) -at *** FiSH_11: key exchange initiation returned: $qt(%pub)
-  var %timer_name = $regsubex(%cur_contact, /[^A-Za-z0-9_]/g, _)
-  if (%timer_name == $null) { set %timer_name _anon_$rand(1000,9999) }
-  var %pub_preview = $regsubex($left(%pub,80), /[^A-Za-z0-9+\/=]/g, )
-  var %timer_len = $len(%timer_name)
-  var %timer_ok = $iif($regex(%timer_name,/^[A-Za-z0-9_]+$/),OK,BAD)
-  var %full_timer_name = $+(fish_timeout_,%timer_name)
-  var %full_timer_q = $qt(%full_timer_name)
-  var %full_timer_len = $len(%full_timer_name)
-  var %full_timer_first = $asc($mid(%full_timer_name,1,1))
-  var %full_timer_last = $asc($mid(%full_timer_name,$len(%full_timer_name),1))
-  echo 4 -a DEBUG : fish11 timer: contact= $+ %cur_contact name= $+ %timer_name len= $+ %timer_len valid= $+ %timer_ok
-  echo 4 -a DEBUG : fish11 full timer= %full_timer_q len= $+ %full_timer_len first= $+ %full_timer_first last= $+ %full_timer_last
-  ; Detailed ASCII dump of the full timer name to detect hidden/control characters
-  var %i = 1
-  var %full_timer_ascii = $null
-  if ($len(%full_timer_name) > 0) {
-    var %full_timer_ascii = $asc($mid(%full_timer_name,1,1))
-    inc %i
-    while (%i <= $len(%full_timer_name)) {
-      var %full_timer_ascii = $+(%full_timer_ascii,',',$asc($mid(%full_timer_name,%i,1)))
-      inc %i
-    }
-  }
-  echo 4 -a DEBUG : fish11 full timer ascii= %full_timer_ascii
-  ; Sanitize the computed full timer name (strip quotes and equals) before use
-  var %full_timer_name = $replace(%full_timer_name, $chr(34), $null, $chr(61), $null)
-  echo 4 -a DEBUG : fish11 sanitized full timer= $qt(%full_timer_name)
-  ; Use unnamed auto-ID timer to avoid all name parsing issues
+
+  ; Start a timer to cancel the exchange if no response is received
   .timer 1 %KEY_EXCHANGE_TIMEOUT_SECONDS fish11_timeout_keyexchange %cur_contact
 }
 
