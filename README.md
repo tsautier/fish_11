@@ -1,6 +1,6 @@
 # FiSH_11 - Secure encryption for IRC & mIRC
 
-FiSH_11 (work in progress) is a modernized implementation of the classic FiSH_10 IRC encryption tool, completely rewritten in Rust with modern cryptographic algorithms and enhanced security features :
+FiSH_11 (work in progress) is a modernized implementation of the classic FiSH_10 IRC encryption tool, completely rewritten in full Rust, with modern cryptographic algorithms and enhanced security features :
 
 - **X25519 (Curve25519-dalek)** for secure key exchange
 - **ChaCha20-Poly1305** for authenticated encryption
@@ -39,6 +39,40 @@ Standalone testing and integration tool :
 - **Third-party application integration** (eggdrop bots, scripts)
 - **Key management operations** from command line
 - **Diagnostic and troubleshooting** capabilities
+
+## Development status and roadmap
+
+### Completed features
+
+- [x] Core encryption library
+- [x] Windows WinSock hooking for transparent operation
+- [x] X25519 key exchange implementation
+- [x] ChaCha20-Poly1305 authenticated encryption
+- [x] HKDF key derivation for enhanced security
+- [x] SHA-256 key fingerprinting for verification
+- [-] Comprehensive mIRC script integration (WIP)
+- [x] mIRC key exchange and chat with encrypted session
+- [x] Command-line interface for testing
+- [x] Memory zeroization and constant-time operations
+- [-] Configuration persistence and key management
+
+### Current limitations
+
+- Windows-only (32-bit mIRC compatibility)
+- CLI tool is Windows-only currently tested
+
+### Future roadmap
+
+- [x] **Log refactor** : rewrite all the loggin process for better debug
+- [ ] **Cross-platform CLI** : port to Linux/FreeBSD (eg. for eggdrop integration)
+- [ ] **Enhanced forward secrecy** : replace `StaticSecret` with `EphemeralSecret` ?
+- [ ] **Key rotation** : automatic key rotation with configurable intervals
+- [ ] **Master password** : encrypt key storage with user-specific master password
+- [ ] **Enhanced authentication** : add HMAC signatures to prevent MITM attacks
+- [ ] **Unicode support** : improved handling of international characters
+- [ ] **Fuzzing integration** : add `libfuzzer` for security testing
+- [ ] **CI/CD pipeline** : automated testing and releases
+- [ ] **more algo/cipher** : why not ?
 
 ## Features
 
@@ -150,7 +184,7 @@ rustup target add i686-pc-windows-msvc
 # Build release version (32-bit)
 cargo build --release --target i686-pc-windows-msvc --workspace
 
-# Build debug version (with logging)
+# Build debug version (with full logging)
 cargo build --target i686-pc-windows-msvc --workspace
 ```
 
@@ -192,7 +226,7 @@ The injection DLL **must** be loaded before the crypto DLL :
 
 ### 3. Key exchange protocol
 
-1. User initiates with `/fish11_keyx nickname`
+1. User initiates with `/keyx nickname`
 2. System generates X25519 keypair and displays public key
 3. Public key is manually shared via IRC (PM/channel)
 4. Recipient processes key with `/fish11_keyp nickname <received_key>`
@@ -201,10 +235,10 @@ The injection DLL **must** be loaded before the crypto DLL :
 
 ### 4. Technical implementation details
 
-- **Crypto Library** : uses modern Rust crates (`x25519-dalek`, `chacha20poly1305`, `hkdf`)
+- **Crypto Library** : uses Rust crates (`x25519-dalek`, `chacha20poly1305`, `hkdf`)
 - **Windows API**: direct Win32 calls for socket hooking and system integration
 - **Memory Safety** : automatic zeroization of sensitive data, secure buffer handling
-- **Logging** : comprehensive debug logging (debug builds only) to `fish11_inject.log`
+- **Logging** : comprehensive debug logging (debug builds only) to `fish11_inject.log` and more
 
 ## Security and storage
 
@@ -310,46 +344,9 @@ fish_11_cli.exe -q fish_11.dll getversion
 | `exchangekey` | `FiSH11_ExchangeKey` | Start key exchange |
 | `processkey` | `FiSH11_ProcessPublicKey` | Process received key |
 
-## Development status and roadmap
-
-### Completed features
-
-- [x] Core encryption library
-- [x] Windows WinSock hooking for transparent operation
-- [x] X25519 key exchange implementation
-- [x] ChaCha20-Poly1305 authenticated encryption
-- [x] HKDF key derivation for enhanced security
-- [x] SHA-256 key fingerprinting for verification
-- [-] Comprehensive mIRC script integration (WIP)
-- [x] Command-line interface for testing
-- [x] Memory zeroization and constant-time operations
-- [x] Configuration persistence and key management
-
-### Current limitations
-
-- Windows-only (32-bit mIRC compatibility)
-- CLI tool is Windows-only currently
-- Manual key exchange process (not automated)
-
-### Future roadmap
-
-- [ ] **Log refactor** : rewrite all the loggin process for better debug
-- [ ] **Cross-platform CLI** : port to Linux/FreeBSD (eg. for eggdrop integration)
-- [ ] **Enhanced forward secrecy** : replace `StaticSecret` with `EphemeralSecret`
-- [ ] **Key rotation** : automatic key rotation with configurable intervals
-- [ ] **Master password** : encrypt key storage with user-specific master password
-- [ ] **Enhanced authentication** : add HMAC signatures to prevent MITM attacks
-- [ ] **Unicode support** : improved handling of international characters
-- [ ] **Fuzzing integration** : add `libfuzzer` for security testing
-- [ ] **CI/CD pipeline** : automated testing and releases
-- [ ] **Plugin system** : enhanced engine architecture for extensibility
-
 ### Known issues
 
-- Key exchange timeout handling could be improved
-- The DLL in key exchange crash mIRC
 - Still a 32-bit DLL : due to mIRC limitation, still 32-bit ONLY, the 01/11/2025 update.
-
 
 ## Contributing
 
