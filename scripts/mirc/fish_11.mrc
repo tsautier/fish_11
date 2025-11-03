@@ -70,6 +70,8 @@ alias fish11_startup {
   if (%mark_outgoing == $null) { set %mark_outgoing [Off] }
   if (%mark_style == $null) { set %mark_style 1 }
   if (%NickTrack == $null) { set %NickTrack [Off] }
+  ; Key exchange timeout (seconds) - keep in sync with DLL constant; can be overridden by user
+  if (%KEY_EXCHANGE_TIMEOUT_SECONDS == $null) { set %KEY_EXCHANGE_TIMEOUT_SECONDS 10 }
   
     ; Register events for incoming messages
   .signal *:TEXT:*:*:fish11_incoming_text
@@ -637,10 +639,27 @@ alias fish11_X25519_INIT {
   var %timer_len = $len(%timer_name)
   var %timer_ok = $iif($regex(%timer_name,/^[A-Za-z0-9_]+$/),OK,BAD)
   var %full_timer_name = $+(fish_timeout_,%timer_name)
+  var %full_timer_q = $qt(%full_timer_name)
+  var %full_timer_len = $len(%full_timer_name)
+  var %full_timer_first = $asc($mid(%full_timer_name,1,1))
+  var %full_timer_last = $asc($mid(%full_timer_name,$len(%full_timer_name),1))
   echo 4 -a DEBUG : fish11 timer: contact= $+ %cur_contact name= $+ %timer_name len= $+ %timer_len valid= $+ %timer_ok
-  echo 4 -a DEBUG : fish11 full timer name: %full_timer_name
-  echo 4 -a DEBUG : fish11 about to start timer (10 sec)
-  .timer 0 10 fish11_timeout_keyexchange %cur_contact
+  echo 4 -a DEBUG : fish11 full timer= %full_timer_q len= $+ %full_timer_len first= $+ %full_timer_first last= $+ %full_timer_last
+  ; Detailed ASCII dump of the full timer name to detect hidden/control characters
+  var %i = 1
+  var %full_timer_ascii = $null
+  if ($len(%full_timer_name) > 0) {
+    var %full_timer_ascii = $asc($mid(%full_timer_name,1,1))
+    inc %i
+    while (%i <= $len(%full_timer_name)) {
+      var %full_timer_ascii = $+(%full_timer_ascii,',',$asc($mid(%full_timer_name,%i,1)))
+      inc %i
+    }
+  }
+  echo 4 -a DEBUG : fish11 full timer ascii= %full_timer_ascii
+  echo 4 -a DEBUG : fish11 about to start timer (%KEY_EXCHANGE_TIMEOUT_SECONDS sec)
+  ; Start a named single-shot timer: name [time] <repetitions> <interval> <command>
+  .timer %full_timer_name 0 1 %KEY_EXCHANGE_TIMEOUT_SECONDS fish11_timeout_keyexchange %cur_contact
       return
     }
     else {
@@ -651,8 +670,26 @@ alias fish11_X25519_INIT {
   var %timer_len = $len(%timer_name)
   var %timer_ok = $iif($regex(%timer_name,/^[A-Za-z0-9_]+$/),OK,BAD)
   var %full_timer_name = $+(fish_timeout_,%timer_name)
+  var %full_timer_q = $qt(%full_timer_name)
+  var %full_timer_len = $len(%full_timer_name)
+  var %full_timer_first = $asc($mid(%full_timer_name,1,1))
+  var %full_timer_last = $asc($mid(%full_timer_name,$len(%full_timer_name),1))
   echo 4 -a DEBUG : fish11 timer: contact= $+ %cur_contact name= $+ %timer_name len= $+ %timer_len valid= $+ %timer_ok
-  .timer %full_timer_name 0 10 fish11_timeout_keyexchange %cur_contact
+  echo 4 -a DEBUG : fish11 full timer= %full_timer_q len= $+ %full_timer_len first= $+ %full_timer_first last= $+ %full_timer_last
+  ; Detailed ASCII dump of the full timer name to detect hidden/control characters
+  var %i = 1
+  var %full_timer_ascii = $null
+  if ($len(%full_timer_name) > 0) {
+    var %full_timer_ascii = $asc($mid(%full_timer_name,1,1))
+    inc %i
+    while (%i <= $len(%full_timer_name)) {
+      var %full_timer_ascii = $+(%full_timer_ascii,',',$asc($mid(%full_timer_name,%i,1)))
+      inc %i
+    }
+  }
+  echo 4 -a DEBUG : fish11 full timer ascii= %full_timer_ascii
+  ; Start a named single-shot timer: name [time] <repetitions> <interval> <command>
+  .timer %full_timer_name 0 1 %KEY_EXCHANGE_TIMEOUT_SECONDS fish11_timeout_keyexchange %cur_contact
       return
     }
   }
@@ -664,8 +701,26 @@ alias fish11_X25519_INIT {
   var %timer_len = $len(%timer_name)
   var %timer_ok = $iif($regex(%timer_name,/^[A-Za-z0-9_]+$/),OK,BAD)
   var %full_timer_name = $+(fish_timeout_,%timer_name)
+  var %full_timer_q = $qt(%full_timer_name)
+  var %full_timer_len = $len(%full_timer_name)
+  var %full_timer_first = $asc($mid(%full_timer_name,1,1))
+  var %full_timer_last = $asc($mid(%full_timer_name,$len(%full_timer_name),1))
   echo 4 -a DEBUG : fish11 timer: contact= $+ %cur_contact name= $+ %timer_name len= $+ %timer_len valid= $+ %timer_ok
-  .timer %full_timer_name 0 10 fish11_timeout_keyexchange %cur_contact
+  echo 4 -a DEBUG : fish11 full timer= %full_timer_q len= $+ %full_timer_len first= $+ %full_timer_first last= $+ %full_timer_last
+  ; Detailed ASCII dump of the full timer name to detect hidden/control characters
+  var %i = 1
+  var %full_timer_ascii = $null
+  if ($len(%full_timer_name) > 0) {
+    var %full_timer_ascii = $asc($mid(%full_timer_name,1,1))
+    inc %i
+    while (%i <= $len(%full_timer_name)) {
+      var %full_timer_ascii = $+(%full_timer_ascii,',',$asc($mid(%full_timer_name,%i,1)))
+      inc %i
+    }
+  }
+  echo 4 -a DEBUG : fish11 full timer ascii= %full_timer_ascii
+  ; Start a named single-shot timer: name [time] <repetitions> <interval> <command>
+  .timer %full_timer_name 0 1 %KEY_EXCHANGE_TIMEOUT_SECONDS fish11_timeout_keyexchange %cur_contact
 }
 
 
