@@ -1,4 +1,11 @@
 //! Cryptographic operations for FiSH_11
+//!
+//! This module provides the core cryptographic primitives for the FiSH_11 protocol:
+//! - X25519 Diffie-Hellman key exchange with HKDF key derivation
+//! - ChaCha20-Poly1305 authenticated encryption with fully random nonces
+//! - Anti-replay protection via nonce cache with 1-hour expiry window
+//! - Public key validation against low-order points
+//! - Secure key pair generation and rotation
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -25,6 +32,8 @@ pub const MAX_MESSAGE_SIZE: usize = 4096;
 const MAX_CIPHERTEXT_SIZE: usize = MAX_MESSAGE_SIZE + 16 + 12; // message + auth tag + nonce
 
 // Global nonce cache for anti-replay protection
+// Each nonce is stored with a 1-hour expiry to detect replay attacks while allowing
+// for reasonable clock skew and network delays.
 lazy_static::lazy_static! {
     static ref NONCE_CACHE: Mutex<LruCache<[u8; 12], ()>> = Mutex::new(
         LruCache::with_expiry_duration_and_capacity(
@@ -35,7 +44,9 @@ lazy_static::lazy_static! {
         )
     );
 
-    // Counter for nonce generation
+    // Counter for audit trail
+    // This counter is incremented on each encryption operation for logging and debugging
+    // purposes but is no longer used in nonce construction (fully random nonces are used).
     static ref NONCE_COUNTER: AtomicU64 = AtomicU64::new(0);
 }
 
@@ -73,7 +84,14 @@ impl KeyPair {
     }
 }
 
-/// Generate keypair
+/// Generate a new X25519 keypair
+///
+/// Creates a new Curve25519 keypair suitable for Diffie-Hellman key exchange.
+/// The private key is securely zeroized on drop.
+///
+/// # Returns
+/// A `KeyPair` containing the private key (wrapped in `Secret`), public key,
+/// and creation timestamp for rotation tracking.
 pub fn generate_keypair() -> KeyPair {
     let secret = StaticSecret::random_from_rng(OsRng);
     let public = PublicKey::from(&secret);
@@ -91,7 +109,22 @@ pub fn generate_keypair() -> KeyPair {
     }
 }
 
-/// Compute shared secret using StaticSecret with improved key derivation
+/// Compute shared secret using X25519 Diffie-Hellman with HKDF key derivation
+///
+/// Performs an X25519 key exchange operation between our private key and their public key,
+/// then derives a symmetric encryption key using HKDF-SHA256.
+///
+/// # Security
+/// - validates the received public key to reject low-order points
+/// - uses HKDF with domain separation for key derivation
+/// - derives a 32-byte symmetric key suitable for ChaCha20-Poly1305
+///
+/// # Arguments
+/// * `our_private` - our private key (securely wrapped)
+/// * `their_public` - their public key (32 bytes)
+///
+/// # Returns
+/// A 32-byte symmetric encryption key or an error if the public key is invalid.
 pub fn compute_shared_secret(
     our_private: &Secret<[u8; 32]>,
     their_public: &[u8; 32],
@@ -198,17 +231,27 @@ fn validate_public_key(bytes: &[u8; 32]) -> Result<()> {
 /// This function encrypts a message using a symmetric key and returns the encrypted data
 /// in a format that can be safely transmitted over IRC.
 ///
+/// # Nonce generation
+/// Each encryption uses a fully random 12-byte nonce generated via cryptographically secure
+/// random number generator. This approach ensures maximum entropy and eliminates predictable
+/// patterns in the base64-encoded output that would occur with counter-based schemes.
+///
+/// # Anti-replay protection
+/// Replay attacks are prevented by the nonce cache in the decrypt function. Each received
+/// nonce is stored for 1 hour and rejected if seen again within that window.
+///
 /// # Arguments
-/// * `key` - 32-byte symmetric encryption key
-/// * `message` - The message to encrypt
-/// * `recipient` - Optional recipient for audit logging
+/// * `key` - 32-byte symmetric encryption key derived from X25519 key exchange
+/// * `message` - the plaintext message to encrypt (max 4096 bytes)
+/// * `recipient` - optional recipient nickname for audit logging
 ///
 /// # Returns
-/// * `Result<String>` - Base64 encoded ciphertext or an error
+/// * `Result<String>` - base64-encoded ciphertext or an error
 ///
 /// # Format
-/// The encrypted data has the format: base64(nonce || ciphertext)
-/// where nonce is 12 bytes and ciphertext is the encrypted message plus a 16-byte authentication tag
+/// The encrypted data has the format: `base64(nonce || ciphertext)`
+/// where nonce is 12 bytes and ciphertext is the encrypted message plus a 16-byte
+/// authentication tag from Poly1305.
 pub fn encrypt_message(key: &[u8; 32], message: &str, recipient: Option<&str>) -> Result<String> {
     // Input validation
     if message.is_empty() {
@@ -222,15 +265,17 @@ pub fn encrypt_message(key: &[u8; 32], message: &str, recipient: Option<&str>) -
         )));
     }
 
-    // Generate a secure nonce using counter + random bytes
-    let counter = NONCE_COUNTER.fetch_add(1, Ordering::SeqCst).to_be_bytes();
-    let random_bytes = generate_random_bytes(4);
+    // Generate a secure nonce using fully random bytes (12 bytes)
+    // This ensures maximum entropy and avoids predictable patterns in base64 output.
+    // Anti-replay protection is ensured by NONCE_CACHE verification during decryption.
+    let nonce_bytes = generate_random_bytes(12);
+    let mut nonce_array = [0u8; 12];
+    nonce_array.copy_from_slice(&nonce_bytes[..12]);
 
-    let mut nonce_bytes = [0u8; 12];
-    nonce_bytes[0..8].copy_from_slice(&counter);
-    nonce_bytes[8..12].copy_from_slice(&random_bytes);
+    // Increment counter for audit trail (not used in nonce construction anymore)
+    let _ = NONCE_COUNTER.fetch_add(1, Ordering::SeqCst);
 
-    let nonce = Nonce::from(nonce_bytes);
+    let nonce = Nonce::from(nonce_array);
 
     // Create the cipher
     let chacha_key = Key::from(*key);
@@ -260,18 +305,35 @@ pub fn encrypt_message(key: &[u8; 32], message: &str, recipient: Option<&str>) -
 
 /// Decrypt a message using ChaCha20-Poly1305
 ///
-/// Takes an encrypted message and decrypts it using the provided key.
+/// Takes an encrypted message and decrypts it using the provided key. This function performs
+/// authenticated decryption with anti-replay protection.
+///
+/// # Anti-replay protection
+/// The nonce from each decrypted message is stored in a cache with a 1-hour expiry window.
+/// If the same nonce is encountered again within this period, the decryption is rejected as
+/// a potential replay attack. This provides protection against message replay while allowing
+/// for reasonable clock skew and network delays.
 ///
 /// # Arguments
-/// * `key` - 32-byte symmetric encryption key
-/// * `encrypted_data` - The base64 encoded encrypted message
+/// * `key` - 32-byte symmetric encryption key derived from X25519 key exchange
+/// * `encrypted_data` - the base64-encoded encrypted message
 ///
 /// # Returns
-/// * `Result<String>` - The decrypted message or an error
+/// * `Result<String>` - the decrypted plaintext message or an error
 ///
 /// # Format
-/// The encrypted data should have the format: base64(nonce || ciphertext)
-/// where nonce is 12 bytes and ciphertext is the encrypted message plus a 16-byte authentication tag
+/// The encrypted data should have the format: `base64(nonce || ciphertext)`
+/// where nonce is 12 bytes and ciphertext is the encrypted message plus a 16-byte
+/// authentication tag from Poly1305.
+///
+/// # Errors
+/// Returns an error if:
+/// - the base64 decoding fails
+/// - the ciphertext is too large (DoS protection)
+/// - the ciphertext is too short (missing nonce or data)
+/// - the nonce has been seen before (replay attack detection)
+/// - the authentication tag verification fails (tampering detected)
+/// - the decrypted data is not valid UTF-8
 pub fn decrypt_message(key: &[u8; 32], encrypted_data: &str) -> Result<String> {
     // Decode base64 data
     let data = base64_decode(encrypted_data)
@@ -326,13 +388,31 @@ pub fn decrypt_message(key: &[u8; 32], encrypted_data: &str) -> Result<String> {
         .map_err(|e| FishError::CryptoError(format!("UTF-8 conversion failed: {}", e)))
 }
 
-/// Format a public key for sharing
+/// Format a public key for sharing over IRC
+///
+/// Encodes a 32-byte X25519 public key as base64 with the `FiSH11-PubKey:` prefix.
+///
+/// # Arguments
+/// * `public_key` - the 32-byte X25519 public key
+///
+/// # Returns
+/// A formatted string: `FiSH11-PubKey:<base64-encoded-key>`
 pub fn format_public_key(public_key: &[u8; 32]) -> String {
     let encoded = base64_encode(public_key);
     format!("FiSH11-PubKey:{}", encoded)
 }
 
-/// Extract a public key from a formatted string
+/// Extract and validate a public key from a formatted string
+///
+/// Parses a `FiSH11-PubKey:<base64>` formatted string, decodes the base64 payload,
+/// and validates the resulting public key against low-order points.
+///
+/// # Arguments
+/// * `formatted` - the formatted key string (whitespace is trimmed)
+///
+/// # Returns
+/// The 32-byte X25519 public key or an error if the format is invalid or the key
+/// fails validation.
 pub fn extract_public_key(formatted: &str) -> Result<[u8; 32]> {
     const PREFIX: &str = "FiSH11-PubKey:";
 
@@ -370,7 +450,23 @@ pub fn extract_public_key(formatted: &str) -> Result<[u8; 32]> {
     Ok(key)
 }
 
-/// Process a received public key and compute the shared secret
+/// Process a received public key and complete the key exchange
+///
+/// This function orchestrates a complete Diffie-Hellman key exchange:
+/// - retrieves our local keypair
+/// - checks if keypair rotation is needed (older than 7 days)
+/// - extracts and validates the received public key
+/// - computes the shared secret via X25519 + HKDF
+/// - stores the resulting symmetric key for the given nickname
+///
+/// # Arguments
+/// * `nickname` - the remote user's nickname
+/// * `public_key_str` - their formatted public key (`FiSH11-PubKey:...`)
+/// * `network` - optional network identifier for key scoping
+///
+/// # Returns
+/// `Ok(())` if the key exchange succeeded and the shared key was stored, or an error
+/// if any step failed.
 pub fn process_dh_key_exchange(
     nickname: &str,
     public_key_str: &str,
