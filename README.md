@@ -50,11 +50,11 @@ Standalone testing and integration tool :
 - [x] ChaCha20-Poly1305 authenticated encryption
 - [x] HKDF key derivation for enhanced security
 - [x] SHA-256 key fingerprinting for verification
-- [-] Comprehensive mIRC script integration (WIP)
+- [ ] Comprehensive mIRC script integration (WIP)
 - [x] mIRC key exchange and chat with encrypted session
 - [x] Command-line interface for testing
 - [x] Memory zeroization and constant-time operations
-- [-] Configuration persistence and key management
+- [ ] Configuration persistence and key management
 
 ### Current limitations
 
