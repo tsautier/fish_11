@@ -168,7 +168,8 @@ fn attempt_encryption(line: &str) -> Option<String> {
     
     // Reconstruct line with encrypted data
     // Keep prefix if present, replace message with "+FiSH <encrypted>"
-    let encrypted_line = format!("{} :+FiSH {}", cmd_part, encrypted);
+    // Add \r\n for IRC protocol compliance
+    let encrypted_line = format!("{} :+FiSH {}\r\n", cmd_part, encrypted);
     
     Some(encrypted_line)
 }
@@ -246,13 +247,14 @@ fn attempt_decryption(line: &str) -> Option<String> {
     log::info!("Engine: successfully decrypted message from '{}'", sender);
     
     // Reconstruct the IRC line with decrypted plaintext
-    // Format: ":nick!user@host PRIVMSG target :decrypted_message"
+    // Format: ":nick!user@host PRIVMSG target :decrypted_message\r\n"
+    // CRITICAL: IRC protocol requires \r\n at the end of each line!
     let prefix_end = line.find(" PRIVMSG ").unwrap_or(0);
     let target_start = prefix_end + 9; // Length of " PRIVMSG "
     let target_end = line[target_start..].find(' ').map(|p| target_start + p).unwrap_or(line.len());
     
     let reconstructed = format!(
-        "{} PRIVMSG {} :{}",
+        "{} PRIVMSG {} :{}\r\n",
         &line[..prefix_end],
         &line[target_start..target_end],
         decrypted

@@ -2,13 +2,14 @@
 //! Written by [GuY], 2025. Licensed under the GPL v3.
 //!
 //! This file is part of the FiSH_11 project.
-use crate::engines::InjectEngines;
+use std::collections::VecDeque;
+use std::sync::Arc;
+use std::{fmt, io};
+
 use log::{debug, info, trace, warn};
 use parking_lot::{Mutex, RwLock};
-use std::collections::VecDeque;
-use std::fmt;
-use std::io;
-use std::sync::Arc;
+
+use crate::engines::InjectEngines;
 
 #[derive(Debug)]
 pub enum SocketError {
@@ -68,11 +69,7 @@ impl crate::socket_info::SocketInfo {
         // Single UTF-8 validation for the entire buffer
         match std::str::from_utf8(data) {
             Ok(data_str) => {
-                trace!(
-                    "Socket {}: [OUT RAW] UTF-8: {}",
-                    self.socket,
-                    data_str.trim_end()
-                );
+                trace!("Socket {}: [OUT RAW] UTF-8: {}", self.socket, data_str.trim_end());
                 // Use try_lock to handle potential mutex poisoning gracefully
                 let mut should_process_lines = false;
                 let mut lines_to_process = String::new();
@@ -173,8 +170,7 @@ impl crate::socket_info::SocketInfo {
                     if lines_processed > 0 {
                         trace!(
                             "Socket {}: processed {} outgoing lines",
-                            self.socket,
-                            lines_processed
+                            self.socket, lines_processed
                         );
                     }
                 }
@@ -217,7 +213,7 @@ impl crate::socket_info::SocketInfo {
 pub enum SocketState {
     Initializing,
     TlsHandshake,
-    Connected,    
+    Connected,
     IrcIdentified,
     Closed,
 }
@@ -300,7 +296,10 @@ impl SocketInfo {
                 // Check for potential buffer overflows before extending
                 if buffer.len() + data.len() > 1_000_000 {
                     // TODO : 1MB limit as an example
-                    warn!("Socket {}: Received buffer exceeds 1MB limit, truncating older data to mitigate DoS attack", self.socket);
+                    warn!(
+                        "Socket {}: Received buffer exceeds 1MB limit, truncating older data to mitigate DoS attack",
+                        self.socket
+                    );
 
                     // Calculate how much data we need to drop to make room for new data
                     // Keep some margin (10KB) to avoid having to truncate on every small addition
@@ -337,10 +336,7 @@ impl SocketInfo {
                 }));
 
                 if extend_result.is_err() {
-                    warn!(
-                        "Socket {}: failed to extend buffer with new data",
-                        self.socket
-                    );
+                    warn!("Socket {}: failed to extend buffer with new data", self.socket);
                 } else {
                     debug!(
                         "Socket {}: write_received_data called, {} bytes: {:02X?}",
@@ -351,10 +347,7 @@ impl SocketInfo {
                 }
             }
             None => {
-                warn!(
-                    "Socket {}: could not acquire lock on received_buffer",
-                    self.socket
-                );
+                warn!("Socket {}: could not acquire lock on received_buffer", self.socket);
             }
         }
     }
@@ -390,8 +383,7 @@ impl SocketInfo {
             } else {
                 trace!(
                     "Socket {}: engine '{}' did not modify incoming line:",
-                    socket,
-                    engine.engine_name
+                    socket, engine.engine_name
                 );
             }
         }
@@ -430,8 +422,7 @@ impl SocketInfo {
             } else {
                 trace!(
                     "Socket {}: engine '{}' did not modify outgoing line:",
-                    socket,
-                    engine.engine_name
+                    socket, engine.engine_name
                 );
             }
         }
@@ -521,8 +512,7 @@ impl SocketInfo {
             // or 0x80 (SSLv2 compatible client hello)
             trace!(
                 "Socket {}: protocol detection - first byte 0x{:02X} suggests SSL/TLS baby",
-                self.socket,
-                data[0]
+                self.socket, data[0]
             );
 
             // Enhanced: Try to parse TLS record info
@@ -623,8 +613,7 @@ impl SocketInfo {
                     if cmd == "NICK" || cmd == "USER" || cmd == "PASS" || cmd == "CAP " {
                         trace!(
                             "Socket {}: protocol detection - text '{}' suggests IRC :)",
-                            self.socket,
-                            cmd
+                            self.socket, cmd
                         );
 
                         let mut state = self.state.write();
@@ -781,10 +770,7 @@ impl SocketInfo {
                 }
             }
             None => {
-                warn!(
-                    "Socket {}: could not acquire lock on tls_handshake_buffer",
-                    self.socket
-                );
+                warn!("Socket {}: could not acquire lock on tls_handshake_buffer", self.socket);
             }
         }
     }
@@ -798,17 +784,14 @@ impl SocketInfo {
                     return Ok(());
                 }
 
-                info!(
-                    "Socket {}: processing {} bytes of received data",
-                    self.socket,
-                    buffer.len()
-                );
+                info!("Socket {}: processing {} bytes of received data", self.socket, buffer.len());
 
                 #[cfg(debug_assertions)]
                 {
                     debug!(
                         "[PROCESS_LINES DEBUG] Socket {}: received_buffer has {} bytes before processing",
-                        self.socket, buffer.len()
+                        self.socket,
+                        buffer.len()
                     );
                 }
 
@@ -841,29 +824,35 @@ impl SocketInfo {
         {
             debug!(
                 "[PROCESS_LINES DEBUG] Socket {}: processing buffer of {} bytes",
-                self.socket, data.len()
+                self.socket,
+                data.len()
             );
             let preview_len = std::cmp::min(128, data.len());
             debug!(
                 "[PROCESS_LINES DEBUG] Socket {}: hex preview (first {} bytes): {:02X?}",
-                self.socket, preview_len, &data[..preview_len]
+                self.socket,
+                preview_len,
+                &data[..preview_len]
             );
         }
 
         // Single UTF-8 validation for the entire buffer
         match std::str::from_utf8(&data) {
             Ok(data_str) => {
-                trace!(
-                    "Socket {}: [IN RAW] UTF-8: {}",
-                    self.socket,
-                    data_str.trim_end()
-                );
+                trace!("Socket {}: [IN RAW] UTF-8: {}", self.socket, data_str.trim_end());
 
                 #[cfg(debug_assertions)]
                 {
-                    let sanitized: String = data_str.chars()
+                    let sanitized: String = data_str
+                        .chars()
                         .take(256)
-                        .map(|c| if c.is_control() && c != '\r' && c != '\n' && c != '\t' { '.' } else { c })
+                        .map(|c| {
+                            if c.is_control() && c != '\r' && c != '\n' && c != '\t' {
+                                '.'
+                            } else {
+                                c
+                            }
+                        })
                         .collect();
                     debug!(
                         "[PROCESS_LINES DEBUG] Socket {}: UTF-8 content preview (sanitized, first 256 chars): {:?}",
@@ -891,25 +880,30 @@ impl SocketInfo {
                         // Log details about each IRC line
                         debug!(
                             "[PROCESS_LINES DEBUG] Socket {}: processing IRC line ({} bytes): {:?}",
-                            self.socket, line.len(), line
+                            self.socket,
+                            line.len(),
+                            line
                         );
-                        
+
                         // Check for specific IRC commands or FiSH markers
                         if line.contains("PRIVMSG") || line.contains("NOTICE") {
                             debug!(
                                 "[PROCESS_LINES DEBUG] Socket {}: detected IRC message command",
                                 self.socket
                             );
-                            
+
                             // Check for encrypted content markers
-                            if line.contains("+OK ") || line.contains("+FiSH ") || line.contains("mcps ") {
+                            if line.contains("+OK ")
+                                || line.contains("+FiSH ")
+                                || line.contains("mcps ")
+                            {
                                 debug!(
                                     "[PROCESS_LINES DEBUG] Socket {}: detected encrypted FiSH message",
                                     self.socket
                                 );
                             }
                         }
-                        
+
                         if line.contains("X25519_INIT") || line.contains("FiSH11-PubKey:") {
                             debug!(
                                 "[PROCESS_LINES DEBUG] Socket {}: detected FiSH key exchange",
@@ -946,12 +940,14 @@ impl SocketInfo {
                     match self.processed_incoming_buffer.try_lock() {
                         Some(mut buffer) => {
                             buffer.extend(line_buffer.as_bytes());
-                            
+
                             #[cfg(debug_assertions)]
                             {
                                 debug!(
                                     "[PROCESS_LINES DEBUG] Socket {}: added {} bytes to processed_incoming_buffer (total now: {} bytes)",
-                                    self.socket, line_buffer.len(), buffer.len()
+                                    self.socket,
+                                    line_buffer.len(),
+                                    buffer.len()
                                 );
                             }
                         }
@@ -984,10 +980,7 @@ impl SocketInfo {
             }
             Err(e) => {
                 trace!("Socket {}: [IN RAW] Non-UTF8 data", self.socket);
-                warn!(
-                    "Socket {}: received data contains invalid UTF-8: {}",
-                    self.socket, e
-                );
+                warn!("Socket {}: received data contains invalid UTF-8: {}", self.socket, e);
 
                 Err(SocketError::ProtocolError(format!("FromUtf8Error: {}", e)))
             }
@@ -1013,8 +1006,10 @@ impl SocketInfo {
 
                     // Additional validation to prevent potential out-of-bounds access
                     if total_bytes < bytes_to_copy {
-                        warn!("Socket {}: buffer inconsistency detected in read_processed_data: expected at least {} bytes but found {}", 
-                            self.socket, bytes_to_copy, total_bytes);
+                        warn!(
+                            "Socket {}: buffer inconsistency detected in read_processed_data: expected at least {} bytes but found {}",
+                            self.socket, bytes_to_copy, total_bytes
+                        );
                         return 0;
                     }
 
@@ -1026,8 +1021,12 @@ impl SocketInfo {
 
                         // Validate second_part_size is not larger than slice2
                         if second_part_size > slice2.len() {
-                            warn!("Socket {}: buffer inconsistency detected: trying to copy {} bytes from slice2 but only {} available", 
-                                self.socket, second_part_size, slice2.len());
+                            warn!(
+                                "Socket {}: buffer inconsistency detected: trying to copy {} bytes from slice2 but only {} available",
+                                self.socket,
+                                second_part_size,
+                                slice2.len()
+                            );
                             return slice1.len(); // Return only what we copied successfully
                         }
 
@@ -1106,10 +1105,7 @@ impl SocketInfo {
             buffer.clear();
         }
 
-        log::info!(
-            "Socket {}: notified engines and cleaned up state.",
-            socket_id
-        );
+        log::info!("Socket {}: notified engines and cleaned up state.", socket_id);
     }
 
     /// Parse TLS record info: returns (record_type, version, record_length) if valid TLS record
@@ -1168,8 +1164,7 @@ impl SocketInfo {
     pub fn extract_sni_from_client_hello(data: &[u8]) -> Option<String> {
         // Helper to read a u16 from a slice at a given offset
         fn read_u16(data: &[u8], offset: usize) -> Option<u16> {
-            data.get(offset..offset + 2)
-                .map(|b| u16::from_be_bytes([b[0], b[1]]))
+            data.get(offset..offset + 2).map(|b| u16::from_be_bytes([b[0], b[1]]))
         }
 
         // Helper to read a u24 (3 bytes) from a slice at a given offset
@@ -1231,306 +1226,356 @@ impl SocketInfo {
         }
 
         // Parse extensions
-        while pos + 4 <= extensions_end {        //! ssl_inline_patch.rs
-        //! Inline patching for SSL_read and SSL_write (64-bit Windows, OpenSSL)
-        //! Enhanced version based on C++ implementation
-        //!
-        //! Written by [GuY], 2025. GPL v3.
-        //! This file is part of the FiSH_11 project.
-        
-        use crate::hook_ssl::SSL;
-        use log::{error, trace, warn};
-        use std::mem;
-        use std::ptr::{self, addr_of, addr_of_mut};
-        use std::sync::Mutex;
-        use winapi::ctypes::c_void;
-        use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
-        use winapi::um::memoryapi::VirtualProtect;
-        use winapi::um::winnt::{PAGE_EXECUTE_READWRITE, PAGE_READONLY, PAGE_EXECUTE_READ};
-        use winapi::shared::minwindef::DWORD;
-        
-        use crate::hook_ssl::{SslReadFn, SslWriteFn};
-        
-        static PATCHED: Mutex<bool> = Mutex::new(false);
-        static PATCH_CRITICAL_SECTION: Mutex<()> = Mutex::new(());
-        
-        // Increased trampoline size for safety
-        const JMP_SIZE: usize = 12; // 64-bit absolute jump
-        const TRAMPOLINE_SIZE: usize = 32; // Larger buffer for safety
-        
-        // Original function bytes storage
-        static mut SSL_READ_ORIG_BYTES: [u8; JMP_SIZE] = [0; JMP_SIZE];
-        static mut SSL_WRITE_ORIG_BYTES: [u8; JMP_SIZE] = [0; JMP_SIZE];
-        
-        // Function pointers for original functions
-        static mut ORIG_SSL_READ: Option<SslReadFn> = None;
-        static mut ORIG_SSL_WRITE: Option<SslWriteFn> = None;
-        
-        #[repr(align(16))]
-        pub struct AlignedTrampoline {
-            buf: [u8; TRAMPOLINE_SIZE],
-        }
-        
-        pub static mut SSL_READ_TRAMPOLINE: AlignedTrampoline =
-            AlignedTrampoline { buf: [0; TRAMPOLINE_SIZE] };
-        pub static mut SSL_WRITE_TRAMPOLINE: AlignedTrampoline =
-            AlignedTrampoline { buf: [0; TRAMPOLINE_SIZE] };
-        
-        /// Safe memory protection change with error handling
-        unsafe fn change_memory_protection(addr: *mut c_void, size: usize, new_protect: DWORD) -> Result<DWORD, String> {
-            let mut old_protect: DWORD = 0;
-            if VirtualProtect(addr, size, new_protect, &mut old_protect) == 0 {
-                return Err(format!("VirtualProtect failed at {:p}", addr));
-            }
-            Ok(old_protect)
-        }
-        
-        /// Enhanced patch function with better error handling
-        unsafe fn patch_function(target: *mut u8, detour: *const u8, original_bytes: &mut [u8]) -> Result<(), String> {
-            // Validate parameters
-            if target.is_null() || detour.is_null() {
-                return Err("Null pointer passed to patch_function".to_string());
-            }
-        
-            // Save original bytes
-            ptr::copy_nonoverlapping(target, original_bytes.as_mut_ptr(), JMP_SIZE);
-        
-            // Change memory protection
-            let old_protect = change_memory_protection(target as *mut c_void, JMP_SIZE, PAGE_EXECUTE_READWRITE)?;
-        
-            // Create absolute jump: mov rax, detour; jmp rax
-            let mut patch: [u8; JMP_SIZE] = [0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xE0];
-            let detour_addr = detour as u64;
-            patch[2..10].copy_from_slice(&detour_addr.to_le_bytes());
-        
-            // Apply patch
-            ptr::copy_nonoverlapping(patch.as_ptr(), target, JMP_SIZE);
-        
-            // Restore original protection
-            let _ = change_memory_protection(target as *mut c_void, JMP_SIZE, old_protect);
-        
-            trace!("Function patched successfully at {:p} -> {:p}", target, detour);
-            Ok(())
-        }
-        
-        /// Enhanced unpatch function
-        unsafe fn unpatch_function(target: *mut u8, original_bytes: &[u8]) -> Result<(), String> {
-            if target.is_null() {
-                return Err("Null pointer passed to unpatch_function".to_string());
-            }
-        
-            let old_protect = change_memory_protection(target as *mut c_void, JMP_SIZE, PAGE_EXECUTE_READWRITE)?;
-            ptr::copy_nonoverlapping(original_bytes.as_ptr(), target, JMP_SIZE);
-            let _ = change_memory_protection(target as *mut c_void, JMP_SIZE, old_protect);
-        
-            trace!("Function unpatched successfully at {:p}", target);
-            Ok(())
-        }
-        
-        /// Build trampoline with enhanced safety
-        unsafe fn build_trampoline(
-            trampoline_ptr: *mut AlignedTrampoline,
-            original_bytes: &[u8],
-            return_addr: u64,
-        ) -> Result<(), String> {
-            // Safety: caller must ensure exclusive access to trampoline_ptr
-            let trampoline = &mut *trampoline_ptr;
-            trampoline.buf.fill(0);
+        while pos + 4 <= extensions_end {
+            //! ssl_inline_patch.rs
+            //! Inline patching for SSL_read and SSL_write (64-bit Windows, OpenSSL)
+            //! Enhanced version based on C++ implementation
+            //!
+            //! Written by [GuY], 2025. GPL v3.
+            //! This file is part of the FiSH_11 project.
 
-            // Copy original instructions
-            ptr::copy_nonoverlapping(original_bytes.as_ptr(), trampoline.buf.as_mut_ptr(), JMP_SIZE);
+            use std::mem;
+            use std::ptr::{self, addr_of, addr_of_mut};
+            use std::sync::Mutex;
 
-            // Create jump back to original function + JMP_SIZE
-            let mut jmp_back = [0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xE0]; // mov rax, addr; jmp rax
-            jmp_back[2..10].copy_from_slice(&return_addr.to_le_bytes());
-            
-            ptr::copy_nonoverlapping(
-                jmp_back.as_ptr(),
-                trampoline.buf.as_mut_ptr().add(JMP_SIZE),
-                JMP_SIZE,
-            );
+            use log::{error, trace, warn};
+            use winapi::ctypes::c_void;
+            use winapi::shared::minwindef::DWORD;
+            use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
+            use winapi::um::memoryapi::VirtualProtect;
+            use winapi::um::winnt::{PAGE_EXECUTE_READ, PAGE_EXECUTE_READWRITE, PAGE_READONLY};
 
-            // Make trampoline executable
-            change_memory_protection(
-                trampoline.buf.as_mut_ptr() as *mut c_void,
-                TRAMPOLINE_SIZE,
-                PAGE_EXECUTE_READ,
-            )?;
+            use crate::hook_ssl::{SSL, SslReadFn, SslWriteFn};
 
-            Ok(())
-        }
-        
-        /// Enhanced SSL_read hook with better error handling
-        unsafe extern "C" fn my_ssl_read(ssl: *mut c_void, buf: *mut u8, num: i32) -> i32 {
-            // Validate parameters
-            if ssl.is_null() || buf.is_null() || num <= 0 {
-                warn!("[PATCH] my_ssl_read: Invalid parameters");
-                return -1;
+            static PATCHED: Mutex<bool> = Mutex::new(false);
+            static PATCH_CRITICAL_SECTION: Mutex<()> = Mutex::new(());
+
+            // Increased trampoline size for safety
+            const JMP_SIZE: usize = 12; // 64-bit absolute jump
+            const TRAMPOLINE_SIZE: usize = 32; // Larger buffer for safety
+
+            // Original function bytes storage
+            static mut SSL_READ_ORIG_BYTES: [u8; JMP_SIZE] = [0; JMP_SIZE];
+            static mut SSL_WRITE_ORIG_BYTES: [u8; JMP_SIZE] = [0; JMP_SIZE];
+
+            // Function pointers for original functions
+            static mut ORIG_SSL_READ: Option<SslReadFn> = None;
+            static mut ORIG_SSL_WRITE: Option<SslWriteFn> = None;
+
+            #[repr(align(16))]
+            pub struct AlignedTrampoline {
+                buf: [u8; TRAMPOLINE_SIZE],
             }
-        
-            trace!("[PATCH] my_ssl_read() called: ssl={:p}, buf={:p}, num={}", ssl, buf, num);
-            
-            // Call original function using stored function pointer
-            if let Some(orig_fn) = ORIG_SSL_READ {
-                let ret = orig_fn(ssl as *mut SSL, buf, num);
-                
-                if ret > 0 && !buf.is_null() {
-                    let data_len = std::cmp::min(ret as usize, 32);
-                    let data = std::slice::from_raw_parts(buf, data_len);
-                    trace!("[PATCH] my_ssl_read() decrypted data ({} bytes): {:02X?}", ret, data);
+
+            pub static mut SSL_READ_TRAMPOLINE: AlignedTrampoline =
+                AlignedTrampoline { buf: [0; TRAMPOLINE_SIZE] };
+            pub static mut SSL_WRITE_TRAMPOLINE: AlignedTrampoline =
+                AlignedTrampoline { buf: [0; TRAMPOLINE_SIZE] };
+
+            /// Safe memory protection change with error handling
+            unsafe fn change_memory_protection(
+                addr: *mut c_void,
+                size: usize,
+                new_protect: DWORD,
+            ) -> Result<DWORD, String> {
+                let mut old_protect: DWORD = 0;
+                if VirtualProtect(addr, size, new_protect, &mut old_protect) == 0 {
+                    return Err(format!("VirtualProtect failed at {:p}", addr));
                 }
-                
-                ret
-            } else {
-                error!("[PATCH] my_ssl_read: Original function pointer is null!");
-                -1
+                Ok(old_protect)
             }
-        }
-        
-        /// Enhanced SSL_write hook with better error handling
-        unsafe extern "C" fn my_ssl_write(ssl: *mut c_void, buf: *const u8, num: i32) -> i32 {
-            // Validate parameters
-            if ssl.is_null() || buf.is_null() || num <= 0 {
-                warn!("[PATCH] my_ssl_write: Invalid parameters");
-                return -1;
+
+            /// Enhanced patch function with better error handling
+            unsafe fn patch_function(
+                target: *mut u8,
+                detour: *const u8,
+                original_bytes: &mut [u8],
+            ) -> Result<(), String> {
+                // Validate parameters
+                if target.is_null() || detour.is_null() {
+                    return Err("Null pointer passed to patch_function".to_string());
+                }
+
+                // Save original bytes
+                ptr::copy_nonoverlapping(target, original_bytes.as_mut_ptr(), JMP_SIZE);
+
+                // Change memory protection
+                let old_protect = change_memory_protection(
+                    target as *mut c_void,
+                    JMP_SIZE,
+                    PAGE_EXECUTE_READWRITE,
+                )?;
+
+                // Create absolute jump: mov rax, detour; jmp rax
+                let mut patch: [u8; JMP_SIZE] = [0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xE0];
+                let detour_addr = detour as u64;
+                patch[2..10].copy_from_slice(&detour_addr.to_le_bytes());
+
+                // Apply patch
+                ptr::copy_nonoverlapping(patch.as_ptr(), target, JMP_SIZE);
+
+                // Restore original protection
+                let _ = change_memory_protection(target as *mut c_void, JMP_SIZE, old_protect);
+
+                trace!("Function patched successfully at {:p} -> {:p}", target, detour);
+                Ok(())
             }
-        
-            trace!("[PATCH] my_ssl_write() called: ssl={:p}, buf={:p}, num={}", ssl, buf, num);
-            
-            if num > 0 && !buf.is_null() {
-                let data_len = std::cmp::min(num as usize, 32);
-                let data = std::slice::from_raw_parts(buf, data_len);
-                trace!("[PATCH] my_ssl_write() plaintext data ({} bytes): {:02X?}", num, data);
+
+            /// Enhanced unpatch function
+            unsafe fn unpatch_function(
+                target: *mut u8,
+                original_bytes: &[u8],
+            ) -> Result<(), String> {
+                if target.is_null() {
+                    return Err("Null pointer passed to unpatch_function".to_string());
+                }
+
+                let old_protect = change_memory_protection(
+                    target as *mut c_void,
+                    JMP_SIZE,
+                    PAGE_EXECUTE_READWRITE,
+                )?;
+                ptr::copy_nonoverlapping(original_bytes.as_ptr(), target, JMP_SIZE);
+                let _ = change_memory_protection(target as *mut c_void, JMP_SIZE, old_protect);
+
+                trace!("Function unpatched successfully at {:p}", target);
+                Ok(())
             }
-            
-            // Call original function using stored function pointer
-            if let Some(orig_fn) = ORIG_SSL_WRITE {
-                orig_fn(ssl as *mut SSL, buf, num)
-            } else {
-                error!("[PATCH] my_ssl_write: Original function pointer is null!");
-                -1
+
+            /// Build trampoline with enhanced safety
+            unsafe fn build_trampoline(
+                trampoline_ptr: *mut AlignedTrampoline,
+                original_bytes: &[u8],
+                return_addr: u64,
+            ) -> Result<(), String> {
+                // Safety: caller must ensure exclusive access to trampoline_ptr
+                let trampoline = &mut *trampoline_ptr;
+                trampoline.buf.fill(0);
+
+                // Copy original instructions
+                ptr::copy_nonoverlapping(
+                    original_bytes.as_ptr(),
+                    trampoline.buf.as_mut_ptr(),
+                    JMP_SIZE,
+                );
+
+                // Create jump back to original function + JMP_SIZE
+                let mut jmp_back = [0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xE0]; // mov rax, addr; jmp rax
+                jmp_back[2..10].copy_from_slice(&return_addr.to_le_bytes());
+
+                ptr::copy_nonoverlapping(
+                    jmp_back.as_ptr(),
+                    trampoline.buf.as_mut_ptr().add(JMP_SIZE),
+                    JMP_SIZE,
+                );
+
+                // Make trampoline executable
+                change_memory_protection(
+                    trampoline.buf.as_mut_ptr() as *mut c_void,
+                    TRAMPOLINE_SIZE,
+                    PAGE_EXECUTE_READ,
+                )?;
+
+                Ok(())
             }
-        }
-        
-        /// Enhanced SSL patch installation with comprehensive error handling
-        pub unsafe fn install_ssl_inline_patches() -> Result<(), String> {
-            let _guard = PATCH_CRITICAL_SECTION.lock().map_err(|_| "Failed to acquire patch lock")?;
-            let mut patched = PATCHED.lock().map_err(|_| "Failed to acquire patched mutex")?;
-            
-            if *patched {
-                trace!("SSL patches already installed");
-                return Ok(());
+
+            /// Enhanced SSL_read hook with better error handling
+            unsafe extern "C" fn my_ssl_read(ssl: *mut c_void, buf: *mut u8, num: i32) -> i32 {
+                // Validate parameters
+                if ssl.is_null() || buf.is_null() || num <= 0 {
+                    warn!("[PATCH] my_ssl_read: Invalid parameters");
+                    return -1;
+                }
+
+                trace!("[PATCH] my_ssl_read() called: ssl={:p}, buf={:p}, num={}", ssl, buf, num);
+
+                // Call original function using stored function pointer
+                if let Some(orig_fn) = ORIG_SSL_READ {
+                    let ret = orig_fn(ssl as *mut SSL, buf, num);
+
+                    if ret > 0 && !buf.is_null() {
+                        let data_len = std::cmp::min(ret as usize, 32);
+                        let data = std::slice::from_raw_parts(buf, data_len);
+                        trace!(
+                            "[PATCH] my_ssl_read() decrypted data ({} bytes): {:02X?}",
+                            ret, data
+                        );
+                    }
+
+                    ret
+                } else {
+                    error!("[PATCH] my_ssl_read: Original function pointer is null!");
+                    -1
+                }
             }
-        
-            // Get OpenSSL module handle
-            let lib = GetModuleHandleA(b"libssl-3.dll\0".as_ptr() as *mut _);
-            if lib.is_null() {
-                return Err("libssl-3.dll not loaded".to_string());
+
+            /// Enhanced SSL_write hook with better error handling
+            unsafe extern "C" fn my_ssl_write(ssl: *mut c_void, buf: *const u8, num: i32) -> i32 {
+                // Validate parameters
+                if ssl.is_null() || buf.is_null() || num <= 0 {
+                    warn!("[PATCH] my_ssl_write: Invalid parameters");
+                    return -1;
+                }
+
+                trace!("[PATCH] my_ssl_write() called: ssl={:p}, buf={:p}, num={}", ssl, buf, num);
+
+                if num > 0 && !buf.is_null() {
+                    let data_len = std::cmp::min(num as usize, 32);
+                    let data = std::slice::from_raw_parts(buf, data_len);
+                    trace!("[PATCH] my_ssl_write() plaintext data ({} bytes): {:02X?}", num, data);
+                }
+
+                // Call original function using stored function pointer
+                if let Some(orig_fn) = ORIG_SSL_WRITE {
+                    orig_fn(ssl as *mut SSL, buf, num)
+                } else {
+                    error!("[PATCH] my_ssl_write: Original function pointer is null!");
+                    -1
+                }
             }
-        
-            // Get function addresses
-            let ssl_read = GetProcAddress(lib, b"SSL_read\0".as_ptr() as *const i8);
-            let ssl_write = GetProcAddress(lib, b"SSL_write\0".as_ptr() as *const i8);
-        
-            if ssl_read.is_null() || ssl_write.is_null() {
-                return Err("SSL functions not found".to_string());
+
+            /// Enhanced SSL patch installation with comprehensive error handling
+            pub unsafe fn install_ssl_inline_patches() -> Result<(), String> {
+                let _guard =
+                    PATCH_CRITICAL_SECTION.lock().map_err(|_| "Failed to acquire patch lock")?;
+                let mut patched = PATCHED.lock().map_err(|_| "Failed to acquire patched mutex")?;
+
+                if *patched {
+                    trace!("SSL patches already installed");
+                    return Ok(());
+                }
+
+                // Get OpenSSL module handle
+                let lib = GetModuleHandleA(b"libssl-3.dll\0".as_ptr() as *mut _);
+                if lib.is_null() {
+                    return Err("libssl-3.dll not loaded".to_string());
+                }
+
+                // Get function addresses
+                let ssl_read = GetProcAddress(lib, b"SSL_read\0".as_ptr() as *const i8);
+                let ssl_write = GetProcAddress(lib, b"SSL_write\0".as_ptr() as *const i8);
+
+                if ssl_read.is_null() || ssl_write.is_null() {
+                    return Err("SSL functions not found".to_string());
+                }
+
+                trace!("Found SSL functions: SSL_read={:p}, SSL_write={:p}", ssl_read, ssl_write);
+
+                // Save original bytes
+                ptr::copy_nonoverlapping(
+                    ssl_read as *const u8,
+                    addr_of_mut!(SSL_READ_ORIG_BYTES).cast::<u8>(),
+                    JMP_SIZE,
+                );
+                ptr::copy_nonoverlapping(
+                    ssl_write as *const u8,
+                    addr_of_mut!(SSL_WRITE_ORIG_BYTES).cast::<u8>(),
+                    JMP_SIZE,
+                );
+
+                // Build trampolines
+                let read_ret_addr = (ssl_read as usize + JMP_SIZE) as u64;
+                let write_ret_addr = (ssl_write as usize + JMP_SIZE) as u64;
+                build_trampoline(
+                    addr_of_mut!(SSL_READ_TRAMPOLINE),
+                    std::slice::from_raw_parts(
+                        addr_of!(SSL_READ_ORIG_BYTES).cast::<u8>(),
+                        JMP_SIZE,
+                    ),
+                    read_ret_addr,
+                )?;
+                build_trampoline(
+                    addr_of_mut!(SSL_WRITE_TRAMPOLINE),
+                    std::slice::from_raw_parts(
+                        addr_of!(SSL_WRITE_ORIG_BYTES).cast::<u8>(),
+                        JMP_SIZE,
+                    ),
+                    write_ret_addr,
+                )?;
+
+                // Store original function pointers
+                ORIG_SSL_READ =
+                    Some(mem::transmute(addr_of!(SSL_READ_TRAMPOLINE).cast::<u8>().add(0)));
+                ORIG_SSL_WRITE =
+                    Some(mem::transmute(addr_of!(SSL_WRITE_TRAMPOLINE).cast::<u8>().add(0)));
+
+                // Apply patches
+                patch_function(
+                    ssl_read as *mut u8,
+                    my_ssl_read as *const u8,
+                    &mut *addr_of_mut!(SSL_READ_ORIG_BYTES),
+                )?;
+
+                patch_function(
+                    ssl_write as *mut u8,
+                    my_ssl_write as *const u8,
+                    &mut *addr_of_mut!(SSL_WRITE_ORIG_BYTES),
+                )?;
+
+                *patched = true;
+                trace!("SSL hooks installed successfully");
+                Ok(())
             }
-        
-            trace!("Found SSL functions: SSL_read={:p}, SSL_write={:p}", ssl_read, ssl_write);
-        
-            // Save original bytes
-            ptr::copy_nonoverlapping(
-                ssl_read as *const u8,
-                addr_of_mut!(SSL_READ_ORIG_BYTES).cast::<u8>(),
-                JMP_SIZE,
-            );
-            ptr::copy_nonoverlapping(
-                ssl_write as *const u8,
-                addr_of_mut!(SSL_WRITE_ORIG_BYTES).cast::<u8>(),
-                JMP_SIZE,
-            );
-        
-            // Build trampolines
-            let read_ret_addr = (ssl_read as usize + JMP_SIZE) as u64;
-            let write_ret_addr = (ssl_write as usize + JMP_SIZE) as u64;
-            build_trampoline(addr_of_mut!(SSL_READ_TRAMPOLINE), &SSL_READ_ORIG_BYTES, read_ret_addr)?;
-            build_trampoline(addr_of_mut!(SSL_WRITE_TRAMPOLINE), &SSL_WRITE_ORIG_BYTES, write_ret_addr)?;
-        
-            // Store original function pointers
-            ORIG_SSL_READ = Some(mem::transmute(addr_of!(SSL_READ_TRAMPOLINE).cast::<u8>().add(0)));
-            ORIG_SSL_WRITE = Some(mem::transmute(addr_of!(SSL_WRITE_TRAMPOLINE).cast::<u8>().add(0)));
-        
-            // Apply patches
-            patch_function(
-                ssl_read as *mut u8,
-                my_ssl_read as *const u8,
-                &mut *addr_of_mut!(SSL_READ_ORIG_BYTES),
-            )?;
-            
-            patch_function(
-                ssl_write as *mut u8,
-                my_ssl_write as *const u8,
-                &mut *addr_of_mut!(SSL_WRITE_ORIG_BYTES),
-            )?;
-        
-            *patched = true;
-            trace!("SSL hooks installed successfully");
-            Ok(())
-        }
-        
-        /// Enhanced SSL patch uninstallation
-        pub unsafe fn uninstall_ssl_inline_patches() -> Result<(), String> {
-            let _guard = PATCH_CRITICAL_SECTION.lock().map_err(|_| "Failed to acquire patch lock")?;
-            let mut patched = PATCHED.lock().map_err(|_| "Failed to acquire patched mutex")?;
-            
-            if !*patched {
-                trace!("SSL patches not installed");
-                return Ok(());
+
+            /// Enhanced SSL patch uninstallation
+            pub unsafe fn uninstall_ssl_inline_patches() -> Result<(), String> {
+                let _guard =
+                    PATCH_CRITICAL_SECTION.lock().map_err(|_| "Failed to acquire patch lock")?;
+                let mut patched = PATCHED.lock().map_err(|_| "Failed to acquire patched mutex")?;
+
+                if !*patched {
+                    trace!("SSL patches not installed");
+                    return Ok(());
+                }
+
+                let lib = GetModuleHandleA(b"libssl-3.dll\0".as_ptr() as *mut _);
+                if lib.is_null() {
+                    return Err("libssl-3.dll not loaded".to_string());
+                }
+
+                let ssl_read = GetProcAddress(lib, b"SSL_read\0".as_ptr() as *const i8);
+                let ssl_write = GetProcAddress(lib, b"SSL_write\0".as_ptr() as *const i8);
+
+                if ssl_read.is_null() || ssl_write.is_null() {
+                    return Err("SSL functions not found".to_string());
+                }
+
+                // Restore original functions
+                let ssl_read_orig = std::slice::from_raw_parts(
+                    addr_of!(SSL_READ_ORIG_BYTES).cast::<u8>(),
+                    JMP_SIZE,
+                );
+                let ssl_write_orig = std::slice::from_raw_parts(
+                    addr_of!(SSL_WRITE_ORIG_BYTES).cast::<u8>(),
+                    JMP_SIZE,
+                );
+                unpatch_function(ssl_read as *mut u8, ssl_read_orig)?;
+                unpatch_function(ssl_write as *mut u8, ssl_write_orig)?;
+
+                // Clear function pointers
+                ORIG_SSL_READ = None;
+                ORIG_SSL_WRITE = None;
+
+                // Make trampolines non-executable
+                let _ = change_memory_protection(
+                    addr_of_mut!(SSL_READ_TRAMPOLINE).cast::<c_void>(),
+                    TRAMPOLINE_SIZE,
+                    PAGE_READONLY,
+                );
+                let _ = change_memory_protection(
+                    addr_of_mut!(SSL_WRITE_TRAMPOLINE).cast::<c_void>(),
+                    TRAMPOLINE_SIZE,
+                    PAGE_READONLY,
+                );
+
+                *patched = false;
+                trace!("SSL hooks uninstalled successfully");
+                Ok(())
             }
-        
-            let lib = GetModuleHandleA(b"libssl-3.dll\0".as_ptr() as *mut _);
-            if lib.is_null() {
-                return Err("libssl-3.dll not loaded".to_string());
-            }
-        
-            let ssl_read = GetProcAddress(lib, b"SSL_read\0".as_ptr() as *const i8);
-            let ssl_write = GetProcAddress(lib, b"SSL_write\0".as_ptr() as *const i8);
-        
-            if ssl_read.is_null() || ssl_write.is_null() {
-                return Err("SSL functions not found".to_string());
-            }
-        
-            // Restore original functions
-            let ssl_read_orig = std::slice::from_raw_parts(addr_of!(SSL_READ_ORIG_BYTES).cast::<u8>(), JMP_SIZE);
-            let ssl_write_orig = std::slice::from_raw_parts(addr_of!(SSL_WRITE_ORIG_BYTES).cast::<u8>(), JMP_SIZE);
-            unpatch_function(ssl_read as *mut u8, ssl_read_orig)?;
-            unpatch_function(ssl_write as *mut u8, ssl_write_orig)?;
-        
-            // Clear function pointers
-            ORIG_SSL_READ = None;
-            ORIG_SSL_WRITE = None;
-        
-            // Make trampolines non-executable
-            let _ = change_memory_protection(
-                addr_of_mut!(SSL_READ_TRAMPOLINE).cast::<c_void>(),
-                TRAMPOLINE_SIZE,
-                PAGE_READONLY,
-            );
-            let _ = change_memory_protection(
-                addr_of_mut!(SSL_WRITE_TRAMPOLINE).cast::<c_void>(),
-                TRAMPOLINE_SIZE,
-                PAGE_READONLY,
-            );
-        
-            *patched = false;
-            trace!("SSL hooks uninstalled successfully");
-            Ok(())
-        }
             let ext_type = read_u16(data, pos)?;
             let ext_len = read_u16(data, pos + 2)? as usize;
             pos += 4;
             if ext_type == 0x00 {
-                
                 // SNI extension must be at least 5 bytes (list len + type + name len)
                 if ext_len >= 5 && pos + ext_len <= extensions_end {
                     let sni_list_len = read_u16(data, pos)? as usize;
