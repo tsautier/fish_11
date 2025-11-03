@@ -138,6 +138,19 @@ pub unsafe extern "system" fn DllMain(
                 info!("DllMain: h_module = {:?}", h_module);
             }
 
+            // Initialize the engine container so other DLLs can register themselves.
+            match ENGINES.lock() {
+                Ok(mut engines) => {
+                    if engines.is_none() {
+                        *engines = Some(Arc::new(InjectEngines::new()));
+                        info!("DllMain: InjectEngines container initialized successfully.");
+                    }
+                }
+                Err(e) => {
+                    error!("DllMain: Failed to lock ENGINES to initialize: {}", e);
+                }
+            }
+
             // Store module handle
             #[cfg(debug_assertions)]
             info!("DllMain: Acquiring DLL_HANDLE_PTR lock...");
