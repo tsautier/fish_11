@@ -804,6 +804,14 @@ impl SocketInfo {
                     buffer.len()
                 );
 
+                #[cfg(debug_assertions)]
+                {
+                    debug!(
+                        "[PROCESS_LINES DEBUG] Socket {}: received_buffer has {} bytes before processing",
+                        self.socket, buffer.len()
+                    );
+                }
+
                 // Clone the data and immediately release the lock
                 let data_copy = buffer.clone();
 
@@ -829,6 +837,19 @@ impl SocketInfo {
             data
         );
 
+        #[cfg(debug_assertions)]
+        {
+            debug!(
+                "[PROCESS_LINES DEBUG] Socket {}: processing buffer of {} bytes",
+                self.socket, data.len()
+            );
+            let preview_len = std::cmp::min(128, data.len());
+            debug!(
+                "[PROCESS_LINES DEBUG] Socket {}: hex preview (first {} bytes): {:02X?}",
+                self.socket, preview_len, &data[..preview_len]
+            );
+        }
+
         // Single UTF-8 validation for the entire buffer
         match std::str::from_utf8(&data) {
             Ok(data_str) => {
@@ -837,6 +858,18 @@ impl SocketInfo {
                     self.socket,
                     data_str.trim_end()
                 );
+
+                #[cfg(debug_assertions)]
+                {
+                    let sanitized: String = data_str.chars()
+                        .take(256)
+                        .map(|c| if c.is_control() && c != '\r' && c != '\n' && c != '\t' { '.' } else { c })
+                        .collect();
+                    debug!(
+                        "[PROCESS_LINES DEBUG] Socket {}: UTF-8 content preview (sanitized, first 256 chars): {:?}",
+                        self.socket, sanitized
+                    );
+                }
 
                 let mut lines_processed = 0;
                 let mut bytes_processed = 0;
@@ -852,6 +885,38 @@ impl SocketInfo {
                     }
 
                     debug!("Socket {}: [IRC IN] {}", self.socket, line);
+
+                    #[cfg(debug_assertions)]
+                    {
+                        // Log details about each IRC line
+                        debug!(
+                            "[PROCESS_LINES DEBUG] Socket {}: processing IRC line ({} bytes): {:?}",
+                            self.socket, line.len(), line
+                        );
+                        
+                        // Check for specific IRC commands or FiSH markers
+                        if line.contains("PRIVMSG") || line.contains("NOTICE") {
+                            debug!(
+                                "[PROCESS_LINES DEBUG] Socket {}: detected IRC message command",
+                                self.socket
+                            );
+                            
+                            // Check for encrypted content markers
+                            if line.contains("+OK ") || line.contains("+FiSH ") || line.contains("mcps ") {
+                                debug!(
+                                    "[PROCESS_LINES DEBUG] Socket {}: detected encrypted FiSH message",
+                                    self.socket
+                                );
+                            }
+                        }
+                        
+                        if line.contains("X25519_INIT") || line.contains("FiSH11-PubKey:") {
+                            debug!(
+                                "[PROCESS_LINES DEBUG] Socket {}: detected FiSH key exchange",
+                                self.socket
+                            );
+                        }
+                    }
 
                     // Reuse the buffer instead of allocating a new string
                     line_buffer.clear();
@@ -878,6 +943,14 @@ impl SocketInfo {
                     match self.processed_incoming_buffer.try_lock() {
                         Some(mut buffer) => {
                             buffer.extend(line_buffer.as_bytes());
+                            
+                            #[cfg(debug_assertions)]
+                            {
+                                debug!(
+                                    "[PROCESS_LINES DEBUG] Socket {}: added {} bytes to processed_incoming_buffer (total now: {} bytes)",
+                                    self.socket, line_buffer.len(), buffer.len()
+                                );
+                            }
                         }
                         None => {
                             // Log but continue with next line
@@ -895,6 +968,14 @@ impl SocketInfo {
                     "Socket {}: processed {} lines ({} bytes)",
                     self.socket, lines_processed, bytes_processed
                 );
+
+                #[cfg(debug_assertions)]
+                {
+                    debug!(
+                        "[PROCESS_LINES DEBUG] Socket {}: finished processing, {} lines total",
+                        self.socket, lines_processed
+                    );
+                }
 
                 Ok(())
             }

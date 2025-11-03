@@ -30,4 +30,9 @@ copydll.bat
 GEMINI.md
 
 # Generated during rust tests
-fish_11_dll/fish_11.ini
+# Ignore any fish*.ini file anywhere in the repository (config/test artifacts)
+**/fish*.ini
+
+# Ignore exchange_tmp directories used by scripts for temporary exchange files
+**/exchange_tmp/
+**/exchange_tmp/**

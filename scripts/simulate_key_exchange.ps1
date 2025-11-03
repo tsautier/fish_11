@@ -18,7 +18,7 @@ the scripts\exchange_tmp directory. It cleans up on exit.
 #>
 
 param(
-    [string]$Sender = 'alice',
+    [string]$Sendah = 'alice',
     [string]$Receiver = 'bob'
 )
 
@@ -27,8 +27,8 @@ Set-StrictMode -Version Latest
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $repoRoot = Resolve-Path (Join-Path $scriptDir '..')
 
-$cliPath = Join-Path $repoRoot 'target\debug\fish_11_cli.exe'
-$dllPath = Join-Path $repoRoot 'target\debug\fish_11.dll'
+$cliPath = Join-Path $repoRoot 'target\i686-pc-windows-msvc\debug\fish_11_cli.exe'
+$dllPath = Join-Path $repoRoot 'target\i686-pc-windows-msvc\debug\fish_11.dll'
 
 if (-not (Test-Path $cliPath)) {
     Write-Error "CLI not found at: $cliPath`nPlease build the project first (cargo build -p fish_11_cli)"
@@ -46,7 +46,7 @@ $aToB = Join-Path $tmpDir 'a_to_b.txt'
 $bToA = Join-Path $tmpDir 'b_to_a.txt'
 $logFile = Join-Path $tmpDir 'exchange.log'
 
-Write-Host "Simulation starting: Sender='$Sender' Receiver='$Receiver'"
+Write-Host "Simulation starting: Sender='$Sendah' Receiver='$Receiver'"
 Write-Host "CLI: $cliPath`nDLL: $dllPath`nTemp dir: $tmpDir"
 
 Remove-Item -Force -ErrorAction SilentlyContinue $aToB,$bToA,$logFile
@@ -103,10 +103,10 @@ $receiverJob = Start-Job -Name Receiver -ScriptBlock {
         "[$(Get-Date -Format o)] Receiver failed to extract own token from CLI output" | Out-File -FilePath $logFile -Append
         Write-Output "Receiver failed to extract own token"
     }
-} -ArgumentList $cliPath,$dllPath,$Receiver,$Sender,$aToB,$bToA,$logFile
+} -ArgumentList $cliPath,$dllPath,$Receiver,$Sendah,$aToB,$bToA,$logFile
 
 # Sender job: generate token, send to receiver, wait for response, process response
-$senderJob = Start-Job -Name Sender -ScriptBlock {
+$SendahJob = Start-Job -Name Sender -ScriptBlock {
     param($cliPath,$dllPath,$sname,$rname,$outFile,$inFile,$logFile)
 
     "[$(Get-Date -Format o)] Sender job started for $sname" | Out-File -FilePath $logFile -Append
@@ -155,13 +155,13 @@ $senderJob = Start-Job -Name Sender -ScriptBlock {
         Write-Output "No encrypted token detected in encrypt output"
     }
 
-} -ArgumentList $cliPath,$dllPath,$Sender,$Receiver,$aToB,$bToA,$logFile
+} -ArgumentList $cliPath,$dllPath,$Sendah,$Receiver,$aToB,$bToA,$logFile
 
 Write-Host "Jobs started. Waiting for completion (timeout 30s)..."
-Wait-Job -Job $senderJob,$receiverJob -Timeout 30 | Out-Null
+Wait-Job -Job $SendahJob,$receiverJob -Timeout 30 | Out-Null
 
 # If any jobs are still running after the timeout, stop them so we can collect output
-$stillRunning = Get-Job -Id $senderJob.Id,$receiverJob.Id | Where-Object { $_.State -eq 'Running' }
+$stillRunning = Get-Job -Id $SendahJob.Id,$receiverJob.Id | Where-Object { $_.State -eq 'Running' }
 if (($stillRunning | Measure-Object).Count -gt 0) {
     Write-Host "One or more jobs did not finish within the timeout. Stopping jobs..."
     Stop-Job -Job $stillRunning -Force -ErrorAction SilentlyContinue
@@ -169,11 +169,11 @@ if (($stillRunning | Measure-Object).Count -gt 0) {
 
 Write-Host "Collecting job output and logs..."
 # Use Receive-Job without -AutoRemoveJob (it requires -Wait). Remove jobs explicitly afterwards.
-Receive-Job -Job $senderJob | ForEach-Object { Write-Host "[Sender] $_" }
+Receive-Job -Job $SendahJob | ForEach-Object { Write-Host "[Sender] $_" }
 Receive-Job -Job $receiverJob | ForEach-Object { Write-Host "[Receiver] $_" }
 
 # Cleanup jobs
-Remove-Job -Job $senderJob,$receiverJob -Force -ErrorAction SilentlyContinue
+Remove-Job -Job $SendahJob,$receiverJob -Force -ErrorAction SilentlyContinue
 
 Write-Host "Log content:`n"; Get-Content -Path $logFile -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
 

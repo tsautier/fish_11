@@ -15,7 +15,8 @@ on *:START: {
 }
 
 alias fish11_startup {
-  echo 4 -a *** FiSH_11 SECURITY NOTICE : this script relies on 2 external DLL files. Only use trusted, signed versions from official sources. Never run this script if you suspect your system has been compromised.
+  echo 4 -a *** FiSH_11 SECURITY NOTICE *** This script relies on 2 external DLL files. Only use trusted, signed versions from official sources.  ***
+  echo 4 -a *** FiSH_11 SECURITY NOTICE *** Never run this script if you suspect your system has been compromised.                                ***
 
   var %exe_dir = $nofile($mircexe)
 
@@ -55,7 +56,10 @@ alias fish11_startup {
   .dll %Fish11InjectDllFile FiSH11_InjectVersion
   
   ;echo 4 -a DEBUG : Calling fish_11.dll FiSH11_GetVersion...  
-  .dll %Fish11DllFile FiSH11_GetVersion
+  var %fish11_version = $dll(%Fish11DllFile, FiSH11_GetVersion, $null)
+  if (%fish11_version) {
+    echo 4 -a %fish11_version
+  }
 
 
   
@@ -366,8 +370,11 @@ on ^*:NOTICE:X25519_FINISH*:?:{
   ; Process the received public key using the DLL which computes and stores the shared secret
   if ($dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $+($nick," ",%their_pub))) {
     ; Clean up state
-    unset %fish11.dh_ $+ [ $nick ]
-    .timer fish_timeout_ $+ $nick off
+  unset %fish11.dh_ $+ [ $nick ]
+  ; sanitize timer name for nick and stop it; ensure fallback if empty
+  var %timer_name = $regsubex($nick, /[^A-Za-z0-9_]/g, _)
+  if (%timer_name == $null) { set %timer_name _anon_$rand(1000,9999) }
+  .timer $+(fish_timeout_,%timer_name) off
 
     echo $color(Mode text) -tm $nick *** FiSH_11: key exchange complete with $nick
     echo $color(Error) -tm $nick *** FiSH_11 WARNING: key exchange complete, but the identity of $nick is NOT VERIFIED.
@@ -594,7 +601,10 @@ alias fish11_X25519_INIT {
   
   ; If there's an existing exchange in progress, cancel it first
   if (%fish11.dh_ $+ [ %cur_contact ] == 1) {
-    .timer fish_timeout_ $+ %cur_contact off
+    ; sanitize timer name (no spaces or special chars) and ensure fallback
+    var %timer_name = $regsubex(%cur_contact, /[^A-Za-z0-9_]/g, _)
+    if (%timer_name == $null) { set %timer_name _anon_$rand(1000,9999) }
+    .timer $+(fish_timeout_,%timer_name) off
     echo $color(Mode text) -at *** FiSH_11: restarting key exchange with %cur_contact
   }
   
@@ -617,24 +627,45 @@ alias fish11_X25519_INIT {
     ; validate encoded length (base64 32 bytes -> 44 chars)
     var %enc = $mid(%pub, 12, 9999)
     if ($len(%enc) == 44) {
-  .notice %cur_contact X25519_INIT %pub
-  echo $color(Mode text) -tm %cur_contact *** FiSH_11: sent X25519_INIT to %cur_contact, waiting for reply...
-  ; Sanitize timer name (no spaces or special chars) and ensure contact is set
+      .notice %cur_contact X25519_INIT %pub
+      echo $color(Mode text) -tm %cur_contact *** FiSH_11: sent X25519_INIT to %cur_contact, waiting for reply...
+    ; Sanitize timer name (no spaces or special chars) and ensure contact is set
   var %timer_name = $regsubex(%cur_contact, /[^A-Za-z0-9_]/g, _)
-  if (%timer_name != $null) .timer $+(fish_timeout_,%timer_name) 1 10 fish11_timeout_keyexchange %cur_contact
+  if (%timer_name == $null) { set %timer_name _anon_$rand(1000,9999) }
+  var %pub_preview = $regsubex($left(%pub,80), /[^A-Za-z0-9+\/=]/g, )
+  ; Build debug variables explicitly so functions are evaluated before echo
+  var %timer_len = $len(%timer_name)
+  var %timer_ok = $iif($regex(%timer_name,/^[A-Za-z0-9_]+$/),OK,BAD)
+  var %full_timer_name = $+(fish_timeout_,%timer_name)
+  echo 4 -a DEBUG : fish11 timer: contact= $+ %cur_contact name= $+ %timer_name len= $+ %timer_len valid= $+ %timer_ok
+  echo 4 -a DEBUG : fish11 full timer name: %full_timer_name
+  echo 4 -a DEBUG : fish11 about to start timer (10 sec)
+  .timer 0 10 fish11_timeout_keyexchange %cur_contact
       return
     }
     else {
-  echo $color(Mode text) -at *** FiSH_11: invalid public token returned by DLL (bad length)
-  var %timer_name = $regsubex(%cur_contact, /[^A-Za-z0-9_]/g, _)
-  if (%timer_name != $null) .timer $+(fish_timeout_,%timer_name) 1 10 fish11_timeout_keyexchange %cur_contact
+      echo $color(Mode text) -at *** FiSH_11: invalid public token returned by DLL (bad length)
+    var %timer_name = $regsubex(%cur_contact, /[^A-Za-z0-9_]/g, _)
+    if (%timer_name == $null) { set %timer_name _anon_$rand(1000,9999) }
+  var %pub_preview = $regsubex($left(%pub,80), /[^A-Za-z0-9+\/=]/g, )
+  var %timer_len = $len(%timer_name)
+  var %timer_ok = $iif($regex(%timer_name,/^[A-Za-z0-9_]+$/),OK,BAD)
+  var %full_timer_name = $+(fish_timeout_,%timer_name)
+  echo 4 -a DEBUG : fish11 timer: contact= $+ %cur_contact name= $+ %timer_name len= $+ %timer_len valid= $+ %timer_ok
+  .timer %full_timer_name 0 10 fish11_timeout_keyexchange %cur_contact
       return
     }
   }
   ; Fallback: show what we got (safely) and start timer anyway
   echo $color(Mode text) -at *** FiSH_11: key exchange initiation returned: $qt(%pub)
   var %timer_name = $regsubex(%cur_contact, /[^A-Za-z0-9_]/g, _)
-  if (%timer_name != $null) .timer $+(fish_timeout_,%timer_name) 1 10 fish11_timeout_keyexchange %cur_contact
+  if (%timer_name == $null) { set %timer_name _anon_$rand(1000,9999) }
+  var %pub_preview = $regsubex($left(%pub,80), /[^A-Za-z0-9+\/=]/g, )
+  var %timer_len = $len(%timer_name)
+  var %timer_ok = $iif($regex(%timer_name,/^[A-Za-z0-9_]+$/),OK,BAD)
+  var %full_timer_name = $+(fish_timeout_,%timer_name)
+  echo 4 -a DEBUG : fish11 timer: contact= $+ %cur_contact name= $+ %timer_name len= $+ %timer_len valid= $+ %timer_ok
+  .timer %full_timer_name 0 10 fish11_timeout_keyexchange %cur_contact
 }
 
 
@@ -853,7 +884,7 @@ alias fish11_UpdateStatusIndicator {
     aline -p @FiSH_Status * $timestamp $+ %active is encrypted (Key: %colored_fp $+ )
     
     ; Show encryption in status bar with colored fingerprint
-    sbar 4 FiSH: 🔒 %active [Fingerprint: %colored_fp $+ ]
+     echo -at sbar 4 FiSH: 🔒 %active [Fingerprint: %colored_fp $+ ]
     
     ; Also create a command that lets users copy/display the fingerprint on demand
     set %fish11.lastfingerprint. $+ [ %active ] %colored_fp
@@ -861,7 +892,7 @@ alias fish11_UpdateStatusIndicator {
   else {
     if (!$window(@FiSH_Status)) { window -hn @FiSH_Status }
     aline -p @FiSH_Status * $timestamp $+ %active is not encrypted
-    sbar 4 FiSH: 🔓 %active [No encryption]
+    echo -at sbar 4 FiSH: 🔓 %active [No encryption]
     
     ; Clear any stored fingerprint
     unset %fish11.lastfingerprint. $+ [ %active ]
