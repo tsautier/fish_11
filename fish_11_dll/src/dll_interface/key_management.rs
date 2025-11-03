@@ -39,7 +39,7 @@ dll_function_identifier!(FiSH11_ProcessPublicKey, data, {
     } else {
         // fallback: assume first is nickname, remainder is key (may be raw base64)
     _joined_remainder = Some(parts[1..].join(" "));
-    (parts[0], _joined_remainder.as_ref().map(|s| s.as_str()).unwrap_or("") )
+    (parts[0], _joined_remainder.as_ref().map(|s| s.as_str()).unwrap_or(""))
     };
 
     let nickname = normalize_nick(nickname_raw);
