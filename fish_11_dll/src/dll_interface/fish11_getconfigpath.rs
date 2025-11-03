@@ -1,4 +1,4 @@
-use std::ffi::{c_char, CStr};
+use std::ffi::{CStr, c_char};
 use std::os::raw::c_int;
 use std::ptr;
 
@@ -6,11 +6,10 @@ use winapi::shared::minwindef::BOOL;
 use winapi::shared::windef::HWND;
 
 use crate::config;
-use crate::dll_function;
-use crate::dll_interface::{MIRC_COMMAND, MIRC_HALT, MIRC_IDENTIFIER};
-use crate::unified_error::{DllError, DllResult};
+use crate::dll_function_identifier;
+use crate::unified_error::DllError;
 
-dll_function!(FiSH11_GetConfigPath, _data, {
+dll_function_identifier!(FiSH11_GetConfigPath, _data, {
     let config_path = config::get_config_path()?;
     Ok(config_path.to_string_lossy().to_string())
 });
@@ -33,7 +32,7 @@ mod tests {
                 0,
             )
         };
-        assert_eq!(result, MIRC_COMMAND);
+        assert_eq!(result, crate::dll_interface::MIRC_IDENTIFIER);
         let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
         let path_str = c_str.to_str().unwrap();
         assert!(path_str.contains("fish_11.ini"));

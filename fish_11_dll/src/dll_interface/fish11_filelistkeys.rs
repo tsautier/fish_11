@@ -5,22 +5,22 @@ use winapi::shared::minwindef::BOOL;
 use winapi::shared::windef::HWND;
 
 use crate::config;
-use crate::dll_function;
+use crate::dll_function_identifier;
 use crate::unified_error::DllError;
 
-dll_function!(FiSH11_FileListKeys, _data, {
+dll_function_identifier!(FiSH11_FileListKeys, _data, {
     log::info!("Starting key listing");
 
     let keys = config::list_keys()?;
 
     if keys.is_empty() {
-        return Ok("/echo -ts FiSH: No keys stored.".to_string());
+        return Ok("FiSH: No keys stored.".to_string());
     }
 
-    // We will build a multi-line response for mIRC to process.
-    // mIRC can handle multiple commands separated by `|`.
-    let mut commands = Vec::new();
-    commands.push("echo -ts --- FiSH Keys ---".to_string());
+    // Build a multi-line response where each line is plain text
+    // The mIRC script will display each line via `fish11_display_multiline_result`.
+    let mut lines = Vec::new();
+    lines.push("--- FiSH Keys ---".to_string());
 
     for (nickname, network, _key_type, date) in keys {
         let net_display =
@@ -31,13 +31,13 @@ dll_function!(FiSH11_FileListKeys, _data, {
         } else {
             format!("Key: {:<20} | Network: {:<15}", nickname, net_display)
         };
-        commands.push(format!("echo -ts {}", key_info));
+        lines.push(key_info);
     }
 
-    commands.push("echo -ts -------------------".to_string());
+    lines.push("-------------------".to_string());
 
-    // Join all echo commands with `|` to be executed sequentially by mIRC.
-    Ok(commands.join(" | "))
+    // Join lines with CRLF so the mIRC display helper can split them into tokens
+    Ok(lines.join("\r\n"))
 });
 
 #[cfg(test)]
@@ -82,10 +82,14 @@ mod tests {
         // Suppose config is empty
         let (code, msg) = call_listkeys(256);
         assert_eq!(code, MIRC_COMMAND);
-    // Structured check: message should either indicate no keys, or show the keys list.
-    // The global config used in tests may already contain keys on disk, so accept both forms.
-    let lower = msg.to_lowercase();
-    assert!(lower.contains("no keys") || lower.contains("no keys stored") || lower.contains("fish keys"));
+        // Structured check: message should either indicate no keys, or show the keys list.
+        // The global config used in tests may already contain keys on disk, so accept both forms.
+        let lower = msg.to_lowercase();
+        assert!(
+            lower.contains("no keys")
+                || lower.contains("no keys stored")
+                || lower.contains("fish keys")
+        );
     }
 
     #[test]

@@ -296,6 +296,49 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
     // Log the decrypted data received (first 32 bytes)
     if bytes_read > 0 && !buf.is_null() {
         let data_slice = std::slice::from_raw_parts(buf, bytes_read as usize);
+        
+        #[cfg(debug_assertions)]
+        {
+            // Detailed debug logging for decrypted SSL data
+            debug!(
+                "[SSL_READ DEBUG] Socket {}: received {} bytes from SSL_read",
+                socket_id, bytes_read
+            );
+            
+            // Log hex preview of first 64 bytes
+            let preview_len = std::cmp::min(64, data_slice.len());
+            debug!(
+                "[SSL_READ DEBUG] Socket {}: hex preview (first {} bytes): {:02X?}",
+                socket_id, preview_len, &data_slice[..preview_len]
+            );
+            
+            // Try to parse as UTF-8 and log sanitized version (replace control chars)
+            if let Ok(text) = std::str::from_utf8(data_slice) {
+                let sanitized: String = text.chars()
+                    .map(|c| if c.is_control() && c != '\r' && c != '\n' && c != '\t' { '.' } else { c })
+                    .collect();
+                debug!(
+                    "[SSL_READ DEBUG] Socket {}: UTF-8 content (sanitized): {:?}",
+                    socket_id, sanitized
+                );
+                
+                // Check for IRC protocol markers
+                if text.contains("PRIVMSG") || text.contains("NOTICE") || text.contains("JOIN") {
+                    debug!("[SSL_READ DEBUG] Socket {}: detected IRC protocol command", socket_id);
+                }
+                
+                // Check for FiSH key exchange markers
+                if text.contains("X25519_INIT") || text.contains("FiSH11-PubKey:") {
+                    debug!("[SSL_READ DEBUG] Socket {}: detected FiSH key exchange data", socket_id);
+                }
+            } else {
+                debug!(
+                    "[SSL_READ DEBUG] Socket {}: non-UTF8 binary data",
+                    socket_id
+                );
+            }
+        }
+        
         // Human-readable log
         if let Ok(text) = std::str::from_utf8(data_slice) {
             info!(
@@ -411,6 +454,53 @@ unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int)
 
     // Prepare data slice safely
     let data_slice = std::slice::from_raw_parts(buf, num as usize);
+
+    #[cfg(debug_assertions)]
+    {
+        // Detailed debug logging for outgoing SSL plaintext
+        debug!(
+            "[SSL_WRITE DEBUG] Socket {}: sending {} bytes to SSL_write (before encryption)",
+            socket_id, num
+        );
+        
+        // Log hex preview of first 64 bytes
+        let preview_len = std::cmp::min(64, data_slice.len());
+        debug!(
+            "[SSL_WRITE DEBUG] Socket {}: hex preview (first {} bytes): {:02X?}",
+            socket_id, preview_len, &data_slice[..preview_len]
+        );
+        
+        // Try to parse as UTF-8 and log sanitized version
+        if let Ok(text) = std::str::from_utf8(data_slice) {
+            let sanitized: String = text.chars()
+                .map(|c| if c.is_control() && c != '\r' && c != '\n' && c != '\t' { '.' } else { c })
+                .collect();
+            debug!(
+                "[SSL_WRITE DEBUG] Socket {}: UTF-8 content (sanitized): {:?}",
+                socket_id, sanitized
+            );
+            
+            // Check for IRC protocol markers
+            if text.contains("PRIVMSG") || text.contains("NOTICE") || text.contains("JOIN") {
+                debug!("[SSL_WRITE DEBUG] Socket {}: detected IRC protocol command", socket_id);
+            }
+            
+            // Check for FiSH key exchange markers
+            if text.contains("X25519_INIT") || text.contains("FiSH11-PubKey:") {
+                debug!("[SSL_WRITE DEBUG] Socket {}: detected FiSH key exchange data", socket_id);
+            }
+            
+            // Check for encrypted message markers
+            if text.contains("+OK ") || text.contains("+FiSH ") || text.contains("mcps ") {
+                debug!("[SSL_WRITE DEBUG] Socket {}: detected FiSH encrypted message", socket_id);
+            }
+        } else {
+            debug!(
+                "[SSL_WRITE DEBUG] Socket {}: non-UTF8 binary data",
+                socket_id
+            );
+        }
+    }
 
     // Human-readable log for outgoing TLS
     if num > 0 && !buf.is_null() {
@@ -716,28 +806,28 @@ pub unsafe fn install_ssl_hooks(
     ssl_is_init_finished: SslIsInitFinishedProc,
 ) -> Result<(), String> {
     #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: Starting SSL hooks installation...");
+    info!("install_ssl_hooks: starting SSL hooks installation...");
 
     #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: Acquiring SSL_READ_HOOK mutex...");
+    info!("install_ssl_hooks: acquiring SSL_READ_HOOK mutex...");
     let mut ssl_read_hook = SSL_READ_HOOK.lock().unwrap_or_else(handle_poison);
     #[cfg(debug_assertions)]
     info!("install_ssl_hooks: SSL_READ_HOOK mutex acquired");
 
     #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: Acquiring SSL_WRITE_HOOK mutex...");
+    info!("install_ssl_hooks: acquiring SSL_WRITE_HOOK mutex...");
     let mut ssl_write_hook = SSL_WRITE_HOOK.lock().unwrap_or_else(handle_poison);
     #[cfg(debug_assertions)]
     info!("install_ssl_hooks: SSL_WRITE_HOOK mutex acquired");
 
     #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: Storing SSL_GET_FD function pointer...");
+    info!("install_ssl_hooks: storing SSL_GET_FD function pointer...");
     *SSL_GET_FD.lock().unwrap_or_else(handle_poison) = Some(ssl_get_fd);
     #[cfg(debug_assertions)]
     info!("install_ssl_hooks: SSL_GET_FD stored at {:?}", ssl_get_fd as *const ());
 
     #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: Storing SSL_IS_INIT_FINISHED function pointer...");
+    info!("install_ssl_hooks: storing SSL_IS_INIT_FINISHED function pointer...");
     *SSL_IS_INIT_FINISHED.lock().unwrap_or_else(handle_poison) = Some(ssl_is_init_finished);
     debug!(
         "[HANDSHAKE] SSL_is_init_finished loaded at address: {:p}",
@@ -750,7 +840,7 @@ pub unsafe fn install_ssl_hooks(
         GenericDetour::new(ssl_read, hooked_ssl_read)
             .map_err(|e| {
                 #[cfg(debug_assertions)]
-                error!("install_ssl_hooks: Failed to create SSL_read GenericDetour: {}", e);
+                error!("install_ssl_hooks: failed to create SSL_read GenericDetour: {}", e);
                 format!("Failed to create SSL_read hook: {}", e)
             })?,
     );
@@ -758,12 +848,12 @@ pub unsafe fn install_ssl_hooks(
     info!("install_ssl_hooks: SSL_read GenericDetour created successfully");
 
     #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: Creating SSL_write GenericDetour...");
+    info!("install_ssl_hooks: creating SSL_write GenericDetour...");
     *ssl_write_hook = Some(
         GenericDetour::new(ssl_write, hooked_ssl_write)
             .map_err(|e| {
                 #[cfg(debug_assertions)]
-                error!("install_ssl_hooks: Failed to create SSL_write GenericDetour: {}", e);
+                error!("install_ssl_hooks: failed to create SSL_write GenericDetour: {}", e);
                 format!("Failed to create SSL_write hook: {}", e)
             })?,
     );
@@ -771,28 +861,28 @@ pub unsafe fn install_ssl_hooks(
     info!("install_ssl_hooks: SSL_write GenericDetour created successfully");
 
     #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: Enabling SSL_read hook...");
+    info!("install_ssl_hooks: enabling SSL_read hook...");
     ssl_read_hook
         .as_mut()
         .unwrap()
         .enable()
         .map_err(|e| {
             #[cfg(debug_assertions)]
-            error!("install_ssl_hooks: Failed to enable SSL_read hook: {}", e);
+            error!("install_ssl_hooks: failed to enable SSL_read hook: {}", e);
             format!("Failed to enable SSL_read hook: {}", e)
         })?;
     #[cfg(debug_assertions)]
     info!("install_ssl_hooks: SSL_read hook enabled successfully");
 
     #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: Enabling SSL_write hook...");
+    info!("install_ssl_hooks: enabling SSL_write hook...");
     ssl_write_hook
         .as_mut()
         .unwrap()
         .enable()
         .map_err(|e| {
             #[cfg(debug_assertions)]
-            error!("install_ssl_hooks: Failed to enable SSL_write hook: {}", e);
+            error!("install_ssl_hooks: failed to enable SSL_write hook: {}", e);
             format!("Failed to enable SSL_write hook: {}", e)
         })?;
     #[cfg(debug_assertions)]

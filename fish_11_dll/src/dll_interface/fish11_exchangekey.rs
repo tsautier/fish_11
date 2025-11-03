@@ -15,12 +15,12 @@ use crate::buffer_utils;
 use crate::config::save_config;
 use crate::config::{CONFIG, get_key_default, get_keypair, set_key_default, store_keypair};
 use crate::crypto::{KeyPair, format_public_key, generate_keypair};
-use crate::dll_function;
+use crate::dll_function_identifier;
 use crate::dll_interface::KEY_EXCHANGE_TIMEOUT_SECONDS;
 use crate::unified_error::{DllError, DllResult};
 use crate::utils::normalize_nick;
 
-dll_function!(FiSH11_ExchangeKey, data, {
+dll_function_identifier!(FiSH11_ExchangeKey, data, {
     // This function is time-sensitive as it's part of an interactive user workflow.
     // A timeout ensures we don't block mIRC indefinitely if crypto operations hang.
     let start_time = Instant::now();
@@ -62,21 +62,20 @@ dll_function!(FiSH11_ExchangeKey, data, {
 
     debug!("Public key formatted successfully (length: {})", formatted_key.len());
 
-    // Step 5: build the output message
-    let key_status = if key_was_generated {
-        " (Note: a new encryption key was automatically generated)"
+    // Return the formatted public key token directly so callers (like the mIRC
+    // script) can use it programmatically instead of parsing a verbose /echo
+    // message. Keep logging for UX and debugging.
+    if key_was_generated {
+        info!(
+            "Key exchange setup completed for {} (generated new key)",
+            nickname
+        );
     } else {
-        ""
-    };
+        info!("Key exchange setup completed successfully for {}", nickname);
+    }
 
-    let message = format!(
-        "/echo -ts Your public key (send this to {}){}: {} | Exchange will timeout in {} seconds if no response",
-        nickname, key_status, formatted_key, KEY_EXCHANGE_TIMEOUT_SECONDS
-    );
-
-    info!("Key exchange setup completed successfully for {}", nickname);
-
-    Ok(message)
+    // Return only the token, e.g. "FiSH11-PubKey:BASE64..."
+    Ok(formatted_key)
 });
 
 // ========== HELPER FUNCTIONS ==========

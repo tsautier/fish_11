@@ -105,6 +105,9 @@ pub extern "system" fn DllMain(_hinst: HINSTANCE, reason: DWORD, _: LPVOID) -> B
                     crate::FISH_11_BUILD_TIME);
                 log::debug!("System information: Process ID: {}", std::process::id());
 
+                // When this DLL is loaded, it tries to register itself with the inject DLL.
+                crate::engine_registration::register_engine();
+
                 // Log OS information if available
                 #[cfg(target_os = "windows")]
                 {

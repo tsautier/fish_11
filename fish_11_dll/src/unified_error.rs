@@ -366,7 +366,7 @@ macro_rules! dll_function {
     ($name:ident, $data:ident, $body:block) => {
         #[no_mangle]
         #[allow(non_snake_case)]
-        pub extern "stdcall" fn $name(
+        pub extern "system" fn $name(
             _m_wnd: HWND,
             _a_wnd: HWND,
             $data: *mut c_char,
@@ -375,12 +375,45 @@ macro_rules! dll_function {
             _nopause: BOOL,
         ) -> c_int {
             use $crate::unified_error::DllResult;
+            // Note: mIRC passes input parameters in the `_parms` pointer when using
+            // the $dll(...) or .dll <dll> <func> <buffer|parms> calling forms.
+            // The output buffer pointer is in `$data`. Ensure inner() receives
+            // `_parms` so parsing functions read the caller-provided input.
+            fn inner(_parms: *mut c_char, outbuf: *mut c_char) -> DllResult<String> {
+                // Determine which pointer contains caller-supplied input. Some
+                // mIRC calling modes place parameters in `_parms`, others in
+                // the `data`/outbuf pointer. Try `_parms` first (the normal
+                // convention), but fall back to `outbuf` if `_parms` is null or
+                // empty.
+                let input_ptr: *mut c_char = unsafe {
+                    use std::ffi::CStr;
 
-            fn inner($data: *mut c_char) -> DllResult<String> {
+                    // Helper to check if a pointer has non-empty content
+                    let is_non_empty = |ptr: *mut c_char| -> bool {
+                        if ptr.is_null() {
+                            return false;
+                        }
+                        match CStr::from_ptr(ptr).to_bytes().len() {
+                            0 => false,
+                            _ => true,
+                        }
+                    };
+
+                    if is_non_empty(_parms) {
+                        _parms
+                    } else if is_non_empty(outbuf) {
+                        outbuf
+                    } else {
+                        // Both empty or null, default to _parms
+                        _parms
+                    }
+                };
+
+                // Bind the identifier expected by existing function bodies
+                let $data = input_ptr;
                 $body
             }
-
-            match inner($data) {
+            match inner(_parms, $data) {
                 Ok(result) => {
                     unsafe {
                         let cstring = match std::ffi::CString::new(result) {
@@ -393,6 +426,82 @@ macro_rules! dll_function {
                             .ok();
                     }
                     $crate::dll_interface::MIRC_COMMAND
+                }
+                Err(e) => unsafe { e.to_mirc_response($data) },
+            }
+        }
+    };
+}
+
+/// Similar to dll_function! but returns MIRC_IDENTIFIER instead of MIRC_COMMAND.
+/// Use this for functions that return data values (not mIRC commands to execute).
+/// The caller will receive the returned string as a value in $result/$dll(...).
+///
+/// # Example
+/// ```ignore
+/// dll_function_identifier!(FiSH11_GetData, data, {
+///     let input = parse_input(data)?;
+///     let result = compute_result(&input)?;
+///     Ok(result)
+/// });
+/// ```
+#[macro_export]
+macro_rules! dll_function_identifier {
+    ($name:ident, $data:ident, $body:block) => {
+        #[no_mangle]
+        #[allow(non_snake_case)]
+        pub extern "system" fn $name(
+            _m_wnd: HWND,
+            _a_wnd: HWND,
+            $data: *mut c_char,
+            _parms: *mut c_char,
+            _show: BOOL,
+            _nopause: BOOL,
+        ) -> c_int {
+            use $crate::unified_error::DllResult;
+            // See comment in dll_function! — ensure inner() operates on the
+            // `_parms` pointer which contains the caller-supplied input.
+            fn inner(_parms: *mut c_char, outbuf: *mut c_char) -> DllResult<String> {
+                let input_ptr: *mut c_char = unsafe {
+                    use std::ffi::CStr;
+
+                    // Helper to check if a pointer has non-empty content
+                    let is_non_empty = |ptr: *mut c_char| -> bool {
+                        if ptr.is_null() {
+                            return false;
+                        }
+                        match CStr::from_ptr(ptr).to_bytes().len() {
+                            0 => false,
+                            _ => true,
+                        }
+                    };
+
+                    if is_non_empty(_parms) {
+                        _parms
+                    } else if is_non_empty(outbuf) {
+                        outbuf
+                    } else {
+                        // Both empty or null, default to _parms
+                        _parms
+                    }
+                };
+
+                let $data = input_ptr;
+                $body
+            }
+            match inner(_parms, $data) {
+                Ok(result) => {
+                    unsafe {
+                        let cstring = match std::ffi::CString::new(result) {
+                            Ok(s) => s,
+                            Err(e) => return DllError::from(e).to_mirc_response($data),
+                        };
+                        // Use the runtime-determined buffer size to avoid overwriting caller memory
+                        let buf_size = $crate::dll_interface::get_buffer_size();
+                        $crate::buffer_utils::write_cstring_to_buffer($data, buf_size, &cstring)
+                            .ok();
+                    }
+                    $crate::dll_interface::MIRC_IDENTIFIER
                 }
                 Err(e) => unsafe { e.to_mirc_response($data) },
             }

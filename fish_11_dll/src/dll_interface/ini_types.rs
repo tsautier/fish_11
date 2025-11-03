@@ -5,12 +5,12 @@ use winapi::shared::minwindef::BOOL;
 use winapi::shared::windef::HWND;
 
 use crate::config;
-use crate::dll_function;
+use crate::dll_function_identifier;
 use crate::unified_error::{DllError, DllResult};
 
 /// Gets a boolean value from the config file.
 /// Input: <key> [default_value]
-dll_function!(INI_GetBool, data, {
+dll_function_identifier!(INI_GetBool, data, {
     let input = unsafe { crate::buffer_utils::parse_buffer_input(data)? };
     let parts: Vec<&str> = input.splitn(2, ' ').collect();
 
@@ -37,7 +37,7 @@ dll_function!(INI_GetBool, data, {
 
 /// Gets a string value from the config file.
 /// Input: <key> [default_value]
-dll_function!(INI_GetString, data, {
+dll_function_identifier!(INI_GetString, data, {
     let input = unsafe { crate::buffer_utils::parse_buffer_input(data)? };
     let parts: Vec<&str> = input.splitn(2, ' ').collect();
 
@@ -62,7 +62,7 @@ dll_function!(INI_GetString, data, {
 
 /// Gets an integer value from the config file.
 /// Input: <key> [default_value]
-dll_function!(INI_GetInt, data, {
+dll_function_identifier!(INI_GetInt, data, {
     let input = unsafe { crate::buffer_utils::parse_buffer_input(data)? };
     let parts: Vec<&str> = input.splitn(2, ' ').collect();
 

@@ -5,25 +5,45 @@ use winapi::shared::minwindef::BOOL;
 use winapi::shared::windef::HWND;
 
 use crate::buffer_utils;
-use crate::dll_function;
+use crate::dll_function_identifier;
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 use crate::{config, crypto};
 
-dll_function!(FiSH11_ProcessPublicKey, data, {
-    // Parse input: <nickname> <received_key>
+dll_function_identifier!(FiSH11_ProcessPublicKey, data, {
+    // Parse input: accept either "<nickname> <received_key>" or "<received_key> <nickname>"
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
-    let parts: Vec<&str> = input.splitn(2, ' ').collect();
+    let input = input.trim();
 
+    // Split into words and try to detect which token looks like a public key
+    let parts: Vec<&str> = input.split_whitespace().collect();
     if parts.len() < 2 {
         return Err(DllError::InvalidInput {
             param: "input".to_string(),
-            reason: "expected format: <nickname> <received_key>".to_string(),
+            reason: "expected format: <nickname> <received_key> or <received_key> <nickname>".to_string(),
         });
     }
 
-    let nickname = normalize_nick(parts[0]);
-    let received_pubkey_str = parts[1].trim();
+    // Helper to check if a part is a formatted public key token
+    let looks_like_token = |s: &str| s.starts_with("FiSH11-PubKey:") || s.len() == 44 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=');
+
+    // We will own any joined remainder to avoid referencing temporaries
+    let mut _joined_remainder: Option<String> = None;
+
+    let (nickname_raw, received_pubkey_str) = if looks_like_token(parts[0]) {
+        // form: <received_key> <nickname>
+        (parts[1], parts[0])
+    } else if looks_like_token(parts[parts.len() - 1]) {
+        // form: <nickname> ... <received_key>
+        (parts[0], parts[parts.len() - 1])
+    } else {
+        // fallback: assume first is nickname, remainder is key (may be raw base64)
+    _joined_remainder = Some(parts[1..].join(" "));
+    (parts[0], _joined_remainder.as_ref().map(|s| s.as_str()).unwrap_or(""))
+    };
+
+    let nickname = normalize_nick(nickname_raw);
+    let received_pubkey_str = received_pubkey_str.trim();
 
     if nickname.is_empty() {
         return Err(DllError::MissingParameter("nickname".to_string()));
@@ -80,10 +100,12 @@ dll_function!(FiSH11_ProcessPublicKey, data, {
 
     log::info!("Successfully completed key exchange with {}", nickname);
 
-    Ok(format!("/echo -ts Secure key exchange completed successfully with {}", nickname))
+    // Return a truthy identifier value (no leading /echo) so mIRC treats this as data
+    // The script checks the truthiness of $dll(..., FiSH11_ProcessPublicKey, ...)
+    Ok("1".to_string())
 });
 
-dll_function!(FiSH11_TestCrypt, data, {
+dll_function_identifier!(FiSH11_TestCrypt, data, {
     // Parse input message
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
 
@@ -139,7 +161,7 @@ dll_function!(FiSH11_TestCrypt, data, {
     log::info!("Encryption test completed successfully");
 
     Ok(format!(
-        "/echo -ts [TestCrypt] Original: {} | Encrypted: {} | Decrypted: {}",
+        "[TestCrypt] Original: {} | Encrypted: {} | Decrypted: {}",
         input_safe, encrypted_safe, decrypted_safe
     ))
 });

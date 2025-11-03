@@ -30,6 +30,8 @@ pub mod logging_macros;
 // Unified error handling system (standardized approach)
 pub mod unified_error;
 
+pub mod engine_registration;
+
 /// Get build information from VERGEN or use fallbacks
 pub const FISH_11_BUILD_DATE: &str = match option_env!("VERGEN_BUILD_DATE") {
     Some(date) => date,

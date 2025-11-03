@@ -7,7 +7,7 @@ use winapi::shared::windef::HWND;
 use crate::buffer_utils;
 use crate::config;
 use crate::crypto;
-use crate::dll_function;
+use crate::dll_function_identifier;
 use crate::unified_error::{DllError, DllResult};
 use crate::utils::normalize_nick;
 
@@ -17,7 +17,7 @@ use crate::utils::normalize_nick;
 /// - Retrieving the appropriate encryption key.
 /// - Performing authenticated encryption.
 /// - Formatting the output with the FiSH protocol prefix `+FiSH `.
-dll_function!(FiSH11_EncryptMsg, data, {
+dll_function_identifier!(FiSH11_EncryptMsg, data, {
     // 1. Parse input: <nickname> <message>
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
     let parts: Vec<&str> = input.splitn(2, ' ').collect();

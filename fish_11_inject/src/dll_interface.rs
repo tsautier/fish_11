@@ -1,7 +1,7 @@
 use std::ffi::{CString, c_char};
 use std::sync::atomic::Ordering;
 
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use winapi::shared::minwindef::BOOL;
 use windows::Win32::Foundation::{HMODULE, HWND};
 use windows::Win32::UI::WindowsAndMessaging::{MB_ICONEXCLAMATION, MB_OK, MessageBoxW};
@@ -275,6 +275,22 @@ pub extern "C" fn FiSH11_InjectDebugInfo(
 
     let c_command = CString::new(command).expect("Failed to create command string");
 
+    #[cfg(debug_assertions)]
+    {
+        debug!(
+            "[DLL_INTERFACE DEBUG] FiSH11_InjectDebugInfo: preparing command buffer"
+        );
+        debug!(
+            "[DLL_INTERFACE DEBUG] Command length: {} bytes (max_bytes: {})",
+            c_command.as_bytes().len(),
+            max_bytes
+        );
+        debug!(
+            "[DLL_INTERFACE DEBUG] Command preview: {:?}",
+            c_command.to_str().unwrap_or("<invalid UTF-8>")
+        );
+    }
+
     unsafe {
         // Copy to output buffer safely
         let src = c_command.as_ptr();
@@ -283,6 +299,15 @@ pub extern "C" fn FiSH11_InjectDebugInfo(
 
         // Null terminate
         *data.add(std::cmp::min(src_len, max_bytes as usize - 1)) = 0;
+        
+        #[cfg(debug_assertions)]
+        {
+            let copied_len = std::cmp::min(src_len, max_bytes as usize - 1);
+            debug!(
+                "[DLL_INTERFACE DEBUG] Copied {} bytes to mIRC data buffer, null-terminated",
+                copied_len
+            );
+        }
     }
 
     // Return as mIRC command to execute
@@ -291,7 +316,7 @@ pub extern "C" fn FiSH11_InjectDebugInfo(
 
 #[no_mangle]
 #[allow(non_snake_case)]
-pub extern "stdcall" fn FiSH11_InjectVersion(
+pub extern "system" fn FiSH11_InjectVersion(
     _m_wnd: HWND,
     _a_wnd: HWND,
     data: *mut c_char,
@@ -313,16 +338,66 @@ pub extern "stdcall" fn FiSH11_InjectVersion(
         }
     };
 
+    #[cfg(debug_assertions)]
+    {
+        debug!(
+            "[DLL_INTERFACE DEBUG] FiSH11_InjectVersion: preparing version command buffer"
+        );
+        debug!(
+            "[DLL_INTERFACE DEBUG] Command length: {} bytes",
+            command.as_bytes_with_nul().len()
+        );
+        debug!(
+            "[DLL_INTERFACE DEBUG] Command preview: {:?}",
+            command.to_str().unwrap_or("<invalid UTF-8>")
+        );
+    }
+
     unsafe {
         if !data.is_null() {
-            // Copy the command to the data buffer
-            std::ptr::copy_nonoverlapping(
-                command.as_ptr(),
-                data,
-                command.as_bytes_with_nul().len(),
-            );
+            // Respect mIRC's reported maximum return buffer to avoid overflow/truncation
+            let max_bytes = *MAX_MIRC_RETURN_BYTES.lock().unwrap();
+            let src = command.as_ptr();
+            let src_len = command.as_bytes_with_nul().len();
+            let copy_len = std::cmp::min(src_len, max_bytes as usize - 1);
+
+            #[cfg(debug_assertions)]
+            {
+                debug!(
+                    "[DLL_INTERFACE DEBUG] MAX_MIRC_RETURN_BYTES: {}, src_len: {}, copy_len: {}",
+                    max_bytes, src_len, copy_len
+                );
+            }
+
+            // Copy bounded amount and ensure null termination
+            std::ptr::copy_nonoverlapping(src, data, copy_len);
+            *data.add(copy_len) = 0;
+
+            #[cfg(debug_assertions)]
+            {
+                debug!(
+                    "[DLL_INTERFACE DEBUG] Copied {} bytes to mIRC data buffer, null-terminated",
+                    copy_len
+                );
+                
+                // Verify what was actually written to the buffer
+                let written_slice = std::slice::from_raw_parts(data as *const u8, copy_len);
+                if let Ok(written_text) = std::str::from_utf8(written_slice) {
+                    debug!(
+                        "[DLL_INTERFACE DEBUG] Buffer content verification: {:?}",
+                        written_text
+                    );
+                } else {
+                    debug!(
+                        "[DLL_INTERFACE DEBUG] Buffer content (hex): {:02X?}",
+                        &written_slice[..std::cmp::min(64, written_slice.len())]
+                    );
+                }
+            }
+
             info!(
-                "/echo -ts FiSH_11 : command copied to data buffer: {}",
+                "/echo -ts FiSH_11 : command copied to data buffer (len {}): {}",
+                copy_len,
                 command
                     .to_str()
                     .unwrap_or("/echo -ts FiSH_11 : error converting command to string")

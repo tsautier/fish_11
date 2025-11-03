@@ -6,12 +6,11 @@ use winapi::shared::windef::HWND;
 
 use crate::buffer_utils;
 use crate::config;
-use crate::dll_function;
-use crate::dll_interface::MIRC_COMMAND;
+use crate::dll_function_identifier;
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 
-dll_function!(FiSH11_FileDelKey, data, {
+dll_function_identifier!(FiSH11_FileDelKey, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
 
     let nickname = normalize_nick(input.trim());
@@ -24,16 +23,16 @@ dll_function!(FiSH11_FileDelKey, data, {
     // The `?` operator handles any errors during deletion.
     config::delete_key_default(&nickname)?;
 
-    let message = format!("/echo -ts Key deleted for {}", nickname);
+    let message = format!("Key deleted for {}", nickname);
     log::info!("{}", message);
 
-    Ok(message)
+    // Return truthy identifier to signal success
+    Ok("1".to_string())
 });
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dll_interface::MIRC_COMMAND;
     use std::ffi::{CStr, CString};
     use std::ptr;
 
@@ -78,15 +77,15 @@ mod tests {
         config::set_key_default("bob", &test_key, true).unwrap();
         
         let (code, msg) = call_delkey("bob", 256);
-        assert_eq!(code, MIRC_COMMAND);
-        // Structured check: message should start with echo and mention bob
-        assert!(msg.starts_with("/echo -ts Key deleted for bob"));
+        assert_eq!(code, crate::dll_interface::MIRC_IDENTIFIER);
+        // Structured check: message should mention bob
+        assert!(msg.contains("bob"));
     }
 
     #[test]
     fn test_delkey_nickname_empty() {
         let (code, msg) = call_delkey("   ", 256);
-        assert_eq!(code, MIRC_COMMAND);
+        assert_eq!(code, crate::dll_interface::MIRC_IDENTIFIER);
         // Structured check: message should mention empty input or missing parameter
         assert!(msg.to_lowercase().contains("empty") || msg.to_lowercase().contains("missing"));
     }
@@ -94,7 +93,7 @@ mod tests {
     #[test]
     fn test_delkey_key_not_found() {
         let (code, msg) = call_delkey("unknown_nick", 256);
-        assert_eq!(code, MIRC_COMMAND);
+        assert_eq!(code, crate::dll_interface::MIRC_IDENTIFIER);
         // Structured check: message should mention no encryption key
         assert!(msg.to_lowercase().contains("no encryption key"));
     }
@@ -106,7 +105,7 @@ mod tests {
         config::set_key_default("alice", &test_key, true).unwrap();
         
         let (code, msg) = call_delkey("alice", 8);
-        assert_eq!(code, MIRC_COMMAND);
+        assert_eq!(code, crate::dll_interface::MIRC_IDENTIFIER);
         // Structured check: message is truncated
         assert!(msg.len() < 20);
     }
@@ -136,7 +135,7 @@ mod tests {
         crate::dll_interface::restore_buffer_size_for_test(prev_size);
 
         let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
-        assert_eq!(result, MIRC_COMMAND);
+        assert_eq!(result, crate::dll_interface::MIRC_IDENTIFIER);
         // The function will read "a" and try to delete key for "a"
         // It should return an error message (key not found or similar)
         assert!(c_str.to_string_lossy().len() > 0);

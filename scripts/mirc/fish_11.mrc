@@ -15,7 +15,8 @@ on *:START: {
 }
 
 alias fish11_startup {
-  echo 4 -a *** FiSH_11 SECURITY NOTICE : this script relies on 2 external DLL files. Only use trusted, signed versions from official sources. Never run this script if you suspect your system has been compromised.
+  echo 4 -a *** FiSH_11 SECURITY NOTICE *** This script relies on 2 external DLL files. Only use trusted, signed versions from official sources.  ***
+  echo 4 -a *** FiSH_11 SECURITY NOTICE *** Never run this script if you suspect your system has been compromised.                                ***
 
   var %exe_dir = $nofile($mircexe)
 
@@ -55,7 +56,10 @@ alias fish11_startup {
   .dll %Fish11InjectDllFile FiSH11_InjectVersion
   
   ;echo 4 -a DEBUG : Calling fish_11.dll FiSH11_GetVersion...  
-  .dll %Fish11DllFile FiSH11_GetVersion
+  var %fish11_version = $dll(%Fish11DllFile, FiSH11_GetVersion, $null)
+  if (%fish11_version) {
+    echo 4 -a %fish11_version
+  }
 
 
   
@@ -66,11 +70,10 @@ alias fish11_startup {
   if (%mark_outgoing == $null) { set %mark_outgoing [Off] }
   if (%mark_style == $null) { set %mark_style 1 }
   if (%NickTrack == $null) { set %NickTrack [Off] }
+  ; Key exchange timeout (seconds) - keep in sync with DLL constant; can be overridden by user
+  if (%KEY_EXCHANGE_TIMEOUT_SECONDS == $null) { set %KEY_EXCHANGE_TIMEOUT_SECONDS 10 }
   
-    ; Register events for incoming messages
-  .signal *:TEXT:*:*:fish11_incoming_text
-  .signal *:ACTION:*:*:fish11_incoming_action
-  .signal *:NOTICE:*:*:fish11_incoming_notice
+
   
 }
 
@@ -182,182 +185,78 @@ on *:INPUT:*: {
 
 
 
-; === INCOMING MESSAGE DETECTION AND HANDLING ===
-on *:TEXT:*:*:{
-  ; Check if we should process incoming messages
-  var %process_incoming = $dll(%Fish11DllFile, INI_GetBool, process_incoming 1)
-  if (%process_incoming == 0) return
-  
-  var %chan = $chan
-  var %text = $1-
-  var %decrypted = $null
-  
-  ; Check for encrypted message pattern (+FiSH)
-  if ($regex(%text, /^\+FiSH /)) {
-    ; Try to decrypt the message
-    %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, $iif(%chan, %chan, $nick) %text)
-    
-    if (%decrypted != $null && $left(%decrypted, 5) != Error) {
-      ; Get encryption mark settings
-      var %mark_pos = $dll(%Fish11DllFile, INI_GetInt, mark_position 1)
-      var %mark_txt = $dll(%Fish11DllFile, INI_GetString, mark_encrypted 12$chr(183))
-      
-      ; Display decrypted message with appropriate mark
-      var %display = $iif(%mark_pos == 1, %decrypted %mark_txt, %mark_txt %decrypted)
-      var %safe_display = $strip(%display, b,c,i,k,o,r,u)
-      echo $color(text) -t $iif(%chan, %chan, $nick) <$nick> %safe_display
-      
-      ; Halt to prevent default display
-      haltdef
-    }
-  }
-  
-  ; Detect DH key exchange message
-  else if ($regex(%text, /FiSH11-PubKey:[A-Za-z0-9+\/=]+/)) {
-    echo $color(Mode text) -t $iif(%chan, %chan, $nick) *** FiSH_11: Received key exchange request from $nick
-    echo $color(Mode text) -t $iif(%chan, %chan, $nick) *** Type /fish_keyp11 $nick %text to complete key exchange
-    
-    ; Automatic handling if configured
-    if (%autokeyx == [On]) {
-      fish11_ProcessPublicKey $nick %text
-    }
-  }
-}
-
-; Add handlers for action and notice messages
-on *:ACTION:*:*:{
-  ; Check if we should process incoming messages
-  var %process_incoming = $dll(%Fish11DllFile, INI_GetBool, process_incoming 1)
-  if (%process_incoming == 0) return
-  
-  var %chan = $chan
-  var %text = $1-
-  var %decrypted = $null
-  
-  ; Check for encrypted message pattern (+FiSH)
-  if ($regex(%text, /^\+FiSH /)) {
-    ; Try to decrypt the message
-    %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, $iif(%chan, %chan, $nick) %text)
-    
-    if (%decrypted != $null && $left(%decrypted, 5) != Error) {
-      ; Get encryption mark settings
-      var %mark_pos = $dll(%Fish11DllFile, INI_GetInt, mark_position 1)
-      var %mark_txt = $dll(%Fish11DllFile, INI_GetString, mark_encrypted 12$chr(183))
-      
-      ; Display decrypted action with appropriate mark
-      var %display = $iif(%mark_pos == 1, %decrypted %mark_txt, %mark_txt %decrypted)
-      var %safe_display = $strip(%display, b,c,i,k,o,r,u)
-      echo $color(action text) -t $iif(%chan, %chan, $nick) * $nick %safe_display
-      
-      ; Halt to prevent default display
-      haltdef
-    }
-  }
-}
 
 
 
-
-on *:NOTICE:*:*:{
-  ; Check if we should process incoming messages
-  var %process_incoming = $dll(%Fish11DllFile, INI_GetBool, process_incoming 1)
-  if (%process_incoming == 0) return
-  
-  var %chan = $chan
-  var %text = $1-
-  var %decrypted = $null
-  
-  ; Check for encrypted message pattern (+FiSH)
-  if ($regex(%text, /^\+FiSH /)) {
-    ; Try to decrypt the message
-    %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, $iif(%chan, %chan, $nick) %text)
-    
-    if (%decrypted != $null && $left(%decrypted, 5) != Error) {
-      ; Get encryption mark settings
-      var %mark_pos = $dll(%Fish11DllFile, INI_GetInt, mark_position 1)
-      var %mark_txt = $dll(%Fish11DllFile, INI_GetString, mark_encrypted 12$chr(183))
-      
-      ; Display decrypted notice with appropriate mark
-      var %display = $iif(%mark_pos == 1, %decrypted %mark_txt, %mark_txt %decrypted)
-      var %safe_display = $strip(%display, b,c,i,k,o,r,u)
-      echo $color(notice text) -t $iif(%chan, %chan, $nick) -$nick- %safe_display
-      
-      ; Halt to prevent default display
-      haltdef
-    }
-  }
-}
 
 
 
 ; === KEY EXCHANGE PROTOCOL HANDLERS ===
 on ^*:NOTICE:X25519_INIT*:?:{
-  ; 25519 base64 encoded public key should be 44 chars
-  if ($len($2) == 44) {
-    query $nick
-    echo $color(Mode text) -tm $nick *** FiSH_11: Received X25519 public key from $nick $+ , sending mine...
-    
-    ; Generate our key pair
-    var %tempkey = $dll(%Fish11DllFile, FiSH_ExchangeKey11, none)
-    if (%tempkey) {
-      %fish11.prv_key = $gettok(%tempkey, 1, 32)
-      %fish11.pub_key = $gettok(%tempkey, 2, 32)
-      unset %tempkey
-      
-      ; Process the received key
-      var %secret = $dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $+($nick," ",$2))
-      
-      ; Send our public key back
-      .notice $nick X25519_FINISH %fish11.pub_key
-      
-      ; Set the computed shared key
-      fish11_setkey $nick %secret
-      
-      unset %fish11.prv_key
-      unset %fish11.pub_key
-      unset %secret
+  ; This event triggers when someone initiates a key exchange with us.
+  ; $1 = X25519_INIT, $2- = public key token from peer
+  var %their_pub = $2-
+
+  ; Validate incoming key format using regex for robustness.
+  if (!$regex(%their_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/=]{44}/i)) {
+    echo $color(Mode text) -tm $nick *** FiSH_11: received invalid INIT key format from $nick
+    halt
+  }
+
+  query $nick
+  echo $color(Mode text) -tm $nick *** FiSH_11: received X25519 public key from $nick, responding...
+
+  ; 1. Generate our own keypair (or get existing one). The DLL returns our public key token.
+  var %our_pub = $dll(%Fish11DllFile, FiSH11_ExchangeKey, $nick)
+
+  ; 2. Process their public key. This computes and saves the shared secret.
+  if ($dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $nick %their_pub)) {
+    ; 3. If successful, send our public key back to them so they can complete the exchange.
+    if ($regex(%our_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/=]{44}/i)) {
+      .notice $nick X25519_FINISH %our_pub
+      echo $color(Mode text) -tm $nick *** FiSH_11: sent X25519_FINISH to $nick
     }
     else {
-      echo $color(Mode text) -tm $nick *** FiSH_11: error generating key pair
+      echo $color(Mode text) -tm $nick *** FiSH_11: ERROR - could not generate our own public key to send in reply. DLL returned: $qt(%our_pub)
     }
   }
+  else {
+    echo $color(Mode text) -tm $nick *** FiSH_11: ERROR - failed to process public key from $nick
+  }
+
   halt
 }
 
-
-
 on ^*:NOTICE:X25519_FINISH*:?:{
-  if (%fish11.dh_ $+ [ $nick ] != 1) {
-    echo "*** FiSH_11: no key exchange in progress!"
+  ; This event triggers when a peer responds to our key exchange initiation.
+  ; $1 = X25519_FINISH, $2- = public key token from peer
+  ; Ensure an exchange is in progress with this user by checking the hash table.
+  if ($hget(fish11.dh, $nick).item != 1) {
+    echo -at *** FiSH_11: received a FINISH notice, but no key exchange was in progress with $nick $+ .
     halt
   }
-  
-  if ($len($2) > 178 && $len($2) < 182) {
-    if ($len(%fish11.prv_key) == 180 || $len(%fish11.prv_key) == 181) {
-      ; Process the received public key with our private key
-      var %secret = $dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $+($nick," ",$2))
-        if (%secret) {
-        ; Set the computed shared key
-        fish11_setkey $nick %secret
-        
-        ; Clean up
-        unset %fish11.dh_ $+ [ $nick ]
-        unset %fish11.prv_key
-        unset %fish11.pub_key
-        unset %secret
-        
-        ; Cancel any pending timeout timer for this nick
-        .timer fish_timeout_ $+ $nick off
-        
-        echo $color(Mode text) -tm $nick *** FiSH_11: key exchange complete with $nick
-        echo $color(Error) -tm $nick *** FiSH_11: WARNING: Key exchange complete, but the identity of $nick is NOT VERIFIED.
-        echo $color(Error) -tm $nick *** FiSH_11: Use /fish_fp11 $nick to see their key fingerprint and verify it with them through a secure channel (e.g., voice call).
-      }
-      else {
-        echo $color(Mode text) -tm $nick *** FiSH_11: error processing key exchange
-      }
+
+  var %their_pub = $2-
+
+  ; Use regex to validate the key format from the peer.
+  if ($regex(%their_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/=]{44}/i)) {
+    ; Process the received public key. The DLL computes and stores the shared secret.
+    if ($dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $nick %their_pub)) {
+      ; Success! Clean up state variables.
+      hdel fish11.dh $nick
+
+      echo $color(Mode text) -tm $nick *** FiSH_11: key exchange complete with $nick
+      echo $color(Error) -tm $nick *** FiSH_11 WARNING: key exchange complete, but the identity of $nick is NOT VERIFIED.
+      echo $color(Error) -tm $nick *** FiSH_11: use /fish_fp11 $nick to see their key fingerprint and verify it with them through a secure channel.
+    }
+    else {
+      echo $color(Mode text) -tm $nick *** FiSH_11: ERROR - processing peer's public key failed.
     }
   }
+  else {
+    echo $color(Mode text) -tm $nick *** FiSH_11: received invalid FINISH key format from $nick $+ : $qt(%their_pub)
+  }
+
   halt
 }
 
@@ -372,14 +271,14 @@ alias fish11_timeout_keyexchange {
   
   var %contact = $1
   
-  ; Check if key exchange is still in progress
-  if (%fish11.dh_ $+ [ %contact ] == 1) {
-    ; Clean up variables
-    unset %fish11.dh_ $+ [ %contact ]
+  ; Check if key exchange is still in progress.
+  if ($hget(fish11.dh, %contact).item == 1) {
+    ; Clean up variables.
+    hdel fish11.dh %contact
     
-    ; Notify user of timeout with instructions
-    echo $color(Mode text) -at *** FiSH_11: Key exchange with %contact timed out after $KEY_EXCHANGE_TIMEOUT_SECONDS seconds
-    echo $color(Mode text) -at *** FiSH_11: To try again, use: /fish11_X25519_INIT %contact
+    ; Notify user of timeout with instructions.
+    echo $color(Mode text) -at *** FiSH_11: key exchange with %contact timed out after $KEY_EXCHANGE_TIMEOUT_SECONDS seconds
+    echo $color(Mode text) -at *** FiSH_11: to try again, use: /fish11_X25519_INIT %contact
   }
 }
 
@@ -398,7 +297,7 @@ on *:NICK:{
     
     ; If a key already exists for the new nick, warn user about conflict
     if ($len(%new_nick_key) > 4) {
-      echo $color(Error) -at *** FiSH_11: Nick Change Conflict! You have a key for $nick, who is now $newnick. However, you ALREADY have a different key for $newnick. No keys were changed. Please resolve this manually.
+      echo $color(Error) -at *** FiSH_11: nick change conflict ! You have a key for $nick, who is now $newnick. However, you ALREADY have a different key for $newnick. No keys were changed. Please resolve this manually.
       unset %old_nick_key
       unset %new_nick_key
       return
@@ -406,7 +305,7 @@ on *:NICK:{
     
     ; Store the key under the new nickname
     if ($dll(%Fish11DllFile, FiSH11_SetKey, $+($network," ",$newnick," ",%old_nick_key))) {
-      echo $color(Mode text) -at *** FiSH_11: Key for $nick has been moved to new nick $newnick.
+      echo $color(Mode text) -at *** FiSH_11: key for $nick has been moved to new nick $newnick.
       ; Remove the key from the old nickname to prevent reuse by another user
       noop $dll(%Fish11DllFile, FiSH11_FileDelKey, $+($network," ",$nick))
     }
@@ -433,99 +332,14 @@ on *:JOIN:#:{
       echo $color(Mode text) -at *** FiSH_11: topic encryption enabled for $chan
     }
     ; DEBUG : log the key for debugging purposes
-    echo $color(Mode text) -at *** FiSH_11: Key for $chan is %theKey
+    echo $color(Mode text) -at *** FiSH_11: key for $chan is %theKey
   }
 }
 
 
 
 ; === SIGNAL HANDLERS ===
-alias fish11_incoming_text {
-  ; $1 = nick, $2 = target, $3- = message
-  
-  ; Check if we should process this message
-  var %process_incoming = $dll(%Fish11DllFile, INI_GetBool, process_incoming 1)
-  if (%process_incoming == 0) { return }
-  
-  ; Check if the message appears to be encrypted
-  if ($regex($3-, /^\+FiSH /)) {
-    ; Try to decrypt using target for private messages, or nick for channel messages
-    var %key_target = $iif($2 ischan, $1, $2)
-    var %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, %key_target $3-)
-    
-    ; If decryption successful (doesn't start with "Error")
-    if ($left(%decrypted, 5) !== Error) {
-      ; Get encryption mark info if configured
-      var %mark_pos = $dll(%Fish11DllFile, INI_GetInt, mark_position 1)
-      var %mark_txt = $dll(%Fish11DllFile, INI_GetString, mark_encrypted 12$chr(183))
-      
-      ; Show decrypted message with optional mark
-      var %display = $iif(%mark_pos == 1, %mark_txt $+ %decrypted, %decrypted $+ %mark_txt)
-      var %safe_display = $strip(%display, b,c,i,k,o,r,u)
-      echo $color(encrypted text) -t $iif($2 ischan, $2, $1) <$1> %safe_display
-      halt
-    }
-  }
-  
-  ; Check for key exchange message (DH public key)
-  if ($regex($3-, /FiSH11-PubKey:[A-Za-z0-9+\/=]+/)) {
-    echo -t $iif($2 ischan, $2, $1) *** Received key exchange request from $1
-    echo -t $iif($2 ischan, $2, $1) *** Type /fish_keyp11 $1 $3- to complete key exchange
-    
-    ; Auto-process if configured
-    if (%autokeyx == [On]) {
-      fish11_ProcessPublicKey $1 $3-
-    }
-    
-    halt
-  }
-}
 
-
-
-alias fish11_incoming_action {
-  ; Similar to text processing for actions
-  var %process_incoming = $dll(%Fish11DllFile, INI_GetBool, process_incoming 1)
-  if (%process_incoming == 0) { return }
-  
-  if ($regex($3-, /^\+FiSH /)) {
-    var %key_target = $iif($2 ischan, $1, $2)
-    var %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, %key_target $3-)
-    
-    if ($left(%decrypted, 5) !== Error) {
-      var %mark_pos = $dll(%Fish11DllFile, INI_GetInt, mark_position 1)
-      var %mark_txt = $dll(%Fish11DllFile, INI_GetString, mark_encrypted 12$chr(183))
-      
-      var %display = $iif(%mark_pos == 1, %mark_txt $+ %decrypted, %decrypted $+ %mark_txt)
-      var %safe_display = $strip(%display, b,c,i,k,o,r,u)
-      echo $color(action text) -t $iif($2 ischan, $2, $1) * $1 %safe_display
-      halt
-    }
-  }
-}
-
-
-
-alias fish11_incoming_notice {
-  ; Similar to text processing for notices
-  var %process_incoming = $dll(%Fish11DllFile, INI_GetBool, process_incoming 1)
-  if (%process_incoming == 0) { return }
-  
-  if ($regex($3-, /^\+FiSH /)) {
-    var %key_target = $iif($2 ischan, $1, $2)
-    var %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, %key_target $3-)
-    
-    if ($left(%decrypted, 5) !== Error) {
-      var %mark_pos = $dll(%Fish11DllFile, INI_GetInt, mark_position 1)
-      var %mark_txt = $dll(%Fish11DllFile, INI_GetString, mark_encrypted 12$chr(183))
-      
-      var %display = $iif(%mark_pos == 1, %mark_txt $+ %decrypted, %decrypted $+ %mark_txt)
-      var %safe_display = $strip(%display, b,c,i,k,o,r,u)
-      echo $color(notice text) -t $iif($2 ischan, $2, $1) -$1- %safe_display
-      halt
-    }
-  }
-}
 
 
 
@@ -572,21 +386,30 @@ alias fish11_writekey {
 alias fish11_X25519_INIT {
   if (($1 == /query) || ($1 == $null)) var %cur_contact = $active
   else var %cur_contact = $1
-  
+
   ; If there's an existing exchange in progress, cancel it first
   if (%fish11.dh_ $+ [ %cur_contact ] == 1) {
-    .timer fish_timeout_ $+ %cur_contact off
-    echo $color(Mode text) -at *** FiSH_11: Restarting key exchange with %cur_contact
+    echo $color(Mode text) -at *** FiSH_11: restarting key exchange with %cur_contact
   }
-  
-  set %fish11.dh_ $+ [ %cur_contact ] 1
-  
-  ; Execute the key exchange function and store result
-  .dll %Fish11DllFile FiSH11_ExchangeKey %cur_contact
-  
-  ; The function sends the public key to the mIRC window directly
-  ; Set the timeout timer using the constant KEY_EXCHANGE_TIMEOUT_SECONDS from the DLL (10 seconds)
-  .timer fish_timeout_ $+ %cur_contact 1 10 fish11_timeout_keyexchange %cur_contact
+
+  ; Use a hash table to track in-progress exchanges.
+  hadd -m fish11.dh %cur_contact 1
+
+  var %pub = $dll(%Fish11DllFile, FiSH11_ExchangeKey, %cur_contact)
+
+  ; Use regex to validate the entire key format. This is more robust against
+  ; hidden characters or whitespace returned by the DLL.
+  if ($regex(%pub, /^FiSH11-PubKey:[A-Za-z0-9+\/=]{44}/i)) {
+    .notice %cur_contact X25519_INIT %pub
+    echo $color(Mode text) -tm %cur_contact *** FiSH_11: sent X25519_INIT to %cur_contact $+ , waiting for reply...
+  }
+  else {
+    ; Fallback: show what we got (safely)
+    echo $color(Mode text) -at *** FiSH_11: ERROR - key exchange initiation failed. DLL returned: $qt(%pub)
+  }
+
+  ; Start a timer to cancel the exchange if no response is received
+  .timer 1 %KEY_EXCHANGE_TIMEOUT_SECONDS fish11_timeout_keyexchange %cur_contact
 }
 
 
@@ -601,8 +424,8 @@ alias fish11_ProcessPublicKey {
   ; Process the public key
   if ($dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $1 $2-)) {
     echo $color(Mode text) -at *** FiSH_11: key exchange completed with $1
-    echo $color(Error) -at *** FiSH_11: WARNING: Key exchange complete, but the identity of $1 is NOT VERIFIED.
-    echo $color(Error) -at *** FiSH_11: Use /fish_fp11 $1 to see their key fingerprint and verify it with them through a secure channel (e.g., voice call).
+    echo $color(Error) -at *** FiSH_11 WARNING: key exchange complete, but the identity of $1 is NOT VERIFIED.
+    echo $color(Error) -at *** FiSH_11: use /fish_fp11 $1 to see their key fingerprint and verify it with them through a secure channel (e.g., voice call).
   }
   else {
     echo $color(Mode text) -at *** FiSH_11: key exchange failed with $1
@@ -698,7 +521,7 @@ alias fish11_decrypt {
     return %decrypted
   }
   else {
-    echo $color(Mode text) -at *** FiSH: Decryption failed for %cur_contact
+    echo $color(Mode text) -at *** FiSH: decryption failed for %cur_contact
     return $null
   }
 }
@@ -711,11 +534,11 @@ alias fish11_file_list_keys {
 
   ; Check the DLL exists before trying to call it
   if (!$isfile(%Fish11DllFile)) {
-    echo $color(Mode text) -at *** FiSH: Error - DLL not found: %Fish11DllFile
+    echo $color(Mode text) -at *** FiSH ERROR- DLL not found: %Fish11DllFile
     return
   }
     ; Log that we're about to call the function
-  echo $color(Mode text) -at *** FiSH: Listing keys...
+  echo $color(Mode text) -at *** FiSH: listing keys...
     ; Ensure MIRCDIR is set (should already be set at startup, but be safe)
   noop $dll(%Fish11DllFile, FiSH11_SetMircDir, $mircdir)
   
@@ -805,7 +628,7 @@ alias fish11_UpdateStatusIndicator {
     aline -p @FiSH_Status * $timestamp $+ %active is encrypted (Key: %colored_fp $+ )
     
     ; Show encryption in status bar with colored fingerprint
-    sbar 4 FiSH: 🔒 %active [Fingerprint: %colored_fp $+ ]
+     echo -at sbar 4 FiSH: 🔒 %active [Fingerprint: %colored_fp $+ ]
     
     ; Also create a command that lets users copy/display the fingerprint on demand
     set %fish11.lastfingerprint. $+ [ %active ] %colored_fp
@@ -813,7 +636,7 @@ alias fish11_UpdateStatusIndicator {
   else {
     if (!$window(@FiSH_Status)) { window -hn @FiSH_Status }
     aline -p @FiSH_Status * $timestamp $+ %active is not encrypted
-    sbar 4 FiSH: 🔓 %active [No encryption]
+    echo -at sbar 4 FiSH: 🔓 %active [No encryption]
     
     ; Clear any stored fingerprint
     unset %fish11.lastfingerprint. $+ [ %active ]
@@ -858,7 +681,7 @@ alias fish11_showfingerprint {
     var %colored_fp = 04 $+ %group1 $+  12 $+ %group2 $+  03 $+ %group3 $+  07 $+ %group4
     
     ; Display the colored fingerprint
-    echo $color(Mode text) -at *** FiSH_11: Key fingerprint for %target is: %colored_fp
+    echo $color(Mode text) -at *** FiSH_11: key fingerprint for %target is: %colored_fp
     
     ; Store for later
     set %fish11.lastfingerprint. $+ [ %target ] %colored_fp
@@ -901,7 +724,7 @@ alias fish11_prefix {
     ; Add quotes for INI string value
     var %value = " $+ $1- $+ "
     fish11_SetIniValue plain_prefix %value
-    echo $color(Mode text) -at *** FiSH: Plain-prefix set to $1-
+    echo $color(Mode text) -at *** FiSH: plain-prefix set to $1-
   }
 }
 
@@ -1021,13 +844,41 @@ alias fish11_debug {
 }
 
 
+; Debug: capture raw return from FiSH11_ExchangeKey and display hex/quoted output
+alias fish11_debug_exchange {
+  if ($1 == $null) { echo 4 -a Usage: /fish11_debug_exchange <nick> | return }
+  var %nick = $1
+
+  ; Use $dll(...) to capture returned identifier string directly
+  var %raw_exch = $dll(%Fish11DllFile, FiSH11_ExchangeKey, %nick)
+
+  ; Show quoted version so we can see whitespace/newlines
+  echo 4 -a *** FiSH_11 DEBUG: raw quoted return: $qt(%raw_exch)
+
+  ; Replace common control chars with visible markers for quick glance
+  var %visible = $replace(%raw_exch, $chr(13) $+ $chr(10), <CRLF>, $chr(13), <CR>, $chr(10), <LF>, $chr(9), <TAB>)
+  echo 4 -a *** FiSH_11 DEBUG: visible: %visible
+
+  ; Print decimal codes for each character (limit 200 chars to avoid flooding)
+  var %limited = $left(%raw_exch, 200)
+  var %codes = $null
+  var %i = 1
+  while (%i <= $len(%limited)) {
+    var %c = $mid(%limited, %i, 1)
+    var %codes = %codes $+ $asc(%c) $+ " "
+    inc %i
+  }
+  echo 4 -a *** FiSH_11 DEBUG: decimal codes (first 200 chars): %codes
+}
+
+
 
 ; INI file viewer
 alias fish11_ViewIniFile {
   var %w = @iniviewer
   
   if (!$isfile(%fish_config_file)) {
-    echo $color(Mode text) -at *** FiSH: Config file not found: %fish_config_file
+    echo $color(Mode text) -at *** FiSH: config file not found: %fish_config_file
     return
   }
   
@@ -1321,7 +1172,7 @@ menu @iniviewer {
     }
 
     if (!$isfile(%temp_file)) {
-      echo $color(Error) -at *** FiSH: Error writing temporary file. Save aborted.
+      echo $color(Error) -at *** FiSH: error writing temporary file. Save aborted.
       return
     }
     
@@ -1333,7 +1184,7 @@ menu @iniviewer {
       echo $color(Mode text) -at *** FiSH: configuration saved
       .remove %backup_file
     } else {
-      echo $color(Error) -at *** FiSH: Error saving config, restoring from backup.
+      echo $color(Error) -at *** FiSH: error saving config, restoring from backup.
       .rename %backup_file %fish_config_file
     }
   }
