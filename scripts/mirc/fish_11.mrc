@@ -188,111 +188,9 @@ on *:INPUT:*: {
 
 
 
-; === INCOMING MESSAGE DETECTION AND HANDLING ===
-on *:TEXT:*:*:{
-  ; Check if we should process incoming messages
-  var %process_incoming = $dll(%Fish11DllFile, INI_GetBool, process_incoming 1)
-  if (%process_incoming == 0) return
-  
-  var %chan = $chan
-  var %text = $1-
-  var %decrypted = $null
-  
-  ; Check for encrypted message pattern (+FiSH)
-  if ($regex(%text, /^\+FiSH /)) {
-    ; Try to decrypt the message
-    %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, $iif(%chan, %chan, $nick) %text)
-    
-    if (%decrypted != $null && $left(%decrypted, 5) != Error) {
-      ; Get encryption mark settings
-      var %mark_pos = $dll(%Fish11DllFile, INI_GetInt, mark_position 1)
-      var %mark_txt = $dll(%Fish11DllFile, INI_GetString, mark_encrypted 12$chr(183))
-      
-      ; Display decrypted message with appropriate mark
-      var %display = $iif(%mark_pos == 1, %decrypted %mark_txt, %mark_txt %decrypted)
-      var %safe_display = $strip(%display, b,c,i,k,o,r,u)
-      echo $color(text) -t $iif(%chan, %chan, $nick) <$nick> %safe_display
-      
-      ; Halt to prevent default display
-      haltdef
-    }
-  }
-  
-  ; Detect DH key exchange message
-  else if ($regex(%text, /FiSH11-PubKey:[A-Za-z0-9+\/=]+/)) {
-    echo $color(Mode text) -t $iif(%chan, %chan, $nick) *** FiSH_11: Received key exchange request from $nick
-    echo $color(Mode text) -t $iif(%chan, %chan, $nick) *** Type /fish_keyp11 $nick %text to complete key exchange
-    
-    ; Automatic handling if configured
-    if (%autokeyx == [On]) {
-      fish11_ProcessPublicKey $nick %text
-    }
-  }
-}
-
-; Add handlers for action and notice messages
-on *:ACTION:*:*:{
-  ; Check if we should process incoming messages
-  var %process_incoming = $dll(%Fish11DllFile, INI_GetBool, process_incoming 1)
-  if (%process_incoming == 0) return
-  
-  var %chan = $chan
-  var %text = $1-
-  var %decrypted = $null
-  
-  ; Check for encrypted message pattern (+FiSH)
-  if ($regex(%text, /^\+FiSH /)) {
-    ; Try to decrypt the message
-    %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, $iif(%chan, %chan, $nick) %text)
-    
-    if (%decrypted != $null && $left(%decrypted, 5) != Error) {
-      ; Get encryption mark settings
-      var %mark_pos = $dll(%Fish11DllFile, INI_GetInt, mark_position 1)
-      var %mark_txt = $dll(%Fish11DllFile, INI_GetString, mark_encrypted 12$chr(183))
-      
-      ; Display decrypted action with appropriate mark
-      var %display = $iif(%mark_pos == 1, %decrypted %mark_txt, %mark_txt %decrypted)
-      var %safe_display = $strip(%display, b,c,i,k,o,r,u)
-      echo $color(action text) -t $iif(%chan, %chan, $nick) * $nick %safe_display
-      
-      ; Halt to prevent default display
-      haltdef
-    }
-  }
-}
 
 
 
-
-on *:NOTICE:*:*:{
-  ; Check if we should process incoming messages
-  var %process_incoming = $dll(%Fish11DllFile, INI_GetBool, process_incoming 1)
-  if (%process_incoming == 0) return
-  
-  var %chan = $chan
-  var %text = $1-
-  var %decrypted = $null
-  
-  ; Check for encrypted message pattern (+FiSH)
-  if ($regex(%text, /^\+FiSH /)) {
-    ; Try to decrypt the message
-    %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, $iif(%chan, %chan, $nick) %text)
-    
-    if (%decrypted != $null && $left(%decrypted, 5) != Error) {
-      ; Get encryption mark settings
-      var %mark_pos = $dll(%Fish11DllFile, INI_GetInt, mark_position 1)
-      var %mark_txt = $dll(%Fish11DllFile, INI_GetString, mark_encrypted 12$chr(183))
-      
-      ; Display decrypted notice with appropriate mark
-      var %display = $iif(%mark_pos == 1, %decrypted %mark_txt, %mark_txt %decrypted)
-      var %safe_display = $strip(%display, b,c,i,k,o,r,u)
-      echo $color(notice text) -t $iif(%chan, %chan, $nick) -$nick- %safe_display
-      
-      ; Halt to prevent default display
-      haltdef
-    }
-  }
-}
 
 
 
@@ -446,87 +344,75 @@ on *:JOIN:#:{
 ; === SIGNAL HANDLERS ===
 alias fish11_incoming_text {
   ; $1 = nick, $2 = target, $3- = message
-  
-  ; Check if we should process this message
   var %process_incoming = $dll(%Fish11DllFile, INI_GetBool, process_incoming 1)
   if (%process_incoming == 0) { return }
-  
-  ; Check if the message appears to be encrypted
+
   if ($regex($3-, /^\+FiSH /)) {
-    ; Try to decrypt using target for private messages, or nick for channel messages
-    var %key_target = $iif($2 ischan, $1, $2)
+    var %key_target = $iif($2 ischan, $2, $1)
+    echo -at DEBUG DECRYPT: Trying to decrypt for target: %key_target with message: $3-
     var %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, %key_target $3-)
-    
-    ; If decryption successful (doesn't start with "Error")
-    if ($left(%decrypted, 5) !== Error) {
-      ; Get encryption mark info if configured
+    echo -at DEBUG DECRYPT: DLL returned: $qt(%decrypted)
+
+    if ($left(%decrypted, 5) != Error) {
       var %mark_pos = $dll(%Fish11DllFile, INI_GetInt, mark_position 1)
       var %mark_txt = $dll(%Fish11DllFile, INI_GetString, mark_encrypted 12$chr(183))
-      
-      ; Show decrypted message with optional mark
       var %display = $iif(%mark_pos == 1, %mark_txt $+ %decrypted, %decrypted $+ %mark_txt)
       var %safe_display = $strip(%display, b,c,i,k,o,r,u)
       echo $color(encrypted text) -t $iif($2 ischan, $2, $1) <$1> %safe_display
       halt
     }
-  }
-  
-  ; Check for key exchange message (DH public key)
-  if ($regex($3-, /FiSH11-PubKey:[A-Za-z0-9+\/=]+/)) {
-    echo -t $iif($2 ischan, $2, $1) *** Received key exchange request from $1
-    echo -t $iif($2 ischan, $2, $1) *** Type /fish_keyp11 $1 $3- to complete key exchange
-    
-    ; Auto-process if configured
-    if (%autokeyx == [On]) {
-      fish11_ProcessPublicKey $1 $3-
+    else {
+      echo -at DEBUG DECRYPT: Decryption condition failed.
     }
-    
-    halt
   }
 }
 
-
-
 alias fish11_incoming_action {
-  ; Similar to text processing for actions
+  ; $1 = nick, $2 = target, $3- = message
   var %process_incoming = $dll(%Fish11DllFile, INI_GetBool, process_incoming 1)
   if (%process_incoming == 0) { return }
-  
+
   if ($regex($3-, /^\+FiSH /)) {
-    var %key_target = $iif($2 ischan, $1, $2)
+    var %key_target = $iif($2 ischan, $2, $1)
+    echo -at DEBUG DECRYPT: Trying to decrypt for target: %key_target with message: $3-
     var %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, %key_target $3-)
-    
-    if ($left(%decrypted, 5) !== Error) {
+    echo -at DEBUG DECRYPT: DLL returned: $qt(%decrypted)
+
+    if ($left(%decrypted, 5) != Error) {
       var %mark_pos = $dll(%Fish11DllFile, INI_GetInt, mark_position 1)
       var %mark_txt = $dll(%Fish11DllFile, INI_GetString, mark_encrypted 12$chr(183))
-      
       var %display = $iif(%mark_pos == 1, %mark_txt $+ %decrypted, %decrypted $+ %mark_txt)
       var %safe_display = $strip(%display, b,c,i,k,o,r,u)
       echo $color(action text) -t $iif($2 ischan, $2, $1) * $1 %safe_display
       halt
     }
+    else {
+      echo -at DEBUG DECRYPT: Decryption condition failed.
+    }
   }
 }
 
-
-
 alias fish11_incoming_notice {
-  ; Similar to text processing for notices
+  ; $1 = nick, $2 = target, $3- = message
   var %process_incoming = $dll(%Fish11DllFile, INI_GetBool, process_incoming 1)
   if (%process_incoming == 0) { return }
-  
+
   if ($regex($3-, /^\+FiSH /)) {
-    var %key_target = $iif($2 ischan, $1, $2)
+    var %key_target = $iif($2 ischan, $2, $1)
+    echo -at DEBUG DECRYPT: Trying to decrypt for target: %key_target with message: $3-
     var %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, %key_target $3-)
-    
-    if ($left(%decrypted, 5) !== Error) {
+    echo -at DEBUG DECRYPT: DLL returned: $qt(%decrypted)
+
+    if ($left(%decrypted, 5) != Error) {
       var %mark_pos = $dll(%Fish11DllFile, INI_GetInt, mark_position 1)
       var %mark_txt = $dll(%Fish11DllFile, INI_GetString, mark_encrypted 12$chr(183))
-      
       var %display = $iif(%mark_pos == 1, %mark_txt $+ %decrypted, %decrypted $+ %mark_txt)
       var %safe_display = $strip(%display, b,c,i,k,o,r,u)
       echo $color(notice text) -t $iif($2 ischan, $2, $1) -$1- %safe_display
       halt
+    }
+    else {
+      echo -at DEBUG DECRYPT: Decryption condition failed.
     }
   }
 }
