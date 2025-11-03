@@ -106,7 +106,11 @@ fn call_dll_function(
     let parms_ptr = parms_buffer.as_mut_ptr() as *mut c_char;
 
     // Determine which timeout to use based on the function
-    let timeout = if function_name == "FiSH11_FileListKeys" {
+    // Use a longer timeout (10s) for potentially slow key-exchange operations
+    let timeout = if function_name == "FiSH11_FileListKeys"
+        || function_name == "FiSH11_ExchangeKey"
+        || function_name == "FiSH11_ProcessPublicKey"
+    {
         Duration::from_secs(DEFAULT_LISTKEYS_TIMEOUT_SECONDS)
     } else {
         Duration::from_secs(DEFAULT_TIMEOUT_SECONDS)
