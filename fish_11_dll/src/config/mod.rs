@@ -7,6 +7,9 @@ pub mod file_storage;
 pub mod key_management;
 pub mod models;
 pub mod networks;
+
+pub mod channel_keys;
+
 pub mod settings;
 
 use std::thread;
@@ -135,6 +138,7 @@ pub use entries::{
     get_channel_data, get_user_data, list_channel_entries, list_user_entries, set_channel_data,
     set_user_data,
 };
+pub use channel_keys::{get_channel_key, set_channel_key};
 pub use file_storage::{get_config_path, init_config_file, load_config, save_config};
 pub use key_management::{
     delete_key, delete_key_default, get_key, get_key_default, get_keypair, get_our_keypair,

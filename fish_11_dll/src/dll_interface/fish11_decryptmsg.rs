@@ -12,35 +12,26 @@ use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 
 dll_function_identifier!(FiSH11_DecryptMsg, data, {
-    /// Decrypts a message from a specific nickname using ChaCha20-Poly1305.
-    ///
-    /// This function handles the complete decryption workflow, including:
-    /// - Retrieving the appropriate encryption key.
-    /// - Stripping the `+FiSH ` prefix.
-    /// - Performing authenticated decryption.
-    /// - Returning the plaintext message.
-    // 1. Parse input: <nickname> <encrypted_message>
+    // 1. Parse input: <target> <encrypted_message>
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
     let parts: Vec<&str> = input.splitn(2, ' ').collect();
 
     if parts.len() < 2 {
         return Err(DllError::InvalidInput {
             param: "input".to_string(),
-            reason: "expected format: <nickname> <encrypted_message>".to_string(),
+            reason: "expected format: <target> <encrypted_message>".to_string(),
         });
     }
 
-    let nickname = normalize_nick(parts[0]);
+    let target = parts[0];
     let mut encrypted_message = parts[1].trim();
 
-    if nickname.is_empty() {
-        return Err(DllError::MissingParameter("nickname".to_string()));
+    if target.is_empty() {
+        return Err(DllError::MissingParameter("target".to_string()));
     }
     if encrypted_message.is_empty() {
         return Err(DllError::MissingParameter("encrypted_message".to_string()));
     }
-
-    log::debug!("Decrypting for nickname: {}", nickname);
 
     // 2. Strip the "+FiSH " prefix if present (6 characters).
     if let Some(stripped) = encrypted_message.strip_prefix("+FiSH ") {
@@ -49,24 +40,33 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
     }
 
     // 3. Retrieve the decryption key for the target.
-    let key = config::get_key_default(&nickname)?;
+    let key: [u8; 32] = if target.starts_with('#') {
+        log::debug!("Decrypting for channel: {}", target);
+        config::get_channel_key(target)?
+    } else {
+        let nickname = normalize_nick(target);
+        log::debug!("Decrypting for nickname: {}", nickname);
+        let key_vec = config::get_key_default(&nickname)?;
+        key_vec.as_slice().try_into().map_err(|_|
+            DllError::InvalidInput {
+                param: "key".to_string(),
+                reason: "key must be exactly 32 bytes".to_string(),
+            }
+        )?
+    };
 
     log::debug!("Successfully retrieved decryption key");
 
     // 4. Decrypt the message using the retrieved key.
-    let key_array: &[u8; 32] = key.as_slice().try_into().map_err(|_| DllError::InvalidInput {
-        param: "key".to_string(),
-        reason: "key must be exactly 32 bytes".to_string(),
-    })?;
-    let decrypted = crypto::decrypt_message(key_array, encrypted_message).map_err(|e| {
+    let decrypted = crypto::decrypt_message(&key, encrypted_message).map_err(|e| {
         DllError::DecryptionFailed {
-            context: format!("decrypting for {}", nickname),
+            context: format!("decrypting for {}", target),
             cause: e.to_string(),
         }
     })?;
 
     // 5. Return the decrypted plaintext.
-    log::info!("Successfully decrypted message for {}", nickname);
+    log::info!("Successfully decrypted message for {}", target);
 
     Ok(decrypted)
 });

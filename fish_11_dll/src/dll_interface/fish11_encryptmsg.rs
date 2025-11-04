@@ -18,25 +18,46 @@ use crate::utils::normalize_nick;
 /// - Performing authenticated encryption.
 /// - Formatting the output with the FiSH protocol prefix `+FiSH `.
 dll_function_identifier!(FiSH11_EncryptMsg, data, {
-    // 1. Parse input: <nickname> <message>
+    // 1. Parse input: <target> <message>
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
     let parts: Vec<&str> = input.splitn(2, ' ').collect();
 
     if parts.len() < 2 {
         return Err(DllError::InvalidInput {
             param: "input".to_string(),
-            reason: "expected format: <nickname> <message>".to_string(),
+            reason: "expected format: <target> <message>".to_string(),
         });
     }
 
-    let nickname = normalize_nick(parts[0]);
+    let target = parts[0];
     let message = parts[1];
 
-    if nickname.is_empty() {
-        return Err(DllError::MissingParameter("nickname".to_string()));
+    if target.is_empty() {
+        return Err(DllError::MissingParameter("target".to_string()));
     }
     if message.is_empty() {
         return Err(DllError::MissingParameter("message".to_string()));
+    }
+
+    if target.starts_with('#') {
+        log::debug!("Encrypting for channel: {}", target);
+        let key = config::get_channel_key(target)?;
+        let encrypted_base64 =
+            crypto::encrypt_message(&key, message, Some(target)).map_err(|e| {
+                DllError::EncryptionFailed {
+                    context: format!("encrypting for {}", target),
+                    cause: e.to_string(),
+                }
+            })?;
+        let result = format!("+FiSH {}", encrypted_base64);
+        log::info!("Successfully encrypted message for {}", target);
+        return Ok(result);
+    }
+
+    let nickname = normalize_nick(target);
+
+    if nickname.is_empty() {
+        return Err(DllError::MissingParameter("nickname".to_string()));
     }
 
     log::debug!("Encrypting for nickname: {}", nickname);

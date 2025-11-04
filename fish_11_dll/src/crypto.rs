@@ -71,6 +71,11 @@ impl Zeroize for KeyPair {
     }
 }
 
+/// Generate a new 32-byte symmetric key for ChaCha20-Poly1305
+pub fn generate_symmetric_key() -> [u8; 32] {
+    generate_random_bytes(32).try_into().unwrap()
+}
+
 impl Drop for KeyPair {
     fn drop(&mut self) {
         self.zeroize();
@@ -716,4 +721,23 @@ mod tests {
         let result = compute_shared_secret(&keypair.private_key, &low_order_public);
         assert!(result.is_err(), "compute_shared_secret should reject low-order public keys");
     }
+}
+
+use base64::{engine::general_purpose, Engine as _};
+
+/// Wraps a channel key using a pre-shared symmetric key.
+/// This is used by the coordinator to encrypt the new channel key for a specific member.
+pub fn wrap_key(channel_key: &[u8; 32], shared_key_with_member: &[u8; 32]) -> Result<String> {
+    let key_as_b64 = general_purpose::STANDARD.encode(channel_key);
+    encrypt_message(shared_key_with_member, &key_as_b64, None)
+}
+
+/// Unwraps a channel key using a pre-shared symmetric key.
+/// This is used by a member to decrypt the channel key received from the coordinator.
+pub fn unwrap_key(wrapped_key_b64: &str, shared_key_with_coordinator: &[u8; 32]) -> Result<[u8; 32]> {
+    let decrypted_b64_key = decrypt_message(shared_key_with_coordinator, wrapped_key_b64)?;
+    let key_bytes = general_purpose::STANDARD.decode(&decrypted_b64_key)?;
+    key_bytes.try_into().map_err(|_|
+        FishError::CryptoError("Unwrapped key has invalid length".to_string())
+    )
 }

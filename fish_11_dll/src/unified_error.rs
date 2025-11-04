@@ -33,6 +33,9 @@ pub enum DllError {
     #[error("configuration malformed: {0}")]
     ConfigMalformed(String),
 
+    #[error("configuration error: {0}")]
+    ConfigError(String),
+
     /// Configuration setting has invalid value
     #[error("invalid config value for '{key}': '{value}' ({reason})")]
     ConfigInvalidValue { key: String, value: String, reason: String },

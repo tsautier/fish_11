@@ -13,6 +13,7 @@ pub struct EntryData {
 /// Configuration for FiSH11 settings
 #[derive(PartialEq, Debug, Clone)]
 pub struct Fish11Section {
+    pub nickname: String,
     pub process_incoming: bool,
     pub process_outgoing: bool,
     pub plain_prefix: String,
@@ -26,6 +27,7 @@ pub struct Fish11Section {
 impl Default for Fish11Section {
     fn default() -> Self {
         Self {
+            nickname: String::new(),
             process_incoming: true,
             process_outgoing: true,
             plain_prefix: "+p ".to_string(),
@@ -69,6 +71,8 @@ pub struct FishConfig {
     pub startup_data: StartupSection,
     /// Entries for channels and users
     pub entries: HashMap<String, EntryData>,
+    /// Channel symmetric keys
+    pub channel_keys: HashMap<String, String>,
 }
 
 impl FishConfig {
@@ -86,6 +90,7 @@ impl FishConfig {
             fish11: Fish11Section::default(),
             startup_data,
             entries: HashMap::new(),
+            channel_keys: HashMap::new(),
         }
     }
 

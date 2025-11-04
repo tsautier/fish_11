@@ -1,0 +1,327 @@
+Network Working Group                                           G. Gielly
+Request for Comments: XXXX                                     Fish-Project
+Category: Standards Track                                     November 2025
+
+                FiSH-11 Channel Encryption Protocol (FCEP-1)
+
+Status of This Memo
+
+   This document specifies an Internet standards track protocol for the
+   Internet community, and requests discussion and suggestions for
+   improvements.  Please refer to the current edition of the "Internet
+   Official Protocol Standards" (STD 1) for the standardization state
+   and status of this protocol.  Distribution of this memo is unlimited.
+
+Abstract
+
+   This document defines a protocol for establishing and maintaining a
+   secure multi-party communication channel over the Internet Relay Chat
+   (IRC) protocol. It extends the FiSH-11 protocol, which is based on
+   the Off-the-Record (OTR) messaging protocol, to provide confidentiality,
+   message authentication, and integrity for entire IRC channels, not just
+   private (one-to-one) conversations. The protocol leverages existing
+   FiSH-11 cryptographic primitives, namely X25519 and ChaCha20-Poly1305,
+   to create a shared secret key among a group of users in a secure and
+   scalable manner.
+
+Table of Contents
+
+   1. Introduction
+   2. Terminology
+   3. Protocol Overview
+      3.1. Key Exchange Model
+      3.2. Key Exchange Steps
+   4. Message Formats
+      4.1. Key Distribution Message
+      4.2. Encrypted Channel Message
+   5. Cryptographic Operations
+      5.1. Channel Key Generation
+      5.2. Key Wrapping and Unwrapping
+      5.3. Message Encryption and Decryption
+   6. State Management
+      6.1. Key Storage
+   7. Reference Implementation
+      7.1. Data Structures
+      7.2. DLL Export: FiSH11_InitChannelKey
+      7.3. DLL Export: FiSH11_ProcessChannelKey
+      7.4. Modifications to Encryption/Decryption Logic
+   8. Security Considerations
+      8.1. Impersonation
+      8.2. Replay Attacks
+      8.3. Forward Secrecy
+      8.4. Key Management
+
+1. Introduction
+
+   The FiSH-11 protocol provides robust end-to-end encryption for private
+   (one-to-one) conversations over IRC, ensuring that messages are kept
+   confidential and are not tampered with. However, it does not specify a
+   method for securing conversations in a multi-user channel, which is a
+   primary feature of IRC.
+
+   This document addresses this gap by defining the FiSH-11 Channel
+   Encryption Protocol (FCEP-1). FCEP-1 is a protocol extension that allows
+   a group of users in an IRC channel to negotiate and share a common
+   secret key, which is then used to encrypt and decrypt all subsequent
+   messages within that channel. The protocol is designed to be secure,
+   easy to implement within existing FiSH-11 clients, and to minimize the
+   impact on the user experience.
+
+2. Terminology
+
+   The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+   "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+   document are to be interpreted as described in RFC 2119.
+
+   - Channel: an IRC channel, identified by a name beginning with a '#'
+     or '&' character.
+   - Member: a user who is a participant in an IRC channel.
+   - Coordinator: a member who initiates the key exchange process for a
+     specific channel.
+   - Participant: any member of a channel who is participating in a secure
+     session, including the coordinator.
+   - Channel Key: a 32-byte symmetric key used to encrypt and decrypt
+     channel messages.
+   - Pre-shared Key: a 32-byte symmetric key, previously established
+     between two users through a standard FiSH-11 (or OTR) key exchange.
+   - Key-Wrapping: taghe process of encrypting a key (the Channel Key) with
+     another key (the Pre-shared Key).
+
+3. Protocol Overview
+
+   FCEP-1 is based on a "hub-and-spoke" model where one user, the
+   coordinator, is responsible for generating and distributing the channel
+   key to the other participants. This model is chosen for its simplicity
+   and efficiency in the context of IRC.
+
+3.1. Key Exchange Model
+
+   The key exchange relies on the pre-existence of a secure end-to-end
+   channel between the coordinator and each individual participant. In
+   other words, to be invited into a secure channel conversation, a user
+   must have already completed a standard FiSH-11 key exchange with the
+   coordinator at some point in the past.
+
+   The coordinator generates a fresh, random Channel Key and then uses the
+   pre-shared key it has with each participant to encrypt the Channel Key
+   uniquely for that participant. This ensures that only the intended
+   recipient can decrypt and obtain the shared Channel Key.
+
+3.2. Key Exchange Steps
+
+   1. Initiation: the user wishing to start a secure channel conversation
+      (the coordinator) issues a command to their client, specifying the
+      channel and the list of participants (nicknames) to be included.
+
+   2. Key Generation: the coordinator's client generates a new, random,
+      32-byte Channel Key.
+
+   3. Key Wrapping and Distribution: for each participant in the list:
+      a. The coordinator's client retrieves the pre-shared symmetric key
+         associated with that participant.
+      b. The Channel Key is encrypted using the pre-shared key (see Section 5).
+      c. A Key Distribution Message is sent as a private NOTICE to the
+         participant, containing the encrypted Channel Key.
+
+   4. Key Reception and Unwrapping: when a participant's client receives a
+      Key Distribution Message, it performs the following steps:
+      a. It verifies that the sender is a known contact (optional but
+         recommended).
+      b. It retrieves the pre-shared symmetric key associated with the sender.
+      c. It decrypts the Channel Key.
+      d. It stores the decrypted Channel Key, associating it with the
+         channel.
+
+   5. Secure Communication: Once a participant has the Channel Key, their
+      client MUST use it to encrypt all subsequent messages sent to that
+      channel. It MUST also attempt to decrypt all messages received from
+      other known participants in that channel using the same key.
+
+4. Message Formats
+
+   All FCEP-1 messages are transmitted as IRC NOTICEs to avoid appearing in
+   the main channel window. This prevents clutter and potential confusion.
+
+4.1. Key Distribution Message
+
+   The Key Distribution Message is sent from the coordinator to each
+   participant individually.
+
+   Syntax: `NOTICE <recipient> :!FCEP-KEY <channel> <sender> <data>`
+
+   - `<recipient>`: the nickname of the user who should receive the key.
+   - `!FCEP-KEY`: the prefix indicating a FiSH-11 Channel Encryption
+     Protocol message.
+   - `<channel>`: the IRC channel for which the key is intended.
+   - `<sender>`: the nickname of the coordinator.
+   - `<data>`: the Base64-encoded encrypted Channel Key.
+
+4.2. Encrypted Channel Message
+
+   Once the key exchange is complete, messages are sent to the channel as
+   usual, but their content is encrypted. The format of an encrypted
+   message SHOULD be distinguishable from a regular, unencrypted message.
+
+   Recommended Format: `PRIVMSG <channel> :+FiSH <encrypted_message>`
+
+   - `<channel>`: the channel for which the message is intended.
+   - `+FiSH`: a prefix indicating that the message is encrypted and should
+     be handled by the FiSH-11 client.
+   - `<encrypted_message>`: the Base64-encoded ciphertext.
+
+5. Cryptographic Operations
+
+   FCEP-1 relies on the same cryptographic primitives as the core FiSH-11
+   protocol, namely ChaCha20-Poly1305 for symmetric encryption and HMAC-based
+   Key Derivation Function (HKDF) based on SHA-256.
+
+5.1. Channel Key Generation
+
+   The Channel Key is a 32-byte value generated from a
+   cryptographically secure random number generator (CSPRNG). It MUST be
+   unique for each session.
+
+5.2. Key Wrapping and Unwrapping
+
+   Key wrapping is achieved by encrypting the Channel Key using the
+   pre-shared key between the coordinator and the participant.
+
+   - To wrap, the coordinator's client encrypts the 32-byte Channel Key
+     using the 32-byte pre-shared key as the ChaCha20-Poly1305 key.
+   - To unwrap, the participant's client decrypts the ciphertext using the
+     same pre-shared key.
+
+   This ensures that only the intended participant can access the Channel
+   Key, as only they share the pre-shared key with the coordinator.
+
+5.3. Message Encryption and Decryption
+
+   All messages within the secure channel are encrypted and decrypted using
+   the shared Channel Key. The ChaCha20-Poly1305 AEAD (Authenticated
+   Encryption with Associated Data) mode is used.
+
+   - The message content forms the plaintext.
+   - A fresh, unpredictable 12-byte nonce MUST be generated for each message.
+   - The channel name SHOULD be used as the "associated data" (AD) in the
+     AEAD operation. This prevents an attacker from replaying a message from
+     one channel into a different one.
+   - The output ciphertext is the concatenation of the 12-byte nonce and the
+     encrypted message content (including the 16-byte authentication tag).
+
+6. State Management
+
+6.1. Key Storage
+
+   Implementations MUST provide a secure storage mechanism for the channel
+   keys. This mechanism should be at least as secure as the storage of the
+   private keys.
+
+   It is RECOMMENDED to store the keys in a separate section of the FiSH-11
+   configuration file, mapping channel names to their corresponding keys.
+   Keys SHOULD be stored in a format that is not human-readable, such as
+   Base64, to discourage casual tampering.
+
+7. Reference Implementation
+
+   This section provides a high-level overview of how FCEP-1 could be
+   implemented in a FiSH-11 client, using the fictional `fish-lib` API.
+
+7.1. Data Structures
+
+   The main configuration structure should be extended to include a map for
+   channel keys:
+
+   ```rust
+   pub struct FishConfig {
+       // ... other fields ...
+       pub channel_keys: HashMap<String, Vec<u8>>,
+   }
+   ```
+
+7.2. DLL Export: FiSH11_InitChannelKey
+
+   This function is called by the user who wants to initiate a secure
+   channel.
+
+   `dll_function_identifier!(FiSH11_InitChannelKey, data, { ... });`
+
+   - Input: a string containing the channel name followed by a
+     space-separated list of participant nicknames.
+     Example: `#mychannel user1 user2 user3`
+   - Processing:
+     1. Parse the input to separate the channel name and the list of
+        nicknames.
+     2. Generate a new 32-byte random Channel Key.
+     3. Store the new Channel Key locally, associated with the channel name.
+     4. For each nickname in the list:
+        a. Retrieve the pre-shared symmetric key for this user.
+        b. Encrypt the Channel Key using this pre-shared key.
+        c. Base64-encode the result.
+        d. Format a `NOTICE` command as described in Section 4.1.
+     5. Concatenate all `NOTICE` commands into a single string, separated by
+        ` | ` (the mIRC command separator).
+   - Output: A string of mIRC commands to be executed, which will send the
+     encrypted keys to the other participants.
+
+7.3. DLL Export: FiSH11_ProcessChannelKey
+
+   This function is called when a `NOTICE` with a FCEP-1 key is received.
+
+   `dll_function_identifier!(FiSH11_ProcessChannelKey, data, { ... });`
+
+   - Input: a string containing the channel name, the sender's nickname,
+     and the Base64-encoded encrypted Channel Key, as per Section 4.1.
+     Example: `#mychannel user1 AgB...`
+   - Processing:
+     1. parse the input to separate the channel name, sender nickname, and
+        the encrypted key data.
+     2. Base64-decode the key data.
+     3. retrieve the pre-shared symmetric key for the sender.
+     4. decrypt the Channel Key using the pre-shared key.
+     5. if decryption is successful, store the new Channel Key, associating
+        it with the channel name.
+   - output: A confirmation message to be displayed to the user (e.g.,
+     `/echo -ts Key for #mychannel received from user1.`).
+
+7.4. Modifications to Encryption/Decryption Logic
+
+   The core encryption and decryption functions of the client must be
+   modified to handle channel messages.
+
+   - encryption: before sending a message to a channel, the client must
+     check if a key is stored for that channel. If so, it must encrypt the
+     message using that key before sending it to the server.
+   - decryption: when a `PRIVMSG` is received for a channel, the client must
+     check if the message is encrypted (e.g., starts with `+FiSH`). If so,
+     it must retrieve the key for that channel and attempt to decrypt the
+     message. If successful, the decrypted message is displayed to the user.
+
+8. Security Considerations
+
+8.1. Impersonation
+
+   An attacker cannot impersonate a legitimate participant to obtain the
+   Channel Key, as they would need to know the pre-shared symmetric key
+   between the coordinator and the user they are trying to impersonate.
+   This reinforces the importance of the initial key exchange process in
+   FiSH-11.
+
+8.2. Replay Attacks
+
+   The use of a fresh, unpredictable nonce for each message prevents replay
+   attacks within the channel. An attacker cannot capture an encrypted
+   message and re-transmit it later, as the recipient's client would have
+   already processed the nonce and would reject it.
+
+8.3. Forward Secrecy
+
+   As with the base FiSH-11 protocol, FCEP-1 does not provide forward
+   secrecy. If a long-term private key is compromised, all past
+   conversations encrypted with it are also compromised. This is a known
+   limitation of the OTR-style protocol.
+
+8.4. Key Management
+
+   The security of the entire system relies on the secure storage of the
+   pre-shared keys and the channel keys on the user's machine. If the key
+   storage is compromised, an attacker can decrypt all conversations.
