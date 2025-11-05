@@ -6,6 +6,8 @@ use winapi::shared::windef::HWND;
 
 use crate::config;
 use crate::dll_function_identifier;
+use crate::dll_interface::CStr;
+use crate::dll_interface::ptr;
 use crate::unified_error::DllError;
 
 dll_function_identifier!(FiSH11_GetConfigPath, _data, {

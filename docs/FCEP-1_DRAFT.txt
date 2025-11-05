@@ -1,5 +1,5 @@
-Network Working Group                                           G. Gielly
-Request for Comments: XXXX                                     Fish-Project
+Network Working Group                                      Guillaume Gielly
+Request for Comments: XXXX                                   Fish11-Project
 Category: Standards Track                                     November 2025
 
                 FiSH-11 Channel Encryption Protocol (FCEP-1)
@@ -22,7 +22,9 @@ Abstract
    private (one-to-one) conversations. The protocol leverages existing
    FiSH-11 cryptographic primitives, namely X25519 and ChaCha20-Poly1305,
    to create a shared secret key among a group of users in a secure and
-   scalable manner.
+   scalable manner. FCEP-1 includes provisions for forward secrecy through
+   key ratcheting, post-compromise security mechanisms, and manual re-keying
+   procedures to maintain security over the lifetime of a channel.
 
 Table of Contents
 
@@ -38,18 +40,33 @@ Table of Contents
       5.1. Channel Key Generation
       5.2. Key Wrapping and Unwrapping
       5.3. Message Encryption and Decryption
+      5.4. Key Derivation for Ratcheting
    6. State Management
       6.1. Key Storage
-   7. Reference Implementation
-      7.1. Data Structures
-      7.2. DLL Export: FiSH11_InitChannelKey
-      7.3. DLL Export: FiSH11_ProcessChannelKey
-      7.4. Modifications to Encryption/Decryption Logic
-   8. Security Considerations
-      8.1. Impersonation
-      8.2. Replay Attacks
-      8.3. Forward Secrecy
-      8.4. Key Management
+      6.2. Member Lifecycle Management
+      6.3. Nonce Tracking
+   7. Forward Secrecy and Post-Compromise Security
+      7.1. Key Ratcheting Mechanism
+      7.2. Ratchet State Management
+      7.3. Post-Compromise Recovery
+   8. Manual Re-keying Procedures
+      8.1. Coordinator-Initiated Re-keying
+      8.2. Member Addition
+      8.3. Member Removal
+   9. Reference Implementation
+      9.1. Data Structures
+      9.2. DLL Export: FiSH11_InitChannelKey
+      9.3. DLL Export: FiSH11_ProcessChannelKey
+      9.4. DLL Export: FiSH11_RekeyChannel
+      9.5. Modifications to Encryption/Decryption Logic
+  10. Security Considerations
+      10.1. Sender Authentication
+      10.2. Replay Attacks
+      10.3. Cross-Channel Replay Prevention
+      10.4. Forward Secrecy
+      10.5. Post-Compromise Security
+      10.6. Key Management
+      10.7. Nonce Reuse Prevention
 
 1. Introduction
 
@@ -84,8 +101,14 @@ Table of Contents
      channel messages.
    - Pre-shared Key: a 32-byte symmetric key, previously established
      between two users through a standard FiSH-11 (or OTR) key exchange.
-   - Key-Wrapping: taghe process of encrypting a key (the Channel Key) with
+   - Key-Wrapping: the process of encrypting a key (the Channel Key) with
      another key (the Pre-shared Key).
+   - Ratchet: a cryptographic mechanism that derives new keys from previous
+     keys in a one-way fashion, providing forward secrecy.
+   - Ratchet Chain: a sequence of keys derived through repeated application
+     of a key derivation function.
+   - Epoch: a period during which a specific channel key is in use, bounded
+     by re-keying events.
 
 3. Protocol Overview
 
@@ -125,14 +148,17 @@ Table of Contents
 
    4. Key Reception and Unwrapping: when a participant's client receives a
       Key Distribution Message, it performs the following steps:
-      a. It verifies that the sender is a known contact (optional but
-         recommended).
-      b. It retrieves the pre-shared symmetric key associated with the sender.
+      a. It MUST verify that the IRC sender ($nick) matches the claimed
+         coordinator nickname in the message. If there is a mismatch, the
+         message MUST be rejected and a security warning MUST be logged.
+      b. It retrieves the pre-shared symmetric key associated with the
+         verified sender.
       c. It decrypts the Channel Key.
       d. It stores the decrypted Channel Key, associating it with the
-         channel.
+         channel name (normalized to lowercase per RFC 2812).
+      e. It initializes the ratchet state for this channel (see Section 7).
 
-   5. Secure Communication: Once a participant has the Channel Key, their
+   5. Secure Communication: once a participant has the Channel Key, their
       client MUST use it to encrypt all subsequent messages sent to that
       channel. It MUST also attempt to decrypt all messages received from
       other known participants in that channel using the same key.
@@ -202,11 +228,40 @@ Table of Contents
 
    - The message content forms the plaintext.
    - A fresh, unpredictable 12-byte nonce MUST be generated for each message.
-   - The channel name SHOULD be used as the "associated data" (AD) in the
-     AEAD operation. This prevents an attacker from replaying a message from
-     one channel into a different one.
+   - The channel name MUST be used as the "associated data" (AD) in the
+     AEAD operation. The channel name MUST be normalized to lowercase before
+     use. This prevents an attacker from replaying a message from one channel
+     into a different one (cross-channel replay attack).
    - The output ciphertext is the concatenation of the 12-byte nonce and the
      encrypted message content (including the 16-byte authentication tag).
+
+5.4. Key Derivation for Ratcheting
+
+   To provide forward secrecy, FCEP-1 implements a symmetric key ratchet
+   mechanism. After encrypting each message, the channel key is advanced
+   using HKDF-SHA256.
+
+   Key Derivation:
+   - Input Key Material (IKM): current channel key (32 bytes)
+   - Salt: the 12-byte nonce used for the current message
+   - Info: the UTF-8 encoded string "FCEP-1-RATCHET" concatenated with the
+     normalized channel name
+   - Output: new 32-byte channel key
+
+   Pseudocode:
+   ```
+   new_key = HKDF-SHA256(
+       ikm = current_channel_key,
+       salt = message_nonce,
+       info = "FCEP-1-RATCHET" || channel_name_lowercase,
+       length = 32
+   )
+   current_channel_key = new_key
+   ```
+
+   After deriving the new key, the old key MUST be securely erased from
+   memory. This ensures that compromise of the current key does not allow
+   decryption of past messages.
 
 6. State Management
 
@@ -221,24 +276,197 @@ Table of Contents
    Keys SHOULD be stored in a format that is not human-readable, such as
    Base64, to discourage casual tampering.
 
-7. Reference Implementation
+   Channel names MUST be normalized to lowercase before storage and lookup,
+   as IRC channel names are case-insensitive per RFC 2812.
+
+6.2. Member Lifecycle Management
+
+   FCEP-1 supports dynamic channel membership through manual re-keying
+   procedures.
+
+   Member Addition:
+   - When a new member joins the channel, the coordinator SHOULD initiate
+     a re-keying operation to include the new member.
+   - The coordinator first establishes a pre-shared key with the new member
+     using the standard FiSH-11 key exchange (X25519).
+   - The coordinator then initiates re-keying using the procedure defined
+     in Section 8.
+
+   Member Removal:
+   - When a member leaves the channel (PART, QUIT, KICK), the coordinator
+     MUST initiate a re-keying operation that excludes the departed member.
+   - This ensures the departed member cannot decrypt future messages.
+   - Note: the departed member retains all previously received keys and can
+     decrypt past messages. This is a fundamental limitation of symmetric
+     key systems without key escrow or time-limited keys.
+
+   Automatic Re-keying:
+   - Implementations MAY provide automatic re-keying on member departure
+     as a configurable option.
+   - Manual re-keying is REQUIRED as the baseline implementation.
+
+6.3. Nonce Tracking
+
+   To prevent replay attacks and detect nonce reuse, implementations SHOULD
+   maintain a cache of recently seen nonces for each channel.
+
+   Recommended Implementation:
+   - Store the last N nonces per channel (N >= 100 recommended).
+   - Use a fixed-size circular buffer or LRU cache.
+   - Before processing a message, check if the nonce has been seen before.
+   - If a duplicate nonce is detected, reject the message and log a security
+     warning.
+
+   This cache provides protection against replay attacks within a rolling
+   window. The cache size should be balanced against memory constraints and
+   the expected message volume.
+
+7. Forward Secrecy and Post-Compromise Security
+
+7.1. Key Ratcheting Mechanism
+
+   FCEP-1 provides forward secrecy through a symmetric key ratchet that
+   advances the channel key after each message encryption.
+
+   Sender Procedure:
+   1. Encrypt the message using the current channel key.
+   2. Derive a new channel key using HKDF as specified in Section 5.4.
+   3. Replace the current channel key with the new key in secure storage.
+   4. Securely erase the old key from memory.
+   5. Transmit the encrypted message.
+
+   Receiver Procedure:
+   1. Receive and decrypt the message using the current channel key.
+   2. Derive the new channel key using the same HKDF procedure.
+   3. Replace the current channel key with the new key.
+   4. Securely erase the old key from memory.
+
+   Synchronization:
+   - Both sender and receiver MUST apply the ratchet in the same order as
+     messages are sent/received.
+   - Out-of-order message delivery can cause desynchronization.
+   - If decryption fails, the implementation MAY attempt decryption with
+     recent past keys (see Section 7.2).
+
+7.2. Ratchet State Management
+
+   To handle network conditions where messages may arrive out of order,
+   implementations SHOULD maintain a small window of recent keys.
+
+   Recommended Implementation:
+   - Store the current key and the previous N keys (N = 5 recommended).
+   - When decryption fails with the current key, attempt decryption with
+     stored previous keys in reverse chronological order.
+   - If decryption succeeds with a previous key, this indicates an out-of-
+     order message. The implementation should NOT advance the ratchet for
+     this message.
+   - If decryption fails with all available keys, treat the message as
+     corrupted or sent with an unknown key.
+
+   Key Window Advancement:
+   - When the ratchet is successfully advanced, add the new key to the
+     front of the window.
+   - If the window is full, remove the oldest key.
+   - This provides a balance between forward secrecy (old keys are
+     eventually discarded) and robustness (tolerating some reordering).
+
+7.3. Post-Compromise Recovery
+
+   The key ratcheting mechanism provides post-compromise security (PCS).
+   If an attacker compromises the current channel key:
+
+   - The attacker can decrypt messages until the next ratchet advancement.
+   - Once the ratchet advances (after the next message is sent by any
+     participant), the compromised key becomes useless.
+   - The attacker cannot derive future keys from the compromised key due
+     to the one-way nature of HKDF.
+
+   Recovery Time:
+   - In an active channel, PCS recovery occurs within seconds to minutes.
+   - In an inactive channel, recovery requires manual re-keying.
+
+   Manual Recovery:
+   - If key compromise is suspected, the coordinator SHOULD immediately
+     initiate a manual re-key operation (Section 8).
+   - This establishes a fresh key that is independent of the potentially
+     compromised key material.
+
+8. Manual Re-keying Procedures
+
+8.1. Coordinator-Initiated Re-keying
+
+   The coordinator can initiate a re-key operation at any time to establish
+   a fresh channel key.
+
+   Procedure:
+   1. Generate a new random 32-byte channel key.
+   2. Reset the ratchet state (epoch counter = 0).
+   3. Wrap the new key for each current member using their pre-shared keys.
+   4. Distribute the wrapped keys via NOTICE messages.
+   5. Replace the old channel key with the new key locally.
+
+   Use Cases:
+   - Suspected key compromise.
+   - Periodic security hygiene (e.g., monthly re-keying).
+   - After significant membership changes.
+
+8.2. Member Addition
+
+   When adding a new member to the secure channel:
+
+   1. The coordinator establishes a pre-shared key with the new member
+      using the standard FiSH-11 X25519 key exchange.
+   2. The coordinator initiates a re-key operation that includes the new
+      member in the distribution list.
+   3. All members (including the new member) receive and install the fresh
+      channel key.
+
+   Security Note:
+   - The new member cannot decrypt messages sent before they joined, as
+     they do not have access to previous channel keys.
+
+8.3. Member Removal
+
+   When removing a member from the secure channel:
+
+   1. The coordinator initiates a re-key operation with a member list that
+      excludes the departed member.
+   2. All remaining members receive and install the fresh channel key.
+   3. The departed member is not sent the new key and cannot decrypt future
+      messages.
+
+   Security Note:
+   - The departed member retains all previously received keys and can decrypt
+     past messages. This is unavoidable in a system where members receive
+     the actual decryption keys.
+   - For higher security, periodic re-keying should be used even without
+     membership changes.
+
+9. Reference Implementation
 
    This section provides a high-level overview of how FCEP-1 could be
    implemented in a FiSH-11 client, using the fictional `fish-lib` API.
 
-7.1. Data Structures
+9.1. Data Structures
 
    The main configuration structure should be extended to include a map for
-   channel keys:
+   channel keys and ratchet state:
 
    ```rust
    pub struct FishConfig {
        // ... other fields ...
        pub channel_keys: HashMap<String, Vec<u8>>,
+       pub channel_ratchet_state: HashMap<String, RatchetState>,
+   }
+
+   pub struct RatchetState {
+       pub current_key: [u8; 32],
+       pub epoch: u64,
+       pub previous_keys: VecDeque<[u8; 32]>,  // Window of recent keys
    }
    ```
 
-7.2. DLL Export: FiSH11_InitChannelKey
+9.2. DLL Export: FiSH11_InitChannelKey
 
    This function is called by the user who wants to initiate a secure
    channel.
@@ -251,77 +479,208 @@ Table of Contents
    - Processing:
      1. Parse the input to separate the channel name and the list of
         nicknames.
-     2. Generate a new 32-byte random Channel Key.
-     3. Store the new Channel Key locally, associated with the channel name.
-     4. For each nickname in the list:
+     2. Normalize the channel name to lowercase.
+     3. Validate the channel name (prefix #/&, length 2-50, no invalid chars).
+     4. Generate a new 32-byte random Channel Key.
+     5. Initialize ratchet state (epoch = 0, empty previous_keys).
+     6. Store the new Channel Key and ratchet state locally.
+     7. For each nickname in the list:
         a. Retrieve the pre-shared symmetric key for this user.
-        b. Encrypt the Channel Key using this pre-shared key.
+        b. If no pre-shared key exists, add to failed_members list.
+        c. Encrypt the Channel Key using this pre-shared key.
         c. Base64-encode the result.
         d. Format a `NOTICE` command as described in Section 4.1.
-     5. Concatenate all `NOTICE` commands into a single string, separated by
+     8. If any members failed, return error message listing them.
+     9. Concatenate all `NOTICE` commands into a single string, separated by
         ` | ` (the mIRC command separator).
+    10. Append a confirmation echo command.
    - Output: A string of mIRC commands to be executed, which will send the
-     encrypted keys to the other participants.
+     encrypted keys to the other participants, or an error message.
 
-7.3. DLL Export: FiSH11_ProcessChannelKey
+9.3. DLL Export: FiSH11_ProcessChannelKey
 
    This function is called when a `NOTICE` with a FCEP-1 key is received.
 
    `dll_function_identifier!(FiSH11_ProcessChannelKey, data, { ... });`
 
-   - Input: a string containing the channel name, the sender's nickname,
-     and the Base64-encoded encrypted Channel Key, as per Section 4.1.
-     Example: `#mychannel user1 AgB...`
+   - Input: a string containing the channel name, the coordinator's nickname,
+     the actual sender's nickname, and the Base64-encoded encrypted Channel
+     Key, as per Section 4.1.
+     Example: `#mychannel coordinator_nick actual_sender_nick AgB...`
    - Processing:
-     1. parse the input to separate the channel name, sender nickname, and
-        the encrypted key data.
-     2. Base64-decode the key data.
-     3. retrieve the pre-shared symmetric key for the sender.
-     4. decrypt the Channel Key using the pre-shared key.
-     5. if decryption is successful, store the new Channel Key, associating
-        it with the channel name.
-   - output: A confirmation message to be displayed to the user (e.g.,
-     `/echo -ts Key for #mychannel received from user1.`).
+     1. Parse the input to separate all four fields.
+     2. SECURITY CHECK: verify coordinator_nick == actual_sender_nick.
+        If mismatch, return security error and halt.
+     3. Normalize the channel name to lowercase.
+     4. Base64-decode the encrypted key data.
+     5. Retrieve the pre-shared symmetric key for the coordinator.
+     6. Decrypt the Channel Key using the pre-shared key.
+     7. If decryption is successful:
+        a. Store the new Channel Key.
+        b. Initialize ratchet state (epoch = 0, empty previous_keys).
+     8. Securely erase any temporary key material from memory.
+   - Output: A confirmation message to be displayed to the user, or an error
+     message if verification or decryption fails.
 
-7.4. Modifications to Encryption/Decryption Logic
+9.4. DLL Export: FiSH11_RekeyChannel
+
+   This function provides manual re-keying capability.
+
+   `dll_function_identifier!(FiSH11_RekeyChannel, data, { ... });`
+
+   - Input: same format as FiSH11_InitChannelKey
+   - Processing: identical to FiSH11_InitChannelKey, but logs the operation
+     as a re-key event rather than initial setup.
+   - Output: same as FiSH11_InitChannelKey
+
+   Note: from the cryptographic perspective, initial keying and re-keying
+   are identical operations. The distinction is semantic for logging and
+   user feedback purposes.
+
+9.5. Modifications to Encryption/Decryption Logic
 
    The core encryption and decryption functions of the client must be
-   modified to handle channel messages.
+   modified to handle channel messages with ratcheting support.
 
-   - encryption: before sending a message to a channel, the client must
-     check if a key is stored for that channel. If so, it must encrypt the
-     message using that key before sending it to the server.
-   - decryption: when a `PRIVMSG` is received for a channel, the client must
-     check if the message is encrypted (e.g., starts with `+FiSH`). If so,
-     it must retrieve the key for that channel and attempt to decrypt the
-     message. If successful, the decrypted message is displayed to the user.
+   Encryption: before sending a message to a channel, the client must:
+     1. Check if a key is stored for that channel (normalized name).
+     2. If so, retrieve the current ratchet state.
+     3. Encrypt the message using the current channel key.
+     4. Advance the ratchet: derive a new key using HKDF as specified in
+        Section 5.4.
+     5. Update the ratchet state with the new key.
+     6. Securely erase the old key.
+     7. Send the encrypted message to the server.
 
-8. Security Considerations
+   Decryption: when a `PRIVMSG` is received for a channel:
+     1. Check if the message is encrypted (e.g., starts with `+FiSH`).
+     2. If so, retrieve the current ratchet state for that channel.
+     3. Attempt to decrypt the message using the current key.
+     4. If decryption fails, attempt with previous keys in the window
+        (out-of-order message handling).
+     5. If decryption succeeds:
+        a. If current key was used, advance the ratchet.
+        b. If a previous key was used, do NOT advance (out-of-order).
+     6. Display the decrypted message to the user.
 
-8.1. Impersonation
+10. Security Considerations
 
-   An attacker cannot impersonate a legitimate participant to obtain the
-   Channel Key, as they would need to know the pre-shared symmetric key
-   between the coordinator and the user they are trying to impersonate.
-   This reinforces the importance of the initial key exchange process in
-   FiSH-11.
+10.1. Sender Authentication
 
-8.2. Replay Attacks
+   FCEP-1 implements mandatory sender authentication to prevent impersonation
+   attacks. When processing a Key Distribution Message:
 
-   The use of a fresh, unpredictable nonce for each message prevents replay
-   attacks within the channel. An attacker cannot capture an encrypted
-   message and re-transmit it later, as the recipient's client would have
-   already processed the nonce and would reject it.
+   - The IRC sender nickname ($nick from the NOTICE) MUST match the claimed
+     coordinator nickname in the message payload.
+   - If there is a mismatch, the message MUST be rejected immediately.
+   - A security warning MUST be logged and displayed to the user.
+   - The message MUST NOT be processed further (halt execution).
 
-8.3. Forward Secrecy
+   This prevents an attacker from sending forged !FCEP-KEY messages claiming
+   to be from another user. Since IRC does not cryptographically authenticate
+   nicknames, this check relies on IRC server authentication (services, SASL).
 
-   As with the base FiSH-11 protocol, FCEP-1 does not provide forward
-   secrecy. If a long-term private key is compromised, all past
-   conversations encrypted with it are also compromised. This is a known
-   limitation of the OTR-style protocol.
+   Defense-in-depth: users should use authenticated IRC connections (SASL)
+   and channel registration to minimize impersonation risk.
 
-8.4. Key Management
+10.2. Replay Attacks
+
+   The use of a fresh, unpredictable nonce for each message prevents basic
+   replay attacks within the channel. An attacker cannot capture an encrypted
+   message and re-transmit it later to repeat the message, as the recipient's
+   client would have already processed the nonce.
+
+   However, this protection is limited by nonce cache size (Section 6.3).
+   Messages older than the cache window could potentially be replayed.
+
+   Mitigation:
+   - Maintain a nonce cache of at least 100 recent nonces per channel.
+   - In high-volume channels, increase the cache size accordingly.
+   - Consider adding timestamp-based message expiry for additional protection.
+
+10.3. Cross-Channel Replay Prevention
+
+   By binding the channel name as Associated Data in the AEAD encryption
+   (Section 5.3), FCEP-1 prevents cross-channel replay attacks.
+
+   - An encrypted message from #channel1 cannot be replayed to #channel2.
+   - Even if both channels use the same key, the AD mismatch causes
+     authentication failure.
+   - The channel name MUST be normalized to lowercase before use as AD to
+     ensure consistency.
+
+   This protection is mandatory (MUST, not SHOULD) to prevent subtle security
+   issues in multi-channel environments.
+
+10.4. Forward Secrecy
+
+   FCEP-1 provides forward secrecy through the symmetric key ratcheting
+   mechanism (Section 7.1):
+
+   - After each message is encrypted, the channel key is advanced using HKDF.
+   - Old keys are securely erased from memory.
+   - Compromise of the current key does not allow decryption of past messages.
+
+   Limitations:
+   - Forward secrecy protection is bounded by the ratchet window size.
+   - The window of previous keys (5 recommended) provides out-of-order
+     tolerance but temporarily retains old keys.
+   - Complete forward secrecy requires key material to be erased immediately,
+     which conflicts with network reliability.
+
+   Trade-off: the implementation balances forward secrecy with protocol
+   robustness by maintaining a small window of recent keys.
+
+10.5. Post-Compromise Security
+
+   The ratcheting mechanism also provides post-compromise security (PCS):
+
+   - If an attacker compromises the current channel key, they can decrypt
+     messages only until the next ratchet advancement.
+   - After the next message is sent, the compromised key becomes useless.
+   - The attacker cannot derive future keys due to the one-way nature of HKDF.
+
+   Recovery time:
+   - Active channels: PCS recovery within seconds to minutes.
+   - Inactive channels: manual re-keying required for guaranteed recovery.
+
+   Best practice: if key compromise is suspected, initiate immediate manual
+   re-keying to establish fresh, independent key material.
+
+10.6. Key Management
 
    The security of the entire system relies on the secure storage of the
    pre-shared keys and the channel keys on the user's machine. If the key
    storage is compromised, an attacker can decrypt all conversations.
+
+   Recommendations:
+   - Store keys in encrypted form when possible.
+   - Use operating system-provided secure storage (Windows DPAPI, etc.).
+   - Restrict file permissions on configuration files.
+   - Consider implementing key derivation from a master password.
+
+   Member removal limitation:
+   - Departed members retain all previously received keys.
+   - They can decrypt all past messages.
+   - This is fundamental to symmetric key systems without key escrow.
+   - Mitigation: periodic re-keying reduces the window of exposure.
+
+10.7. Nonce Reuse Prevention
+
+   Nonce reuse with ChaCha20-Poly1305 is catastrophic and can leak key
+   material. FCEP-1 employs multiple layers of defense:
+
+   Primary defense:
+   - Generate nonces from a CSPRNG (cryptographically secure RNG).
+   - Use OsRng from the Rust `rand` crate or equivalent.
+
+   Secondary defense:
+   - Track sent nonces to detect implementation bugs.
+   - If duplicate nonce generation is detected, log critical error and halt.
+
+   Tertiary defense:
+   - Receiver-side nonce cache (Section 6.3) can detect replays.
+
+   Implementation note: even with CSPRNG, the 12-byte nonce space allows
+   approximately 2^48 messages before birthday collision becomes probable.
+   This is sufficient for all practical IRC usage.

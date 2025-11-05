@@ -60,7 +60,7 @@ dll_function_identifier!(INI_GetString, data, {
     Ok(value)
 });
 
-/// Gets an integer value from the config file.
+///! Gets an integer value from the config file.
 /// Input: <key> [default_value]
 dll_function_identifier!(INI_GetInt, data, {
     let input = unsafe { crate::buffer_utils::parse_buffer_input(data)? };
@@ -100,6 +100,7 @@ mod tests {
             mark_position: 42,
             mark_encrypted: "[ENCRYPTED]".to_string(),
             no_fish10_legacy: true,
+            nickname: "".to_string(),
         };
         update_fish11_config(config).unwrap();
     }

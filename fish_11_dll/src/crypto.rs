@@ -723,21 +723,101 @@ mod tests {
     }
 }
 
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 
 /// Wraps a channel key using a pre-shared symmetric key.
 /// This is used by the coordinator to encrypt the new channel key for a specific member.
+///
+/// Implementation: Encrypts the raw 32-byte channel key directly using ChaCha20-Poly1305
+/// with the shared key. The result (nonce + ciphertext + auth tag) is base64-encoded once.
+///
+/// # Security Notes
+/// - Uses a fresh random 12-byte nonce for each wrapping operation
+/// - No pre-encoding of the key to avoid unnecessary overhead
+/// - The shared key must be a previously established 32-byte symmetric key
+///
+/// # Returns
+/// A base64-encoded string containing: nonce (12 bytes) + ciphertext (32 bytes) + auth tag (16 bytes)
 pub fn wrap_key(channel_key: &[u8; 32], shared_key_with_member: &[u8; 32]) -> Result<String> {
-    let key_as_b64 = general_purpose::STANDARD.encode(channel_key);
-    encrypt_message(shared_key_with_member, &key_as_b64, None)
+    // Generate a fresh random nonce for this wrapping operation
+    let nonce_bytes = generate_random_bytes(12);
+    let mut nonce_array = [0u8; 12];
+    nonce_array.copy_from_slice(&nonce_bytes[..12]);
+    let nonce = Nonce::from(nonce_array);
+
+    // Create cipher with the shared key
+    let cipher = ChaCha20Poly1305::new(shared_key_with_member.into());
+
+    // Encrypt the raw 32-byte channel key (no pre-encoding)
+    let ciphertext = cipher
+        .encrypt(&nonce, channel_key.as_ref())
+        .map_err(|e| FishError::CryptoError(format!("Key wrapping failed: {}", e)))?;
+
+    // Concatenate nonce + ciphertext (ciphertext already includes the 16-byte auth tag)
+    let mut result = Vec::with_capacity(12 + ciphertext.len());
+    result.extend_from_slice(&nonce_array);
+    result.extend_from_slice(&ciphertext);
+
+    // Base64 encode the complete package (only once)
+    Ok(general_purpose::STANDARD.encode(&result))
 }
 
 /// Unwraps a channel key using a pre-shared symmetric key.
 /// This is used by a member to decrypt the channel key received from the coordinator.
-pub fn unwrap_key(wrapped_key_b64: &str, shared_key_with_coordinator: &[u8; 32]) -> Result<[u8; 32]> {
-    let decrypted_b64_key = decrypt_message(shared_key_with_coordinator, wrapped_key_b64)?;
-    let key_bytes = general_purpose::STANDARD.decode(&decrypted_b64_key)?;
-    key_bytes.try_into().map_err(|_|
-        FishError::CryptoError("Unwrapped key has invalid length".to_string())
-    )
+///
+/// Implementation: Decodes the base64 input, extracts the nonce and ciphertext, then
+/// decrypts using ChaCha20-Poly1305 with the shared key. Returns the raw 32-byte channel key.
+///
+/// # Security Notes
+/// - Verifies the authentication tag automatically (AEAD property)
+/// - Validates the resulting key length is exactly 32 bytes
+/// - Constant-time comparison via ChaCha20-Poly1305 internal verification
+///
+/// # Returns
+/// The unwrapped 32-byte channel key
+pub fn unwrap_key(
+    wrapped_key_b64: &str,
+    shared_key_with_coordinator: &[u8; 32],
+) -> Result<[u8; 32]> {
+    // Decode the base64 input
+    let wrapped_bytes = general_purpose::STANDARD
+        .decode(wrapped_key_b64)
+        .map_err(|e| FishError::CryptoError(format!("Invalid base64 in wrapped key: {}", e)))?;
+
+    // Validate minimum length: 12 (nonce) + 32 (key) + 16 (auth tag) = 60 bytes
+    if wrapped_bytes.len() < 60 {
+        return Err(FishError::CryptoError(format!(
+            "Wrapped key too short: expected at least 60 bytes, got {}",
+            wrapped_bytes.len()
+        )));
+    }
+
+    // Extract nonce (first 12 bytes) and ciphertext (remaining bytes)
+    let (nonce_bytes, ciphertext) = wrapped_bytes.split_at(12);
+    let nonce_array: [u8; 12] = nonce_bytes
+        .try_into()
+        .map_err(|_| FishError::CryptoError("Invalid nonce length".to_string()))?;
+    let nonce = Nonce::from(nonce_array);
+
+    // Create cipher with the shared key
+    let cipher = ChaCha20Poly1305::new(shared_key_with_coordinator.into());
+
+    // Decrypt the ciphertext (this also verifies the auth tag)
+    let plaintext = cipher.decrypt(&nonce, ciphertext).map_err(|e| {
+        FishError::CryptoError(format!(
+            "Key unwrapping failed (invalid key or corrupted data): {}",
+            e
+        ))
+    })?;
+
+    // Validate plaintext length
+    let plaintext_len = plaintext.len();
+
+    // Convert the plaintext to a 32-byte array
+    plaintext.try_into().map_err(|_| {
+        FishError::CryptoError(format!(
+            "Unwrapped key has invalid length: expected 32 bytes, got {}",
+            plaintext_len
+        ))
+    })
 }
