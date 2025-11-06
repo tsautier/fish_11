@@ -1,0 +1,438 @@
+Thursday, January 22, 2009
+A proposal for better IRC encryption
+
+January 25 update: The IRCSRP propsal has been updated to version 1.1, fixing a minor replay attack.
+
+February 12 update: The IRCSRP propsal has been updated to version 2.0, adding message authenticaton. This blog post has NOT been updated, for version 2.0 see the IRCSRP page.
+
+This article assumes a basic understanding of cryptography and IRC terminology (such as “channel”).
+
+IRC is mostly used for insensitive discussions in public channels, such as #math or #haskell on Freenode. As anyone can join these discussions, the plain text nature of the IRC protocol is usually not considered a problem.
+
+Although plain text and thus not suited for private discussions, the protocol offers some features that lends itself to this usage behavior. First of all, it is possible for two users on an IRC network to talk to each other outside channels, similar to chat using instant messaging software. It is also usually possible to form password-protected channels, a feature often used by a group of friends.
+
+While the IRC protocol itself does not specify means for encrypting these private conversations, several methods have been implemented over the years. Some IRC clients and servers now support SSL/TLS; however as most large networks do not, and SSL still allows the server admin to eavesdrop on private conversations, other methods are more common.
+
+This short article will attempt to describe how some of the more common methods work, as well as suggesting an improved SRP-based protocol fixing some shortcomings in the available methods.
+A short primer on the IRC protocol
+
+The methods described in this article all use the IRC protocol itself for transporting ciphertext. To understand these methods it is thus necessary to understand the IRC protocol, at least to some extent. Fortunately the protocol is not very complicated. Consult RFC 2812 for the gritty details.
+
+In this example, Alice has connected her IRC client to Freenode. On connection, a small handshake takes place where Alice and Freenode negotiate a unique nickname. Alice is not allowed to enter the server if her desired nickname is already in use. With a unique nickname, Alice can talk to other users on the network.
+
+Next, Alice joins #math and asks a question about some mathematical topic. Her client sends to the server:
+
+PRIVMSG #math :How can I prove this set has this property?\r\n
+
+The server then parses this message, and sends to all other users in channel #math:
+
+:alice!alice@host.com PRIVMSG #math :How can I prove this set has this property?\r\n
+
+The first part of the message, after the initial colon and before the first space, is a string of the form nickname!username@hostname. The other users can thus know who sent the message.
+
+The PRIVMSG message is also used for “private messages” (note that due to the name of the command, this name is unfortunate). If Alice and Bob talk to each other outside a channel, the message exchange looks something like this:
+
+Alice sends to server:
+PRIVMSG bob :Hi bob!\r\n
+
+Server sends to bob:
+:alice!alice@host.com PRIVMSG bob :Hi bob!\r\n
+
+Bob sends to server:
+PRIVMSG alice :Howdy alice!\r\n
+
+Server sends to Alice:
+:bob!bob@bobshost.com PRIVMSG alice :Howdy alice!\r\n
+
+There is a second method to send messages to a user or channel. This is known as a NOTICE message, which has the exact same form as PRIVMSG. Client software usually displays these messages differently than PRIVMSG. Some of the software mentioned in this article use the NOTICE message for different purposes.
+Encryption
+
+All methods for encrypting IRC conversations within the protocol (that is, excluding layers such as IRC over SSL/TLS) work the same way. The IRC client, or some plugin, or some other software between the client and the IRC server, rewrites the content of the PRIVMSG (or NOTICE) messages before it’s sent to the server.
+
+For example, the message:
+
+PRIVMSG bob :Hi bob!\r\n
+
+is rewritten to, using one common method described shortly:
+
+PRIVMSG bob :+OK BRurM1bWPZ1.\r\n
+
+before being sent to the server. (Note that the characters between the colon and the line break is not part of the IRC protocol itself).
+
+Bob’s software then decrypts this message and the client displays it on the screen, assuming of course Bob knows the details needed for decryption, such as keys.
+
+From here on in the article, the message content (as it would be sent without encryption) will be referred to as the “plaintext”, and the replacement will be referred to as “ircmessage”. In the example above:
+
+plaintext = "Hi bob!"
+ircmessage = "+OK BRurM1bWPZ1."
+
+Blowfish-ECB (”blowcrypt”)
+
+Probably the most common software for encrypting IRC is Fish, which is a plugin for several IRC clients. Fish implements an encryption method originally used in a program called blowcrypt. This method is supported by several other plugins and clients, such as Mircryption.
+
+blowcrypt users (Alice and Bob talking privately, or a whole channel) agree on a password used as key. Messages are then encrypted with Blowfish using this key, and formatted in a special way before being sent to the server.
+
+There are two points of interest. Blowfish is used in ECB mode, which is no mode at all. Each message is split into blocks of 8 bytes, encrypted individually. A block shorter than 8 bytes is padded with zeroes.
+
+Because of this design decision, blowcrypt encryption is very easy to implement for software developers working on IRC clients. The shortcoming is weaker security. For example, the message “Hi” is encrypted to the same string every time, for a given key.
+
+Before the ciphertext is sent to the server, it is formatted like so:
+
+ircmessage = "+OK " || BlowcryptBase64(Blowfish(key, plaintext))
+
+Where || denote concatenation and BlowcryptBase64 is a non-standard base64 implementation. The prefix “+OK “ is used as an identifier for the software handling the decryption. A conversation may look like this, where the string “password” is used as key:
+
+PRIVMSG bob :Hi bob!\r\n
+
+is rewritten to
+
+PRIVMSG bob :+OK BRurM1bWPZ1.\r\n
+
+Here’s some Python code.
+
+>>> b = Blowfish("password")
+>>> blowcrypt_pack("Hi bob!", b)
+'+OK BRurM1bWPZ1.'
+>>> blowcrypt_unpack(_, b)
+'Hi bob!'
+
+Blowfish-CBC (“Mircryption”)
+
+An obvious shortcoming of blowcrypt is the use of ECB mode. The Mircryption plugin, which supports several common IRC clients, supports a new encryption method using Blowfish in CBC mode. (For more information about cryptographic modes in general and the CBC in particular, see the TrueCrypt article on this website).
+
+For each message an 8 byte IV is randomly generated. The message is encrypted with the key and the IV. The message sent to the server is
+
+ircmessage = "+OK *" || Base64(IV || BlowfishCBC(key, IV, plaintext))
+
+Here Base64 is the standard MIME base64 implementation, so other than the use of Blowfish this encryption method is different from, and better than, blowcrypt in most ways.
+
+Here’s some Python code:
+
+>>> b = BlowfishCBC("keyTest")
+>>> mircryption_cbc_pack("Hello world!", b)
+'+OK *5RQreHBF54PH3wFxsFmf2o1i6dh5ykeA'
+>>> mircryption_cbc_unpack(_, b)
+'Hello world!'
+
+Diffie-Hellman key exchange (“DH1080”)
+
+A problem for users of blowcrypt, Fish, Mircryption or similar software is handling the keys. It is often cumbersome to establish a secret key with the person you want to talk to securely.
+
+The Fish developers have solved this with the software DH1080, which is an implementation of the Diffie-Hellman key exchange for IRC. Diffie-Hellman is a cryptographic protocol where two parties establish a secret key over an insecure channel, thus getting rid of the need for users to remember/establish the key themselves.
+
+Alice, using DH1080, instructs the software to establish a key with Bob. DH1080 then automatically does the necessary computations and communications with Bob to establish a secret key. When everything is done Alice and Bob both know a secret key that can be used by Fish (or other software).
+
+DH1080 can only be used for “private message” conversations. Due to constraints both from the Diffie-Hellman protocol itself and how IRC works, it is not feasible to use DH1080 for establishing a key for a whole channel. So if you want to encrypt messages to a channel, you’ll have to stick with a pre-determined key or use the proposed method discussed later in this article.
+
+That said. DH1080 is a standard Diffie-Hellman implementation, with few surprises. The IRC specific part is how the message is formatted and sent. Using the terminology from the Diffie-Hellman Wikipedia article:
+
+1. Alice and Bob agree to use a prime number p (see below) and a base g = 2.
+
+2. Alice chooses a secret integer 2 < a < p-1 as private key, computes her public key A = g^a mod p and sends Bob, in a NOTICE message:
+
+ircmessage = "DH1080_INIT " || DH1080Base64(IntAsBytes(A))
+
+3. Bob chooses a secret integer 2 < b < p-1 as private key, computes the public key B = g^b mod p and sends Alice, in a NOTICE message:
+
+ircmessage = "DH1080_FINISH " || DH1080Base64(IntAsBytes(B))
+
+4. Alice checks that B is valid and if it is computes the secret key s = B^a mod p. B is valid if 1 < B < p.
+
+5. Bob checks that A is valid and if it is computes the secret key s = A^b mod p. A is valid if 1 < A < p.
+
+Here, DH1080Base64 is another non-standard base64-implementation. IntAsBytes is a variable length, big-endian representation of an integer. For example, the integer 0xabbcc is represented as the three-byte string "\x0a\xbb\xcc".
+
+A point of interest: DH1080 uses a curious 1080 bit prime number p in the default implementation. This prime number is constructed in such a way it yields a message in English when the prime number is base64 encoded.
+
+In base 16:
+
+p = 
+FBE1022E23D213E8ACFA9AE8B9DFADA3EA6B7AC7A7B7E95AB5EB2DF858921
+FEADE95E6AC7BE7DE6ADBAB8A783E7AF7A7FA6A2B7BEB1E72EAE2B72F9FA2
+BFB2A2EFBEFAC868BADB3E828FA8BADFADA3E4CC1BE7E8AFE85E9698A783E
+B68FA07A77AB6AD7BEB618ACF9CA2897EB28A6189EFA07AB99A8A7FA9AE29
+9EFA7BA66DEAFEFBEFBF0B7D8B
+
+And when the prime is represented as bytes, coded with the non-standard base64 implementation:
+
+++ECLiPSE+is+proud+to+present+latest+FiSH+release+featuring+e
+ven+more+security+for+you+++shouts+go+out+to+TMG+for+helping+
+to+generate+this+cool+sophie+germain+prime+number++++/C32L
+
+While the statement is arguably incorrect – p is a safe prime and (p-1)/2 is Sophie Germain – this doesn’t affect the security of the key exchange as the prime chosen satisfies all the desired properties for a “strong” prime.
+
+By RFC 2631, a prime chosen is considered secure if it can be written as p = jq + 1, q is a large prime and j => 2. In this case, j = 2 by construction and both p and q=(p-1)/2 are prime, so the equality holds.
+
+Here’s some Python code:
+
+>>> alice = DH1080Ctx()
+>>> bob = DH1080Ctx()
+>>> dh1080_pack(alice)
+'DH1080_INIT qStH1LjBpb47s0XY80W9e3efrVSh2Qfq19291XAuwa7C9UFvW0sYY
+424FOS6JNVsoYVH85lj6oPkr8w3KRZDDqVoV+7yCVtLmhCcC3dHyz4Ynbe93HEtR3n
+26+Q1dWPm+JgZEGSYnhNunk7FOqsXFUR/2O9dkbpnxZDh2UFFmg0uGbukgG+FA'
+>>> dh1080_unpack(_, bob)
+True
+>>> dh1080_pack(bob)
+'DH1080_FINISH mjyk//fqPoEwp5JfbJtzDmlfpzmtMEFw5Ueyk51ydAjXBd8cjqz
+m5oW9V0/VTk8ag0DzzKw8+9C6hPotvonaI8PwkSplHlDHjGJgcpirIn7C07jHw2WEt
+NUpZtyz2UNT/RStGLe/s+4MrmoUC6vOaIZMUu7sgCXyUbDfYk5QCcbQVRx6rH+hA'
+>>> dh1080_unpack(_, alice)
+True
+>>> dh1080_secret(alice)
+'tfu4Qysoy56OYeckat1HpJWzi+tJVx/cm+Svzb6eunQ'
+>>> dh1080_secret(bob)
+'tfu4Qysoy56OYeckat1HpJWzi+tJVx/cm+Svzb6eunQ'
+
+Misc.
+
+Other than the two Blowfish based solutions mentioned, there exist several other, less common, methods. Here are two of them.
+
+PsyBNC
+
+PsyBNC is a so-called bouncer, a kind of IRC proxy that offers several features. One of these features is encryption. The encryption is very similar to Blowfish-ECB, however instead of Base64 another serialization method is used instead.
+
+During the code review, an innocent but dangerous implementation error was discovered in PsyBNC:s Blowfish code. Until this problem is fixed, users are advised to switch to a different encryption method. Cryptanalysis is available here, courtesy of David Wagner: sci.crypt: Strength of Blowfish with broken F-function?.
+
+OTR
+
+OTR is worth mentioning not because it’s very common, but because it should be. OTR, or Off-the-Record Messaging, is designed for encrypting instant messaging-style conversations and offers several desirable features for these kinds of conversations.
+
+While OTR cannot encrypt IRC channels due to technical reasons, it is ideal for private message conversations. An OTR plugin currently exists for irssi.
+Summary of available methods
+
+There are two different cases to consider when choosing a solution for encrypting IRC conversations.
+
+For “private message” conversations IRC does not severely limit the available choices, so more options are available:
+
+Blowfish-ECB should due the ECB mode not be used at all.
+
+Blowfish-CBC and a shared password: If the two users can keep the shared password secret, this method is decent in its simplicity. The fact that the users share a secret offers some authentication. A problem is if the password is compromised. Then all previous conversations are available to the attacker.
+
+Blowfish-CBC with unauthenticated key exchange: This solution has the benefit of getting rid of the need of the two users to remember/establish a shared secret. Also, as the key can be constantly renewed, perfect forward secrecy is achieved. There are, however, several important shortcomings. Diffie Hellman alone can be attacked by a man in the middle – in fact it would be trivial for a server admin to automatically perform this attack when a DH1080 exchange takes place on his server. Adding some sort of authentication solves this, however this may requires more involvement from the users.
+
+OTR: This is the ideal solution; in fact it was designed for instant message-style conversations. Right now the only problem is lack of implementations. As of January 2009, there only exist one OTR plugin, for irssi (while popular, mIRC is probably even more so).
+
+For encrypting a whole channel, there aren’t as many reasonable choices. Of the methods described above, Blowfish-CBC with a shared password is recommended. A better method will be described shortly.
+
+All of these methods can be combined with Tor or similar software to achieve anonymity, remembering the Tor end node can, like the IRC server admin, attack the DH key exchange.
+Future improvements
+
+There are currently no known attacks on Blowfish, so replacing this block cipher with something newer (AES, Twofish) is not necessarily an improvement – of course it doesn’t hurt. A more considerable improvement would be using a cryptographic protocol that somehow solves all the following problems:
+
+    Perfect forward secrecy.
+    Authentication.
+    Resistance against the attacks mentioned above (e.g. MITM).
+    A compromised password should do as little damage as possible.
+
+With the following constraints
+
+    Should be easy to use for end users, i.e. not requiring significant public key infrastructure.
+    Should be applicable to group conversations, i.e. IRC channels.
+    Should be reasonably straightforward to implement.
+    Should not abuse the IRC network (this rules out solutions where all conversations take place in private messages, but client software rewrites the recipient giving the appearance of group conversation).
+
+Here is my proposal to the IRC community. Comments are welcome.
+IRCSRP version 1.1
+
+February 12 update: The IRCSRP propsal has been updated to version 2.0, adding message authenticaton. This blog post has NOT been updated, for version 2.0 see the IRCSRP page.
+
+This new method of IRC encryption is based on the “optimized” SRP-6, the Secure Remote Password Protocol. It is described in detail here: http://srp.stanford.edu/doc.html (the first paper is especially readable). SRP is a protocol for password-based authentication between a user and a host, where the user only has to remember a simple password. No public key infrastructure is necessary.
+
+The protocol as described in this article has been adapted for IRC usage.
+
+Sample setup
+
+Alice, Bob, Carol and Dave talk in a channel #friends on a public IRC network. Dave is the most technical user of the four, and will be given a special purpose.
+
+Overview
+
+Instead of everyone on the channel sharing a password together, each one of Alice, Bob and Carol share a so-called verifier with Dave.
+
+The basic idea of the IRC adapted protocol is each user does an authenticated key exchange with Dave. Alice and Dave share knowledge of a password (Alice knows her password, Dave has the verifier), which is used for authentication. If successful, Dave sends the current session key to Alice, which is used for decrypting the content of the channel.
+
+Once in a while Dave generates a new session key and broadcasts it to everyone on the channel. Thus forward secrecy is achieved.
+
+Details – channel encryption
+
+The messages sent in the actual channel (#friends in our example) is:
+
+ircmessage = "+aes " || Base64(IV || AESCBC(sessionkey, IV, "M" || info || plaintext))
+
+Here Base64 is the standard MIME base64 implementation with padding characters left intact. AESCBC is AES in CBC-mode. sessionkey is a 256 bit key randomly generated by Dave. info is a short information string:
+
+info = len(username) || username || timestamp
+
+username is a string, also known as 'I'. It will be described shortly. len(username) is a single byte telling the length of the string. timestamp is a 32 bit Unix timestamp, represented in big endian.
+
+As the IRC protocol is limited to messages 512 characters in length (this includes the whole message, including the PRIVMSG command) client software should split plaintext into parts if the complete IRC message gets too long.
+
+When Dave broadcasts a new, updated session key, the message is:
+
+ircmessage = "+aes " || Base64(IV || AESCBC(old_sessionkey, IV, "\xffKEY" || new_sessionkey))
+
+Details – the authenticated key exchange (preparations)
+
+The interesting part of the setup is establishing the session key for a user who doesn’t already know it. Here are some constants we are going to use, using the same terminology as the SRP paper.
+
+N = The prime number from the 2048-bit MODP Group as described in RFC 3526.
+g = 2
+H = the SHA-256 hash algorithm. Depending on context, the hash is either a 32-byte string or said string interpreted as a 256 bit big-endian integer.
+
+Before the key exchange, Alice and Dave have to share some information.
+
+1) Alice selects a username I and a password P. The username should be constant and not derived from Alice IRC nickname or host.
+
+2) Alice generates a random salt s then computes the verifier v:
+
+s = random 256 bit integer
+x = H(s || I || P)
+v = g^x (mod N)
+
+3) Alice gives Dave s and v, which he stores together with Alice username I. From now on, Alice only has to remember I and P. She can and should discard s, x and v.
+
+It is very important Alice gives s and v to Dave in person, or through an existing authenticated secure channel (such as a GPG encrypted e-mail.)
+
+Details – the authenticated key exchange
+
+The key exchange works as follows, where all ircmessage are sent in a NOTICE:
+
+1) Alice sends Dave her username I. This initiates the exchange.
+
+ircmessage = "+srpa0 " || I
+
+2) Dave looks up Alice information (s, v), computes and sends:
+
+b = random integer with 1 < b < N.
+B = 3v + g^b (mod N)
+ircmessage = "+srpa1 " || Base64(s || B)
+
+3) Alice asserts B != 0 (mod N), then computes and sends:
+
+a = random integer with 1 < a < N.
+A = g^a (mod N)
+x = H(s || I || P)
+u = H(A || B)
+S = (B – 3g^x)^(a + ux) (mod N)
+K = H(S)
+M1 = H(A || B || S)
+ircmessage = "+srpa2 " || Base64(M1 || IntAsBytes(A))
+
+4) Dave verifies M1, then if Alice is trusted, computes and sends:
+
+u = H(A || B)
+S = (Av^u)^b (mod N)
+K = H(S)
+M2 = H(A || M1 || S)
+ircmessage = "+srpa3 " || Base64(IV || AESCBC(K, IV, sessionkey || M2))
+
+5) Alice verifies M2, and decrypts the session key using K. If the verification holds, then Dave and the session key are trusted.
+
+Exactly why and how this works is described in the SRP paper.
+
+Problems
+
+The bottleneck in the protocol as described is the dependence on Dave. There are two notable problems to consider:
+
+Problem 1: What happens when Dave is off-line
+
+The protocol as described is better suited for medium sized than very small groups of friends. For the case with 10 or more users, it is seldom a problem in practice to find one or two users with good enough uptime to act as Dave.
+
+The problem is for smaller groups, such as the sample setup described above. Assume all four users are talking to each other. Carol then disconnects, and later Dave changes the session key for the channel. Due to network trouble Dave then disconnects from the network. While Alice and Bob can still talk to each other, Carol can no longer decrypt the messages. With Dave offline, she can’t get the session key either.
+
+Solution 1:
+
+There are several potential solutions for this problem. Unfortunately most of the obvious ones (such as distributing Dave’s task) add complexity to the protocol, where users no longer have to remember only their password.
+
+Until this problem is solved, the users are recommended to fall back on a simpler encryption method.
+
+Problem 2: Net splits
+
+A moderately common problem with IRC networks is so called net splits, where two or more IRC servers can no longer communicate.
+
+Assume Alice and Bob are on one server, and Carol and Dave on another. The two servers split. After this has happened, Dave changes the key. When the two servers rejoin, Alice and Bob can no longer understand Carol and Dave. In this case, they will initiate a key exchange with Dave.
+
+When several users simultaneously perform the SRP exchange with Dave, his CPU usage may spike for an unacceptable amount of time, depending on how fast his protocol implementation is and the number of users.
+
+Solution 2:
+
+There are several possible solutions to this problem:
+
+1) Dave changes the session key manually instead of automatically. In this case he can avoid changing the key during a net split.
+
+2) The software implementation adds some kind of net split detection, and doesn’t change the session key when the network is considered unstable.
+
+3) The problem is ignored – several users exchanging keys with Dave simultaneously is not considered a problem.
+
+Implementation details
+
+While the key exchange has slightly more steps than a simple Diffie-Hellman exchange such as the one used by DH1080, all individual steps are quite easy to implement given a big integer library, a base64 implementation and code for AES, CBC and SHA256. In the Python programming language, the whole key exchange can be performed in about two hundred lines (this implementation is quite slow though).
+
+There are other considerations for implementations of the protocol, especially concerning automation of the key exchange.
+
+1) Alice joins #friends and tells the IRC client her password. This is the only user intervention required.
+
+2) The implementation randomly picks a Dave and initiates the exchange.
+
+3) From here on everything happens automatically, as required.
+
+For the second step, the implementation may look for users prefixed as channel operators, or each user saves nicknames for the Dave’s in a configuration file.
+
+Code
+
+Here’s some Python code, demonstrating Dave's setup, Alice setup and the key exchange itself.
+
+>>> s, v = ircsrp_generate("alice", "passw")
+>>> dave = IRCSRPCtx(True)
+>>> dave.users.db["alice"] = (s, v)
+>>> dave.sessionkey = urandom(32)
+>>> dave.cipher = AESCBC(dave.sessionkey)
+>>>
+>>> alice = IRCSRPCtx()
+>>> alice.username = "alice"
+>>> alice.password = "passw"
+>>> 
+>>> ircsrp_exchange(alice)
+'+srpa0 alice'
+>>> ircsrp_exchange(dave, _, "alicenick")
+'+srpa1 AU/DMrnF/JrccLBs4EKDW4U4fJHafqvAwIsOxTiI84Z9oeisZlO6D1a
+XTuUXeslI/4957Q1kUtJURzjulRSk43bZSeDfE90u/WvcfD5ayh/d7owdaVAsh/
+eN6p7dJFSqWEh0Rd8xD1FM+w/SZ+6MF+USybPAe+MFg0cWmJx2UDryvWd0y0UiG
+RNvVVdtWOS5TojJ7Psk+4wXrPq+1wz18+h6C/LbElJKezhsu2H02kdpfT9vSJ+7
+bQBrfgWqr7QASakO+6I3BuyuVaIirVLrX1XHSwXE3Kt91TQAHY7clLXiYrVOOs1
+E27VY8VJ7imXD3tlbx1TVzJRNehrWKPqrn3Wl42PxDN62fG/NisN/YeC6hiTivs
+6ivwA6btsWHX9h'
+>>> ircsrp_exchange(alice, _)
+'+srpa2 6kSQvvZnqioVmLMsrNG0/CPFOnMW6qutgOOHCLCPJJBvHJtbjy2Q0Ee
+Al0AAJdymGXyLvADHpDt5UgVLn0TtGLEc86wx+Shf/bdXAsOHaZrRm/P8csN2yy
+t4CPSTr/oIGP8bLZIVcVOjZHwPX2uF9tmOE9o9xotLzPJVbEbZoCC/uvvMjQRch
+LgW4tg6gknpI5U/noi0w4cMA7OY9HnBRXgGjTbrMIm00bkE3v7YWZ0CXBZX9W7q
+F2B28qJauT5l6PL3o/PAgw3I5MP28/eowWGEjNf6W1wWqmE1q2oXS88xeCEAQ6A
+mU0qFiHrWBFMP04Um9WNKAuNR9e8p/zGink/nCWX6JmjbApJRbHTjx3nNa7qCCN
+3Fg/QsA+uJNkbA'
+>>> ircsrp_exchange(dave, _, "alicenick")
+'+srpa3 KLSFN+yqid9NXBzJEydFTAJm+9U5dZcbNIGr8sjzrLoOvSWn70H652D
+gU/IA8a7PlDiL3YzJOTI/mk1C1x+M8WG8cjbsx8axdlmCvFC/xpk='
+>>> ircsrp_exchange(alice, _)
+*** Session key is: '\xce\xa3k\xa3\x03\xfdx$=\xd1\xf1P\xa4Cw
+\x16\\\xaaw!d\x9f]|\xddl\xe4q\x15%\xfcI'
+True
+>>> dave.sessionkey
+'\xce\xa3k\xa3\x03\xfdx$=\xd1\xf1P\xa4Cw\x16\\\xaaw!d\x9f]|\xddl
+\xe4q\x15%\xfcI'
+>>>
+>>> ircsrp_pack(alice, "Hello everyone!")
+'+aes zNRmWAM1WxOedS0twJVOIoBTQKbh/7c5GzgHRnfL+KbSrLCGTLjW/3yvV
+AoiPMWh'
+>>> ircsrp_unpack(dave, _)
+*** Sent by username: alice
+*** Sent at time: Sun Jan 25 16:11:47 2009
+'Hello everyone!'
+
+Conclusion
+
+Of the available methods for encrypting IRC, This author recommends the Blowfish-CBC method for encrypting channels, and OTR for private messages (in which case it may be easier to use instant messaging instead of IRC). For protection only against passive eavesdroppers, Blowfish-CBC+DH1080 can be used instead of OTR.
+
+The proposed IRCSRP method may not be applicable for all usage scenarios, but when it is the authentication and session key based approach should give considerably stronger security than a shared password.
+
+The code in this article is available here: irccrypt.py. It has a the free OpenBSD license, and can be used for pretty much any purpose.

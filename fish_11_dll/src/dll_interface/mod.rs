@@ -144,3 +144,6 @@ pub(crate) fn restore_buffer_size_for_test(prev_size: Option<usize>) {
         let _ = MIRC_BUFFER_SIZE.lock().ok().map(|mut g| *g = size);
     }
 }
+
+pub use crate::channel_encryption::init_key::FiSH11_InitChannelKey;
+pub use crate::channel_encryption::process_key::FiSH11_ProcessChannelKey;

@@ -1,13 +1,13 @@
-use std::ffi::{CStr, c_char};
+use std::ffi::c_char;
 use std::os::raw::c_int;
-use std::ptr;
-
-use winapi::shared::minwindef::BOOL;
-use winapi::shared::windef::HWND;
 
 use crate::config;
 use crate::dll_function_identifier;
+use crate::dll_interface::CStr;
+use crate::dll_interface::ptr;
 use crate::unified_error::DllError;
+use winapi::shared::minwindef::BOOL;
+use winapi::shared::windef::HWND;
 
 dll_function_identifier!(FiSH11_GetConfigPath, _data, {
     let config_path = config::get_config_path()?;

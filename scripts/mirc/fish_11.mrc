@@ -260,6 +260,73 @@ on ^*:NOTICE:X25519_FINISH*:?:{
   halt
 }
 
+; === FCEP-1 CHANNEL ENCRYPTION PROTOCOL HANDLERS ===
+; FCEP-1 (FiSH-11 Channel Encryption Protocol) enables secure multi-party
+; channel encryption using a hub-and-spoke model where a coordinator distributes
+; a shared channel key to all participants via their pre-established pairwise keys.
+
+on ^*:NOTICE:!FCEP-KEY*:?:{
+  ; This event triggers when receiving a channel key distribution message.
+  ; Format: !FCEP-KEY <#channel> <coordinator_nick> <base64_wrapped_key>
+  ; $1 = !FCEP-KEY
+  ; $2 = #channel
+  ; $3 = coordinator_nick (claimed sender)
+  ; $4 = base64_wrapped_key
+  
+  var %num_tokens = $numtok($1-, 32)
+  
+  ; Validate message format
+  if (%num_tokens < 4) {
+    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FCEP-1 ERROR: Invalid FCEP-KEY format from $nick (expected 4 tokens, got %num_tokens $+ )
+    halt
+  }
+  
+  var %channel = $2
+  var %coordinator = $3
+  var %wrapped_key = $4
+  
+  ; SECURITY: Verify sender authenticity
+  ; The actual IRC sender ($nick) MUST match the claimed coordinator
+  ; This prevents impersonation attacks where an attacker sends a FCEP-KEY
+  ; message claiming to be from a trusted user
+  if ($nick != %coordinator) {
+    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FCEP-1 SECURITY WARNING: Key distribution from $nick claims to be from %coordinator - REJECTED
+    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FCEP-1: This may indicate an impersonation attack attempt!
+    halt
+  }
+  
+  ; Validate channel name format
+  if (!$regex(%channel, /^[#&]/)) {
+    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FCEP-1 ERROR: Invalid channel name format: %channel (must start with # or &)
+    halt
+  }
+  
+  ; Verify we have a pre-shared key with the coordinator
+  var %existing_key = $dll(%Fish11DllFile, FiSH11_FileGetKey, %coordinator)
+  if ($len(%existing_key) < 4) {
+    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FCEP-1 ERROR: No pre-shared key found for coordinator %coordinator
+    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FCEP-1: You must establish a key with %coordinator first using /fish11_X25519_INIT %coordinator
+    halt
+  }
+  
+  ; Process the channel key via DLL
+  ; DLL will: decode base64, verify sender, unwrap key with pre-shared key, store channel key
+  var %result = $dll(%Fish11DllFile, FiSH11_ProcessChannelKey, %channel %coordinator $nick %wrapped_key)
+  
+  ; Check if DLL returned a command to execute (starts with /)
+  if ($left(%result, 1) == /) {
+    ; Execute the returned mIRC command (typically /echo confirmation)
+    %result
+  }
+  else {
+    ; Error occurred
+    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FCEP-1 ERROR: Failed to process channel key for %channel from %coordinator
+    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FCEP-1: %result
+  }
+  
+  halt
+}
+
 
 
 ; Handle key exchange timeout
@@ -436,6 +503,52 @@ alias fish11_ProcessPublicKey {
 
 ; Shorthand for key exchange
 alias keyx { fish11_X25519_INIT $1 }
+
+
+
+; === FCEP-1 CHANNEL ENCRYPTION COMMANDS ===
+
+; Initialize channel encryption by generating and distributing a channel key
+; Usage: /fish11_initchannel <#channel> <nick1> [nick2] [nick3] ...
+; Example: /fish11_initchannel #secret alice bob charlie
+alias fish11_initchannel {
+  if ($1 == $null || $2 == $null) {
+    echo $color(Error) -at *** FiSH_11 FCEP-1: Usage: /fish11_initchannel <#channel> <nick1> [nick2] ...
+    echo $color(Mode text) -at *** FiSH_11 FCEP-1: Example: /fish11_initchannel #secret alice bob charlie
+    echo $color(Mode text) -at *** FiSH_11 FCEP-1: Note: You must have pre-shared keys with all listed members (use /fish11_X25519_INIT first)
+    return
+  }
+  
+  var %channel = $1
+  var %members = $2-
+  
+  ; Validate channel name
+  if (!$regex(%channel, /^[#&]/)) {
+    echo $color(Error) -at *** FiSH_11 FCEP-1 ERROR: Invalid channel name %channel (must start with # or &)
+    return
+  }
+  
+  ; Confirm action with user
+  echo $color(Mode text) -at *** FiSH_11 FCEP-1: Generating channel key for %channel
+  echo $color(Mode text) -at *** FiSH_11 FCEP-1: Members to receive key: %members
+  
+  ; Call DLL to generate key and create distribution commands
+  var %result = $dll(%Fish11DllFile, FiSH11_InitChannelKey, %channel %members)
+  
+  ; Check for errors
+  if ($left(%result, 1) != /) {
+    echo $color(Error) -at *** FiSH_11 FCEP-1 ERROR: %result
+    return
+  }
+  
+  ; Execute the returned commands (series of NOTICE commands separated by |)
+  ; The DLL returns commands like: /notice alice :!FCEP-KEY #chan me <key> | /notice bob ...
+  %result
+}
+
+; Shorthand alias for channel encryption
+alias fcep { fish11_initchannel $1- }
+alias chankey { fish11_initchannel $1- }
 
 
 
@@ -760,6 +873,17 @@ alias fish11_help {
   else {
     echo $color(Mode text) -at *** FiSH: help information unavailable
   }
+  
+  ; Add FCEP-1 help
+  echo $color(Mode text) -at $chr(160)
+  echo $color(Mode text) -at *** FiSH_11 FCEP-1 (Channel Encryption) Commands:
+  echo $color(Mode text) -at *** /fish11_initchannel <#channel> <nick1> [nick2] ... - Initialize encrypted channel
+  echo $color(Mode text) -at ***   Shorthand: /fcep or /chankey
+  echo $color(Mode text) -at ***   Example: /fish11_initchannel #secret alice bob charlie
+  echo $color(Mode text) -at ***   Note: All members must have pre-shared keys with you first
+  echo $color(Mode text) -at $chr(160)
+  echo $color(Mode text) -at *** FCEP-1 automatically decrypts incoming channel messages
+  echo $color(Mode text) -at *** Channel names are case-insensitive (#Secret = #secret)
 }
 
 
@@ -1218,3 +1342,5 @@ alias fish_keyp11 { fish11_ProcessPublicKey $1 $2- }
 alias fish_test11 { fish11_test_crypt $1- }
 alias fish_help11 { fish11_help }
 alias fish_version11 { fish11_version }
+alias fish_initchannel11 { fish11_initchannel $1- }
+alias fcep11 { fish11_initchannel $1- }

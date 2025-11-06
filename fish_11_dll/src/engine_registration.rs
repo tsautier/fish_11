@@ -156,7 +156,7 @@ fn attempt_encryption(line: &str) -> Option<String> {
     };
     
     // Encrypt the message
-    let encrypted = match encrypt_message(key_array, &message, Some(target)) {
+    let encrypted = match encrypt_message(key_array, &message, Some(target), None) {
         Ok(enc) => enc,
         Err(e) => {
             log::error!("Engine: encryption failed for target '{}': {}", target, e);
@@ -236,7 +236,7 @@ fn attempt_decryption(line: &str) -> Option<String> {
     };
     
     // Decrypt the message
-    let decrypted = match decrypt_message(key_array, encrypted_data) {
+    let decrypted = match decrypt_message(key_array, encrypted_data, None) {
         Ok(msg) => msg,
         Err(e) => {
             log::error!("Engine: decryption failed for sender '{}': {}", sender, e);

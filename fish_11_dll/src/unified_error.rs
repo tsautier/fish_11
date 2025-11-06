@@ -33,6 +33,9 @@ pub enum DllError {
     #[error("configuration malformed: {0}")]
     ConfigMalformed(String),
 
+    #[error("configuration error: {0}")]
+    ConfigError(String),
+
     /// Configuration setting has invalid value
     #[error("invalid config value for '{key}': '{value}' ({reason})")]
     ConfigInvalidValue { key: String, value: String, reason: String },
@@ -67,8 +70,12 @@ pub enum DllError {
     AuthenticationFailed,
 
     /// Potential replay attack detected
-    #[error("potential replay attack detected")]
-    ReplayAttackDetected,
+    #[error("potential replay attack detected on channel {channel}")]
+    ReplayAttackDetected { channel: String },
+
+    /// Ratchet state not found for a channel
+    #[error("ratchet state not found for channel {channel}")]
+    RatchetStateNotFound { channel: String },
 
     /// Message size exceeds security limits
     #[error("message too large ({size} bytes, limit: {limit})")]
@@ -305,7 +312,7 @@ impl From<FishError> for DllError {
                 reason: format!("invalid length: {} bytes (expected 32)", len),
             },
             FishError::AuthenticationFailed => DllError::AuthenticationFailed,
-            FishError::NonceReuse => DllError::ReplayAttackDetected,
+            FishError::NonceReuse => DllError::ReplayAttackDetected { channel: "unknown".to_string() },
             FishError::OversizedMessage => {
                 DllError::MessageTooLarge { size: 0, limit: crate::crypto::MAX_MESSAGE_SIZE }
             }

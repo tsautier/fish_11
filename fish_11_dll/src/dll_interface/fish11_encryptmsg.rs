@@ -1,3 +1,4 @@
+///! Provides the DLL interface for encrypting messages using the FiSH protocol, including key management and encryption logic.
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
@@ -8,53 +9,96 @@ use crate::buffer_utils;
 use crate::config;
 use crate::crypto;
 use crate::dll_function_identifier;
-use crate::unified_error::{DllError, DllResult};
+use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 
-/// Encrypts a message for a specific nickname using ChaCha20-Poly1305 authenticated encryption.
-///
+/// Encrypts a message for a specific nickname or channel.
 /// This function handles the complete encryption workflow, including:
 /// - Retrieving the appropriate encryption key.
-/// - Performing authenticated encryption.
+/// - For channels: applying a symmetric key ratchet for Forward Secrecy.
+/// - Performing authenticated encryption with Associated Data.
 /// - Formatting the output with the FiSH protocol prefix `+FiSH `.
 dll_function_identifier!(FiSH11_EncryptMsg, data, {
-    // 1. Parse input: <nickname> <message>
+    // 1. Parse input: <target> <message>
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
     let parts: Vec<&str> = input.splitn(2, ' ').collect();
 
     if parts.len() < 2 {
         return Err(DllError::InvalidInput {
             param: "input".to_string(),
-            reason: "expected format: <nickname> <message>".to_string(),
+            reason: "expected format: <target> <message>".to_string(),
         });
     }
 
-    let nickname = normalize_nick(parts[0]);
+    let target = parts[0];
     let message = parts[1];
 
-    if nickname.is_empty() {
-        return Err(DllError::MissingParameter("nickname".to_string()));
+    if target.is_empty() {
+        return Err(DllError::MissingParameter("target".to_string()));
     }
     if message.is_empty() {
         return Err(DllError::MissingParameter("message".to_string()));
     }
 
+    // --- Channel Encryption Logic ---
+    if target.starts_with('#') || target.starts_with('&') {
+        log::debug!("Encrypting for channel: {}", target);
+
+        // Atomically get the current key and advance the ratchet for the next message.
+        let encrypted_base64 = config::with_ratchet_state_mut(target, |state| {
+            let current_key = state.current_key;
+
+            // Encrypt with the current key, using the channel name as Associated Data.
+            let encrypted_b64 = crypto::encrypt_message(
+                &current_key,
+                message,
+                Some(target),
+                Some(target.as_bytes()),
+            )?;
+
+            // Extract the nonce from the encrypted payload to derive the next key.
+            let encrypted_bytes = crate::utils::base64_decode(&encrypted_b64)?;
+            if encrypted_bytes.len() < 12 {
+                return Err(DllError::EncryptionFailed {
+                    context: "payload validation".to_string(),
+                    cause: "Encrypted payload too short to contain a nonce".to_string(),
+                });
+            }
+            let nonce: [u8; 12] = encrypted_bytes[..12].try_into().unwrap();
+
+            // Advance the ratchet to the next key.
+            let next_key = crypto::advance_ratchet_key(&current_key, &nonce, target)?;
+            state.advance(next_key);
+
+            Ok(encrypted_b64)
+        })?;
+
+        let result = format!("+FiSH {}", encrypted_base64);
+        log::info!("Successfully encrypted ratchet message for {}", target);
+        return Ok(result);
+    }
+
+    // --- Private Message Encryption Logic ---
+    let nickname = normalize_nick(target);
+
+    if nickname.is_empty() {
+        return Err(DllError::MissingParameter("nickname".to_string()));
+    }
+
     log::debug!("Encrypting for nickname: {}", nickname);
 
     // 2. Retrieve the encryption key for the target.
-    // The `?` operator automatically converts a potential `FishError` into a `DllError`.
-    let key = config::get_key_default(&nickname)?;
+    let key_vec = config::get_key_default(&nickname)?;
+    let key: &[u8; 32] = key_vec.as_slice().try_into().map_err(|_| DllError::InvalidInput {
+        param: "key".to_string(),
+        reason: format!("Key for {} must be exactly 32 bytes, got {}", nickname, key_vec.len()),
+    })?;
 
     log::debug!("Successfully retrieved encryption key");
 
-    // 3. Encrypt the message using the retrieved key.
-    // We map the error to provide more specific context for encryption failures.
-    let key_array: &[u8; 32] = key.as_slice().try_into().map_err(|_| DllError::InvalidInput {
-        param: "key".to_string(),
-        reason: "key must be exactly 32 bytes".to_string(),
-    })?;
+    // 3. Encrypt the message using the retrieved key (no AD for private messages).
     let encrypted_base64 =
-        crypto::encrypt_message(key_array, message, Some(&nickname)).map_err(|e| {
+        crypto::encrypt_message(key, message, Some(&nickname), None).map_err(|e| {
             DllError::EncryptionFailed {
                 context: format!("encrypting for {}", nickname),
                 cause: e.to_string(),
@@ -88,7 +132,7 @@ mod tests {
         let message = "Hello world!";
         let key = [0u8; 32];
         config::set_key_default(nickname, &key, true).unwrap();
-        let encrypted = crypto::encrypt_message(&key, message, Some(nickname)).unwrap();
+        let encrypted = crypto::encrypt_message(&key, message, Some(nickname), None).unwrap();
         assert!(!encrypted.is_empty());
     }
 

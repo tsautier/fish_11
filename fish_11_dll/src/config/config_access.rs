@@ -6,7 +6,6 @@ use crate::config::CONFIG;
 use crate::config::file_storage::save_config;
 use crate::config::models::FishConfig;
 use crate::error::{FishError, Result};
-use chrono::Local;
 
 /// A read-only guard for the configuration
 pub struct ConfigReadGuard<'a> {

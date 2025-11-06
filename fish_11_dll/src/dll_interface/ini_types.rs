@@ -6,7 +6,7 @@ use winapi::shared::windef::HWND;
 
 use crate::config;
 use crate::dll_function_identifier;
-use crate::unified_error::{DllError, DllResult};
+use crate::unified_error::DllError;
 
 /// Gets a boolean value from the config file.
 /// Input: <key> [default_value]
@@ -100,6 +100,7 @@ mod tests {
             mark_position: 42,
             mark_encrypted: "[ENCRYPTED]".to_string(),
             no_fish10_legacy: true,
+            nickname: "".to_string(),
         };
         update_fish11_config(config).unwrap();
     }

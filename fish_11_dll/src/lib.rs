@@ -30,6 +30,7 @@ pub mod logging_macros;
 // Unified error handling system (standardized approach)
 pub mod unified_error;
 
+pub mod channel_encryption;
 pub mod engine_registration;
 
 /// Get build information from VERGEN or use fallbacks
