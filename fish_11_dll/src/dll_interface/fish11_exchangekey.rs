@@ -7,8 +7,8 @@ use rand::RngCore;
 use rand::rngs::OsRng;
 use secrecy::ExposeSecret;
 use subtle::ConstantTimeEq;
-use winapi::shared::minwindef::BOOL;
-use winapi::shared::windef::HWND;
+use crate::platform_types::BOOL;
+use crate::platform_types::HWND;
 
 use crate::buffer_utils;
 //use crate::config::file_storage::save_config;

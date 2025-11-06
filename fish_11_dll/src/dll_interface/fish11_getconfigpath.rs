@@ -6,8 +6,8 @@ use crate::dll_function_identifier;
 use crate::dll_interface::CStr;
 use crate::dll_interface::ptr;
 use crate::unified_error::DllError;
-use winapi::shared::minwindef::BOOL;
-use winapi::shared::windef::HWND;
+use crate::platform_types::BOOL;
+use crate::platform_types::HWND;
 
 dll_function_identifier!(FiSH11_GetConfigPath, _data, {
     let config_path = config::get_config_path()?;

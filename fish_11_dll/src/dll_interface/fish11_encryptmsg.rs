@@ -2,9 +2,7 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
-use winapi::shared::minwindef::BOOL;
-use winapi::shared::windef::HWND;
-
+use crate::platform_types::{BOOL, HWND};
 use crate::buffer_utils;
 use crate::config;
 use crate::crypto;

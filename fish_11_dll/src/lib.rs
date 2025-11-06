@@ -16,6 +16,7 @@
 //!
 //! Written by [GuY], 2025. Licensed under the GPL v3.
 
+pub mod platform_types;
 pub mod config;
 pub mod crypto;
 pub mod dll_interface;
@@ -31,6 +32,8 @@ pub mod logging_macros;
 pub mod unified_error;
 
 pub mod channel_encryption;
+
+#[cfg(windows)]
 pub mod engine_registration;
 
 /// Get build information from VERGEN or use fallbacks

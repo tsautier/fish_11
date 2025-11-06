@@ -5,6 +5,9 @@
 //! This file is part of the FiSH_11 project.
 //! Written by [GuY], 2025. Licenced under GPL v3.
 
+mod platform_types;
+use platform_types::{BOOL, DWORD, HWND, LIB_NAME};
+
 use std::env;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
@@ -12,12 +15,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use winapi::shared::minwindef::{BOOL, DWORD};
-use winapi::shared::windef::HWND;
-
-use crate::helpers_cli::validate_config_file;
 mod helpers_cli;
-use crate::helpers_cli::{get_output_format, process_mirc_output, try_call_function};
+use crate::helpers_cli::{get_output_format, process_mirc_output, validate_config_file};
 
 // Default timeout for DLL operations in seconds
 const DEFAULT_TIMEOUT_SECONDS: u64 = 5;
@@ -512,15 +511,15 @@ fn main() {
         }
     }
 
-    // Try to get the function from the DLL directly
-    if let Err(_) = try_call_function(&dll, function_name, &processed_args) {
-        // If direct call is not available, use our enhanced call_dll_function
-        let params = if processed_args.len() > 2 {
-            processed_args[2..].join(" ").replace('$', "$$")
-        } else {
-            String::new()
-        }; // Call the DLL function using our enhanced helper that handles timeouts
-        match call_dll_function(&dll, function_name, &params) {
+    // Use our enhanced call_dll_function
+    let params = if processed_args.len() > 2 {
+        processed_args[2..].join(" ").replace('$', "$$")
+    } else {
+        String::new()
+    };
+    
+    // Call the DLL function using our enhanced helper that handles timeouts
+    match call_dll_function(&dll, function_name, &params) {
             Ok(output) => {
                 // For listkeys, directly process the mIRC-formatted output for simplicity
                 if function_name == "FiSH11_FileListKeys" {
@@ -573,5 +572,5 @@ fn main() {
                 println!("Try using the 'list' command to see available functions.");
             }
         }
-    } // Debug file handling removed - we now directly process output from the DLL
+    // Debug file handling removed - we now directly process output from the DLL
 }
