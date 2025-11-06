@@ -11,7 +11,7 @@ license = "GPL v3.0"
 name = "fish_11_inject"
 crate-type = ["cdylib"]
 
-[dependencies]
+[target.'cfg(windows)'.dependencies]
 # For Windows API
 windows = { version = "0.62.2", features = [
     "Win32_Foundation",
@@ -35,3 +35,7 @@ chrono = "0.4"
 
 [build-dependencies]
 vergen = { version = "9.0.6", features = ["build", "cargo", "rustc", "si"] }
+
+# NO dependencies on non-Windows platforms
+[target.'cfg(not(windows))'.dependencies]
+# Intentionally empty to prevent building on non-Windows platforms !

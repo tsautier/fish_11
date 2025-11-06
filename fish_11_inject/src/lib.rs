@@ -13,6 +13,10 @@
 ===============================================================================
 */
 
+// This DLL is only for Windows
+#![cfg(windows)]
+
+
 // Here we define all the necessary imports and modules (files)
 mod dll_interface;
 mod engines;

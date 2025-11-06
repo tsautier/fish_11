@@ -137,7 +137,7 @@ pub fn install_hooks() -> Result<(), io::Error> {
         info!("install_hooks: closesocket hook installed");
 
         #[cfg(debug_assertions)]
-        info!("install_hooks: Resolving SSL functions...");
+        info!("install_hooks: resolving SSL functions...");
 
         // Install SSL hooks
         let ssl_read = std::mem::transmute::<FARPROC, SslReadFn>(find_ssl_function("SSL_read"));
@@ -184,19 +184,19 @@ pub fn install_hooks() -> Result<(), io::Error> {
 
             match install_ssl_hooks(ssl_read, ssl_write, ssl_get_fd, ssl_is_init_finished) {
                 Ok(_) => {
-                    info!("All SSL hooks successfully installed !");
+                    info!("w00w00 ! All SSL h00ks successfully installed !");
                     #[cfg(debug_assertions)]
                     info!("install_hooks: SSL hooks installation succeeded");
                 }
                 Err(e) => {
-                    error!("Failed to install SSL hooks: {}", e);
+                    error!("Damn, failed to install SSL hooks: {}", e);
                     #[cfg(debug_assertions)]
                     error!("install_hooks: SSL hooks installation failed: {}", e);
                 }
             }
         }
 
-        info!("All winsock hooks successfully installed !");
+        info!("r0x0r ! All winsock hooks successfully installed !");
         #[cfg(debug_assertions)]
         info!("install_hooks: hook installation process completed successfully");
 
