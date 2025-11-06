@@ -62,6 +62,9 @@ dll_function_identifier!(FiSH11_ProcessChannelKey, data, {
     // Store the channel key for this channel
     config::set_channel_key(channel_name, &channel_key)?;
 
+    // Initialize the ratchet state with this new key
+    config::init_ratchet_state(channel_name, channel_key)?;
+
     Ok(format!(
         "/echo -ats Channel key for {} successfully received from {}",
         channel_name, coordinator_nick

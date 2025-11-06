@@ -123,14 +123,14 @@ dll_function_identifier!(FiSH11_TestCrypt, data, {
     log::debug!("Generated random test key: {:02x?}", &key[..8]); // Log first 8 bytes only
 
     // Encrypt the message
-    let encrypted = crypto::encrypt_message(&key, &input, None).map_err(|e| {
+    let encrypted = crypto::encrypt_message(&key, &input, None, None).map_err(|e| {
         DllError::EncryptionFailed { context: "test encryption".to_string(), cause: e.to_string() }
     })?;
 
     log::debug!("Successfully encrypted message");
 
     // Decrypt the message to verify the cycle
-    let decrypted = crypto::decrypt_message(&key, &encrypted).map_err(|e| {
+    let decrypted = crypto::decrypt_message(&key, &encrypted, None).map_err(|e| {
         DllError::DecryptionFailed { context: "test decryption".to_string(), cause: e.to_string() }
     })?;
 

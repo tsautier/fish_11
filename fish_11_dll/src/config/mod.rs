@@ -12,6 +12,8 @@ pub mod channel_keys;
 
 pub mod settings;
 
+pub mod state_management;
+
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -154,3 +156,5 @@ pub use settings::{
     get_startup_time_formatted, is_fish10_legacy_disabled, should_encrypt_message,
     should_process_incoming, should_process_outgoing, update_fish11_config, update_startup_time,
 };
+
+pub use state_management::{add_nonce, check_nonce, init_ratchet_state, with_ratchet_state_mut};

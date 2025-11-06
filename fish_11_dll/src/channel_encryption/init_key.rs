@@ -34,8 +34,9 @@ dll_function_identifier!(FiSH11_InitChannelKey, data, {
     // 1. Generate a fresh random 32-byte channel key
     let channel_key = crypto::generate_symmetric_key();
 
-    // 2. Store the channel key locally
+    // 2. Store the channel key locally and initialize the ratchet state
     config::set_channel_key(channel_name, &channel_key)?;
+    config::init_ratchet_state(channel_name, channel_key)?;
 
     let mut commands = Vec::new();
     let mut failed_members = Vec::new();

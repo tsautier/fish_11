@@ -2,7 +2,6 @@
 
 use crate::config::config_access::{with_config, with_config_mut};
 use crate::error::{FishError, Result};
-use crate::utils::base64_encode;
 
 /// Sets a channel key in the configuration.
 ///
@@ -45,8 +44,7 @@ pub fn set_channel_key(channel_name: &str, key: &[u8; 32]) -> Result<()> {
     }
 
     with_config_mut(|config| {
-        let b64_key = base64_encode(key);
-        config.channel_keys.insert(normalized, b64_key);
+        config.channel_keys.insert(normalized, key.to_vec());
         Ok(())
     })
 }
@@ -77,10 +75,9 @@ pub fn get_channel_key(channel_name: &str) -> Result<[u8; 32]> {
             .ok_or_else(|| {
                 FishError::KeyNotFound(format!("No key found for channel: {}", normalized))
             })
-            .and_then(|b64_key| {
-                let key_bytes = crate::utils::base64_decode(b64_key)?;
+            .and_then(|key_bytes| {
                 let key_len = key_bytes.len();
-                key_bytes.try_into().map_err(|_| {
+                key_bytes.as_slice().try_into().map_err(|_| {
                     FishError::ConfigError(format!(
                         "Invalid key length for channel {}: expected 32 bytes, got {}",
                         normalized, key_len

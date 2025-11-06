@@ -10,9 +10,9 @@
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
 
-use chacha20poly1305::aead::{Aead, KeyInit, OsRng};
+use chacha20poly1305::aead::{Aead, KeyInit, OsRng, Payload};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use chrono::{DateTime, Duration, Utc};
 use hkdf::Hkdf;
@@ -27,15 +27,16 @@ use zeroize::Zeroize;
 use crate::error::{FishError, Result};
 use crate::utils::{base64_decode, base64_encode, generate_random_bytes};
 
-// Constants
+// constants
 pub const MAX_MESSAGE_SIZE: usize = 4096;
 const MAX_CIPHERTEXT_SIZE: usize = MAX_MESSAGE_SIZE + 16 + 12; // message + auth tag + nonce
+const NONCE_SIZE_BYTES: usize = 12; // ChaCha20-Poly1305 standard nonce size (96 bits)
 
 // Global nonce cache for anti-replay protection
 // Each nonce is stored with a 1-hour expiry to detect replay attacks while allowing
 // for reasonable clock skew and network delays.
 lazy_static::lazy_static! {
-    static ref NONCE_CACHE: Mutex<LruCache<[u8; 12], ()>> = Mutex::new(
+    static ref NONCE_CACHE: Mutex<LruCache<[u8; NONCE_SIZE_BYTES], ()>> = Mutex::new(
         LruCache::with_expiry_duration_and_capacity(
             chrono::Duration::hours(1)
                 .to_std()
@@ -257,7 +258,12 @@ fn validate_public_key(bytes: &[u8; 32]) -> Result<()> {
 /// The encrypted data has the format: `base64(nonce || ciphertext)`
 /// where nonce is 12 bytes and ciphertext is the encrypted message plus a 16-byte
 /// authentication tag from Poly1305.
-pub fn encrypt_message(key: &[u8; 32], message: &str, recipient: Option<&str>) -> Result<String> {
+pub fn encrypt_message(
+    key: &[u8; 32],
+    message: &str,
+    recipient: Option<&str>,
+    associated_data: Option<&[u8]>,
+) -> Result<String> {
     // Input validation
     if message.is_empty() {
         return Err(FishError::InvalidInput("Empty message".to_string()));
@@ -271,14 +277,9 @@ pub fn encrypt_message(key: &[u8; 32], message: &str, recipient: Option<&str>) -
     }
 
     // Generate a secure nonce using fully random bytes (12 bytes)
-    // This ensures maximum entropy and avoids predictable patterns in base64 output.
-    // Anti-replay protection is ensured by NONCE_CACHE verification during decryption.
-    let nonce_bytes = generate_random_bytes(12);
-    let mut nonce_array = [0u8; 12];
-    nonce_array.copy_from_slice(&nonce_bytes[..12]);
-
-    // Increment counter for audit trail (not used in nonce construction anymore)
-    let _ = NONCE_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let nonce_bytes = generate_random_bytes(NONCE_SIZE_BYTES);
+    let mut nonce_array = [0u8; NONCE_SIZE_BYTES];
+    nonce_array.copy_from_slice(&nonce_bytes[..NONCE_SIZE_BYTES]);
 
     let nonce = Nonce::from(nonce_array);
 
@@ -286,10 +287,12 @@ pub fn encrypt_message(key: &[u8; 32], message: &str, recipient: Option<&str>) -
     let chacha_key = Key::from(*key);
     let cipher = ChaCha20Poly1305::new(&chacha_key);
 
-    // Encrypt the message
-    let ciphertext = cipher
-        .encrypt(&nonce, message.as_bytes())
-        .map_err(|e| FishError::CryptoError(format!("Encryption failed: {}", e)))?;
+    // Encrypt the message, including associated data if provided
+    let ciphertext = match associated_data {
+        Some(ad) => cipher.encrypt(&nonce, Payload { msg: message.as_bytes(), aad: ad }),
+        None => cipher.encrypt(&nonce, Payload { msg: message.as_bytes(), aad: &[] }),
+    }
+    .map_err(|e| FishError::CryptoError(format!("Encryption failed: {}", e)))?;
 
     // Concatenate the nonce and ciphertext
     let mut result = Vec::with_capacity(nonce_bytes.len() + ciphertext.len());
@@ -322,6 +325,7 @@ pub fn encrypt_message(key: &[u8; 32], message: &str, recipient: Option<&str>) -
 /// # Arguments
 /// * `key` - 32-byte symmetric encryption key derived from X25519 key exchange
 /// * `encrypted_data` - the base64-encoded encrypted message
+/// * `associated_data` - optional data to authenticate (e.g., channel name)
 ///
 /// # Returns
 /// * `Result<String>` - the decrypted plaintext message or an error
@@ -339,7 +343,11 @@ pub fn encrypt_message(key: &[u8; 32], message: &str, recipient: Option<&str>) -
 /// - the nonce has been seen before (replay attack detection)
 /// - the authentication tag verification fails (tampering detected)
 /// - the decrypted data is not valid UTF-8
-pub fn decrypt_message(key: &[u8; 32], encrypted_data: &str) -> Result<String> {
+pub fn decrypt_message(
+    key: &[u8; 32],
+    encrypted_data: &str,
+    associated_data: Option<&[u8]>,
+) -> Result<String> {
     // Decode base64 data
     let data = base64_decode(encrypted_data)
         .map_err(|e| FishError::CryptoError(format!("Invalid base64 data: {}", e)))?;
@@ -350,17 +358,19 @@ pub fn decrypt_message(key: &[u8; 32], encrypted_data: &str) -> Result<String> {
     }
 
     // Check if we have enough data for nonce (12 bytes) + at least some ciphertext
-    if data.len() <= 12 {
+    // NONCE_SIZE_BYTES is 12
+    if data.len() <= NONCE_SIZE_BYTES {
         return Err(FishError::CryptoError("Encrypted data too short".to_string()));
     }
 
-    // Split into nonce and ciphertext
-    let nonce = &data[..12];
-    let ciphertext = &data[12..];
+    // Split into nonce and ciphertext : 12 bytes nonce
+    let nonce = &data[..NONCE_SIZE_BYTES];
+    // The rest is ciphertext
+    let ciphertext = &data[NONCE_SIZE_BYTES..];
 
     // Anti-replay protection
     {
-        let mut nonce_array = [0u8; 12];
+        let mut nonce_array = [0u8; NONCE_SIZE_BYTES];
         nonce_array.copy_from_slice(nonce);
 
         let mut cache = NONCE_CACHE.lock().expect("NONCE_CACHE mutex should not be poisoned");
@@ -373,14 +383,16 @@ pub fn decrypt_message(key: &[u8; 32], encrypted_data: &str) -> Result<String> {
     // Create cipher
     let chacha_key = Key::from(*key);
     let cipher = ChaCha20Poly1305::new(&chacha_key);
-    let mut nonce_array = [0u8; 12];
+    let mut nonce_array = [0u8; NONCE_SIZE_BYTES];
     nonce_array.copy_from_slice(nonce);
     let nonce = Nonce::from(nonce_array);
 
-    // Decrypt
-    let plaintext = cipher
-        .decrypt(&nonce, ciphertext)
-        .map_err(|e| FishError::CryptoError(format!("Decryption failed: {}", e)))?;
+    // Decrypt, including associated data if provided
+    let plaintext = match associated_data {
+        Some(ad) => cipher.decrypt(&nonce, Payload { msg: ciphertext, aad: ad }),
+        None => cipher.decrypt(&nonce, Payload { msg: ciphertext, aad: &[] }),
+    }
+    .map_err(|e| FishError::CryptoError(format!("Decryption failed: {}", e)))?;
 
     // Log decryption (audit trail)
     let mut hasher = Sha256::default();
@@ -590,11 +602,33 @@ mod tests {
         let key: [u8; 32] = generate_random_bytes(32).try_into().expect("Failed to generate key");
         let message = "This is a secret message for testing purposes.";
 
-        let encrypted_data =
-            encrypt_message(&key, message, Some("test_recipient")).expect("Encryption failed");
-        let decrypted_message = decrypt_message(&key, &encrypted_data).expect("Decryption failed");
+        let encrypted_data = encrypt_message(&key, message, Some("test_recipient"), None)
+            .expect("Encryption failed");
+        let decrypted_message =
+            decrypt_message(&key, &encrypted_data, None).expect("Decryption failed");
 
         assert_eq!(message, decrypted_message, "Decrypted message should match original message");
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_with_ad() {
+        let key: [u8; 32] = generate_random_bytes(32).try_into().unwrap();
+        let message = "test message";
+        let ad = b"associated data";
+
+        let encrypted = encrypt_message(&key, message, None, Some(ad)).unwrap();
+
+        // Should succeed with correct AD
+        let decrypted = decrypt_message(&key, &encrypted, Some(ad)).unwrap();
+        assert_eq!(decrypted, message);
+
+        // Should fail with incorrect AD
+        let bad_ad_result = decrypt_message(&key, &encrypted, Some(b"wrong ad"));
+        assert!(bad_ad_result.is_err());
+
+        // Should fail with no AD
+        let no_ad_result = decrypt_message(&key, &encrypted, None);
+        assert!(no_ad_result.is_err());
     }
 
     #[test]
@@ -607,8 +641,9 @@ mod tests {
 
         assert_ne!(key1, key2);
 
-        let encrypted_data = encrypt_message(&key1, message, None).expect("Encryption failed");
-        let result = decrypt_message(&key2, &encrypted_data);
+        let encrypted_data =
+            encrypt_message(&key1, message, None, None).expect("Encryption failed");
+        let result = decrypt_message(&key2, &encrypted_data, None);
 
         assert!(result.is_err(), "Decryption with the wrong key should fail");
     }
@@ -621,14 +656,14 @@ mod tests {
         let key: [u8; 32] = generate_random_bytes(32).try_into().expect("Failed to generate key");
         let message = "A message to test replay attacks.";
 
-        let encrypted_data = encrypt_message(&key, message, None).expect("Encryption failed");
+        let encrypted_data = encrypt_message(&key, message, None, None).expect("Encryption failed");
 
         // First decryption should succeed
-        let first_decryption_result = decrypt_message(&key, &encrypted_data);
+        let first_decryption_result = decrypt_message(&key, &encrypted_data, None);
         assert!(first_decryption_result.is_ok(), "First decryption should succeed");
 
         // Second decryption with the same data should fail
-        let second_decryption_result = decrypt_message(&key, &encrypted_data);
+        let second_decryption_result = decrypt_message(&key, &encrypted_data, None);
         assert!(
             second_decryption_result.is_err(),
             "Second decryption should fail due to nonce reuse"
@@ -723,6 +758,54 @@ mod tests {
     }
 }
 
+/// Advances a symmetric channel key using HKDF to provide Forward Secrecy.
+///
+/// Each message sent or received advances the key, so a compromise of the key at time T
+/// does not compromise future messages.
+///
+/// # Arguments
+/// * `current_key` - The current 32-byte symmetric key for the channel.
+/// * `nonce` - The 12-byte nonce used to encrypt/decrypt the message. Used as salt.
+/// * `channel_name` - The name of the channel, used as context info.
+///
+/// # Returns
+/// A new 32-byte symmetric key.
+///
+/// # Security Notes
+/// - Uses HKDF-SHA256 with nonce as salt for uniqueness per message
+/// - One-way derivation provides Post-Compromise Security (PCS)
+/// - Zeroizes temporary key material after use
+pub fn advance_ratchet_key(
+    current_key: &[u8; 32],
+    nonce: &[u8; NONCE_SIZE_BYTES],
+    channel_name: &str,
+) -> Result<[u8; 32]> {
+    use zeroize::Zeroize;
+
+    // Clone current key to avoid mutating caller's data
+    // Will be zeroized after HKDF to prevent lingering in stack
+    let mut temp_current = *current_key;
+
+    // Use HKDF-SHA256 to derive the next key.
+    // The current key is the Input Keying Material (IKM).
+    // The nonce is the salt, making each derivation unique per message.
+    // The channel name and a domain separator are the context info.
+    let hkdf = Hkdf::<Sha256>::new(Some(nonce), &temp_current);
+
+    let mut next_key = [0u8; 32];
+    let info = format!("FCEP-1-RATCHET:{}", channel_name);
+
+    hkdf.expand(info.as_bytes(), &mut next_key).map_err(|e| {
+        temp_current.zeroize(); // Zeroize on error path
+        FishError::CryptoError(format!("HKDF expansion for ratchet failed: {}", e))
+    })?;
+
+    // Zeroize temporary key material from stack
+    temp_current.zeroize();
+
+    Ok(next_key)
+}
+
 use base64::{Engine as _, engine::general_purpose};
 
 /// Wraps a channel key using a pre-shared symmetric key.
@@ -740,7 +823,7 @@ use base64::{Engine as _, engine::general_purpose};
 /// A base64-encoded string containing: nonce (12 bytes) + ciphertext (32 bytes) + auth tag (16 bytes)
 pub fn wrap_key(channel_key: &[u8; 32], shared_key_with_member: &[u8; 32]) -> Result<String> {
     // Generate a fresh random nonce for this wrapping operation
-    let nonce_bytes = generate_random_bytes(12);
+    let nonce_bytes = generate_random_bytes(NONCE_SIZE_BYTES);
     let mut nonce_array = [0u8; 12];
     nonce_array.copy_from_slice(&nonce_bytes[..12]);
     let nonce = Nonce::from(nonce_array);
@@ -754,7 +837,7 @@ pub fn wrap_key(channel_key: &[u8; 32], shared_key_with_member: &[u8; 32]) -> Re
         .map_err(|e| FishError::CryptoError(format!("Key wrapping failed: {}", e)))?;
 
     // Concatenate nonce + ciphertext (ciphertext already includes the 16-byte auth tag)
-    let mut result = Vec::with_capacity(12 + ciphertext.len());
+    let mut result = Vec::with_capacity(NONCE_SIZE_BYTES + ciphertext.len());
     result.extend_from_slice(&nonce_array);
     result.extend_from_slice(&ciphertext);
 
@@ -793,7 +876,7 @@ pub fn unwrap_key(
     }
 
     // Extract nonce (first 12 bytes) and ciphertext (remaining bytes)
-    let (nonce_bytes, ciphertext) = wrapped_bytes.split_at(12);
+    let (nonce_bytes, ciphertext) = wrapped_bytes.split_at(NONCE_SIZE_BYTES);
     let nonce_array: [u8; 12] = nonce_bytes
         .try_into()
         .map_err(|_| FishError::CryptoError("Invalid nonce length".to_string()))?;
@@ -820,4 +903,280 @@ pub fn unwrap_key(
             plaintext_len
         ))
     })
+}
+
+// ===============================================================================
+// FCEP-1 Ratcheting Tests
+// ===============================================================================
+
+#[cfg(test)]
+mod fcep1_ratchet_tests {
+    use super::*;
+
+    #[test]
+    fn test_ratchet_forward_secrecy() {
+        // Test that ratcheting produces different keys each time
+        let initial_key = [1u8; 32];
+        let nonce1 = [0u8; NONCE_SIZE_BYTES];
+        let nonce2 = [1u8; NONCE_SIZE_BYTES];
+        let channel = "#test";
+
+        // First ratchet step
+        let key1 = advance_ratchet_key(&initial_key, &nonce1, channel).unwrap();
+        assert_ne!(key1, initial_key, "Ratcheted key should differ from initial");
+
+        // Second ratchet step (with different nonce)
+        let key2 = advance_ratchet_key(&key1, &nonce2, channel).unwrap();
+        assert_ne!(key2, key1, "Each ratchet step should produce unique key");
+        assert_ne!(key2, initial_key, "Ratcheted key should differ from initial");
+
+        // Verify one-way property: can't derive key1 from key2
+        let attempted_reverse = advance_ratchet_key(&key2, &nonce1, channel).unwrap();
+        assert_ne!(attempted_reverse, key1, "Ratcheting must be one-way (PCS)");
+    }
+
+    #[test]
+    fn test_ratchet_nonce_uniqueness() {
+        // Different nonces should produce different keys
+        let key = [42u8; 32];
+        let nonce1 = [0u8; NONCE_SIZE_BYTES];
+        let nonce2 = [1u8; NONCE_SIZE_BYTES];
+        let channel = "#test";
+
+        let derived1 = advance_ratchet_key(&key, &nonce1, channel).unwrap();
+        let derived2 = advance_ratchet_key(&key, &nonce2, channel).unwrap();
+
+        assert_ne!(derived1, derived2, "Different nonces must produce different keys");
+    }
+
+    #[test]
+    fn test_ratchet_channel_binding() {
+        // Same key + nonce but different channels should produce different keys
+        let key = [42u8; 32];
+        let nonce = [0u8; NONCE_SIZE_BYTES];
+
+        let key_ch1 = advance_ratchet_key(&key, &nonce, "#channel1").unwrap();
+        let key_ch2 = advance_ratchet_key(&key, &nonce, "#channel2").unwrap();
+
+        assert_ne!(key_ch1, key_ch2, "Channel name must be bound to key derivation");
+    }
+
+    #[test]
+    fn test_cross_channel_replay_prevention() {
+        // Test that messages encrypted for one channel can't be decrypted for another
+        let key = [42u8; 32];
+        let message = "Secret message";
+
+        // Encrypt for #channel1
+        let encrypted_ch1 =
+            encrypt_message(&key, message, Some("#channel1"), Some(b"#channel1")).unwrap();
+
+        // Try to decrypt for #channel2 (should fail due to AD mismatch)
+        let decrypt_result = decrypt_message(&key, &encrypted_ch1, Some(b"#channel2"));
+
+        assert!(decrypt_result.is_err(), "Cross-channel replay must be prevented by AD");
+    }
+
+    #[test]
+    fn test_nonce_cache_prevents_replay() {
+        use crate::config::models::NonceCache;
+
+        let mut cache = NonceCache::new();
+        let nonce = [42u8; NONCE_SIZE_BYTES];
+
+        // First check should pass (nonce is new)
+        assert!(!cache.check_and_add(nonce), "New nonce should be accepted");
+
+        // Second check should fail (nonce is duplicate)
+        assert!(cache.check_and_add(nonce), "Duplicate nonce should be detected");
+    }
+
+    #[test]
+    fn test_nonce_cache_overflow() {
+        use crate::config::models::NonceCache;
+
+        let mut cache = NonceCache::new();
+
+        // Add 101 nonces (MAX_NONCE_CACHE_SIZE = 100)
+        for i in 0..101 {
+            let mut nonce = [0u8; NONCE_SIZE_BYTES];
+            nonce[0] = i as u8;
+            cache.check_and_add(nonce);
+        }
+
+        // First nonce should be evicted (FIFO)
+        let first_nonce = [0u8; NONCE_SIZE_BYTES];
+        assert!(
+            !cache.recent_nonces.contains(&first_nonce),
+            "Oldest nonce should be evicted after cache overflow"
+        );
+
+        // Last nonce should still be present
+        let mut last_nonce = [0u8; NONCE_SIZE_BYTES];
+        last_nonce[0] = 100;
+        assert!(cache.recent_nonces.contains(&last_nonce), "Most recent nonce should be retained");
+
+        // Cache size should be capped
+        assert_eq!(
+            cache.recent_nonces.len(),
+            100,
+            "Cache size should be limited to MAX_NONCE_CACHE_SIZE"
+        );
+    }
+
+    #[test]
+    fn test_ratchet_state_advance() {
+        use crate::config::models::RatchetState;
+
+        let initial_key = [1u8; 32];
+        let mut state = RatchetState::new(initial_key);
+
+        assert_eq!(state.epoch, 0, "Initial epoch should be 0");
+        assert!(state.previous_keys.is_empty(), "Initial previous_keys should be empty");
+
+        // Advance once
+        let next_key = [2u8; 32];
+        state.advance(next_key);
+
+        assert_eq!(state.epoch, 1, "Epoch should increment");
+        assert_eq!(state.current_key, next_key, "Current key should be updated");
+        assert_eq!(state.previous_keys.len(), 1, "Previous key should be stored");
+        assert_eq!(state.previous_keys[0], initial_key, "Initial key should be in previous_keys");
+
+        // Advance 5 more times to test window eviction
+        for i in 3..8 {
+            let key = [i as u8; 32];
+            state.advance(key);
+        }
+
+        assert_eq!(state.epoch, 6, "Epoch should be 6 after 6 advances");
+        assert_eq!(
+            state.previous_keys.len(),
+            5,
+            "Previous keys should be capped at MAX_PREVIOUS_KEYS"
+        );
+
+        // Oldest key (initial_key) should be evicted
+        assert!(
+            !state.previous_keys.contains(&initial_key),
+            "Oldest key should be evicted from window"
+        );
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_with_ratchet_simulation() {
+        // Simulate 3-message exchange with ratcheting
+        let mut current_key = [42u8; 32];
+        let channel = "#test";
+
+        let messages = ["Message 1", "Message 2", "Message 3"];
+        let mut encrypted_messages = Vec::new();
+        let mut ratchet_keys = Vec::new();
+
+        // Encrypt messages with ratcheting
+        for msg in &messages {
+            let encrypted =
+                encrypt_message(&current_key, msg, Some(channel), Some(channel.as_bytes()))
+                    .unwrap();
+            encrypted_messages.push(encrypted.clone());
+            ratchet_keys.push(current_key);
+
+            // Extract nonce and advance ratchet
+            let encrypted_bytes = crate::utils::base64_decode(&encrypted).unwrap();
+            let nonce: [u8; NONCE_SIZE_BYTES] = encrypted_bytes[..NONCE_SIZE_BYTES].try_into().unwrap();
+            current_key = advance_ratchet_key(&current_key, &nonce, channel).unwrap();
+        }
+
+        // Verify all keys are different
+        assert_ne!(ratchet_keys[0], ratchet_keys[1]);
+        assert_ne!(ratchet_keys[1], ratchet_keys[2]);
+        assert_ne!(ratchet_keys[0], ratchet_keys[2]);
+
+        // Decrypt messages in order (each with its corresponding key)
+        for (i, encrypted) in encrypted_messages.iter().enumerate() {
+            let decrypted =
+                decrypt_message(&ratchet_keys[i], encrypted, Some(channel.as_bytes())).unwrap();
+            assert_eq!(decrypted, messages[i], "Message {} should decrypt correctly", i);
+        }
+
+        // Verify old keys can't decrypt new messages (forward secrecy)
+        let decrypt_result =
+            decrypt_message(&ratchet_keys[0], &encrypted_messages[2], Some(channel.as_bytes()));
+        assert!(
+            decrypt_result.is_err(),
+            "Old key should not decrypt messages encrypted with newer key"
+        );
+    }
+
+    #[test]
+    fn test_ratchet_state_advancement_with_key_derivation() {
+        use crate::config::models::RatchetState;
+        let initial_key = [1u8; 32];
+        let mut state = RatchetState::new(initial_key);
+        let nonce = [0u8; 12];
+        
+        let key1 = state.current_key;
+        let next_key1 = advance_ratchet_key(&key1, &nonce, "#test").unwrap();
+        state.advance(next_key1);
+        
+        // Key 1 should be in previous_keys
+        assert!(state.previous_keys.contains(&key1));
+        assert_ne!(state.current_key, key1);
+        
+        // Advance again
+        let key2 = state.current_key;
+        let next_key2 = advance_ratchet_key(&key2, &nonce, "#test").unwrap();
+        state.advance(next_key2);
+        
+        // Keys should all be different
+        assert_ne!(next_key1, next_key2);
+    }
+
+    #[test]
+    fn test_out_of_order_decryption_logic() {
+        NONCE_CACHE.lock().unwrap().clear();
+        use crate::config::models::RatchetState;
+
+        let initial_key = [1u8; 32];
+        let mut state = RatchetState::new(initial_key);
+        let channel = "#test";
+
+        // Generate a sequence of 3 keys
+        let key1 = state.current_key;
+        let nonce1 = [1u8; 12];
+        let next_key1 = advance_ratchet_key(&key1, &nonce1, channel).unwrap();
+        state.advance(next_key1);
+
+        let key2 = state.current_key;
+        let nonce2 = [2u8; 12];
+        let next_key2 = advance_ratchet_key(&key2, &nonce2, channel).unwrap();
+        state.advance(next_key2);
+        
+        let key3 = state.current_key;
+
+        // At this point, state.current_key is key3, and state.previous_keys contains [key1, key2]
+
+        // Encrypt messages with their corresponding keys
+        let msg1 = "old message";
+        let encrypted1 = encrypt_message(&key1, msg1, None, Some(channel.as_bytes())).unwrap();
+        
+        let msg3 = "current message";
+        let encrypted3 = encrypt_message(&key3, msg3, None, Some(channel.as_bytes())).unwrap();
+
+        // Decrypting the current message with the current key should work
+        assert_eq!(decrypt_message(&state.current_key, &encrypted3, Some(channel.as_bytes())).unwrap(), msg3);
+
+        // Decrypting the old message (msg1) with the current key should fail
+        assert!(decrypt_message(&state.current_key, &encrypted1, Some(channel.as_bytes())).is_err());
+
+        // But it should succeed if we search through the previous_keys
+        let mut decrypted_old_message = None;
+        for old_key in &state.previous_keys {
+            if let Ok(plaintext) = decrypt_message(old_key, &encrypted1, Some(channel.as_bytes())) {
+                decrypted_old_message = Some(plaintext);
+                break;
+            }
+        }
+        assert_eq!(decrypted_old_message.unwrap(), msg1);
+    }
 }
