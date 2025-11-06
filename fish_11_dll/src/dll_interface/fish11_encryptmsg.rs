@@ -1,4 +1,4 @@
-///! 
+///! Provides the DLL interface for encrypting messages using the FiSH protocol, including key management and encryption logic.
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
