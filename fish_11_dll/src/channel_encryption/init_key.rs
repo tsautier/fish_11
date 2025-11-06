@@ -26,7 +26,7 @@ dll_function_identifier!(FiSH11_InitChannelKey, data, {
 
     if self_nick.is_empty() {
         return Err(DllError::ConfigError(
-            "Nickname not set in configuration. Please set it first with FiSH11_SetMircDir."
+            "Nickname not set in configuration. Please set your nickname in the FiSH11 configuration."
                 .to_string(),
         ));
     }
