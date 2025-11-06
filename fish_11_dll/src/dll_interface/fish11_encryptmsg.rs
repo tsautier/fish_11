@@ -13,7 +13,7 @@ use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 
 /// Encrypts a message for a specific nickname or channel.
-/// # This function handles the complete encryption workflow, including:
+/// This function handles the complete encryption workflow, including:
 /// - Retrieving the appropriate encryption key.
 /// - For channels: applying a symmetric key ratchet for Forward Secrecy.
 /// - Performing authenticated encryption with Associated Data.
