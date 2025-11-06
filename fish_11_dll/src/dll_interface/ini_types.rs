@@ -60,7 +60,7 @@ dll_function_identifier!(INI_GetString, data, {
     Ok(value)
 });
 
-///! Gets an integer value from the config file.
+/// Gets an integer value from the config file.
 /// Input: <key> [default_value]
 dll_function_identifier!(INI_GetInt, data, {
     let input = unsafe { crate::buffer_utils::parse_buffer_input(data)? };
