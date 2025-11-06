@@ -1,4 +1,4 @@
-// //! Functions for managing channel ratchet state and nonce caches.
+//! Functions for managing channel ratchet state and nonce caches.
 
 use crate::unified_error::FishError;
 use super::{
