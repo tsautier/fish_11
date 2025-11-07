@@ -34,13 +34,15 @@ macro_rules! platform_abi {
 /// Helper macro to export functions with correct ABI
 #[macro_export]
 macro_rules! export_fn {
-    ($vis:vis fn $name:ident($($arg:ident: $ty:ty),*) -> $ret:ty $body:block) => {
-        #[no_mangle]
+    // Windows version
+    (
+        $vis:vis fn $name:ident($($arg:ident: $ty:ty),*) -> $ret:ty $body:block
+    ) => {
         #[cfg(windows)]
-        $vis extern "stdcall" fn $name($($arg: $ty),*) -> $ret $body
-        
         #[no_mangle]
+        $vis extern "stdcall" fn $name($($arg: $ty),*) -> $ret $body
         #[cfg(not(windows))]
+        #[no_mangle]
         $vis extern "C" fn $name($($arg: $ty),*) -> $ret $body
     };
 }
