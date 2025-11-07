@@ -5,9 +5,9 @@ use crate::config;
 use crate::dll_function_identifier;
 use crate::dll_interface::CStr;
 use crate::dll_interface::ptr;
-use crate::unified_error::DllError;
 use crate::platform_types::BOOL;
 use crate::platform_types::HWND;
+use crate::unified_error::DllError;
 
 dll_function_identifier!(FiSH11_GetConfigPath, _data, {
     let config_path = config::get_config_path()?;
@@ -28,8 +28,8 @@ mod tests {
                 ptr::null_mut(),
                 buffer.as_mut_ptr(),
                 ptr::null_mut(),
-                0,
-                0,
+                ptr::null_mut(),
+                ptr::null_mut(),
             )
         };
         assert_eq!(result, crate::dll_interface::MIRC_IDENTIFIER);

@@ -151,6 +151,9 @@ pub struct FishConfig {
     pub channel_ratchet_states: HashMap<String, RatchetState>,
     /// Channel nonce caches for anti-replay
     pub channel_nonce_caches: HashMap<String, NonceCache>,
+    /// Tracks if configuration has unsaved changes (not serialized)
+    #[cfg_attr(feature = "serde", serde(skip))]
+    dirty: std::cell::Cell<bool>,
 }
 
 impl FishConfig {
@@ -171,7 +174,23 @@ impl FishConfig {
             channel_keys: HashMap::new(),
             channel_ratchet_states: HashMap::new(),
             channel_nonce_caches: HashMap::new(),
+            dirty: std::cell::Cell::new(false),
         }
+    }
+
+    /// Mark the configuration as dirty (needs saving)
+    pub fn mark_dirty(&self) {
+        self.dirty.set(true);
+    }
+
+    /// Check if the configuration has unsaved changes
+    pub fn is_dirty(&self) -> bool {
+        self.dirty.get()
+    }
+
+    /// Mark the configuration as clean (just saved)
+    pub fn mark_clean(&self) {
+        self.dirty.set(false);
     }
 
     /// Get an entry from the configuration (convenience method)
@@ -182,6 +201,7 @@ impl FishConfig {
     /// Set an entry in the configuration (convenience method)
     pub fn set_entry(&mut self, key: String, entry: EntryData) {
         self.entries.insert(key, entry);
+        self.mark_dirty();
     }
 
     /// Get all entries with a specific prefix

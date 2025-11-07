@@ -138,6 +138,9 @@ pub(crate) fn override_buffer_size_for_test(size: usize) -> Option<usize> {
 }
 
 #[cfg(test)]
+mod ini_tests;
+
+#[cfg(test)]
 /// Test helper: restore the buffer size after a test
 pub(crate) fn restore_buffer_size_for_test(prev_size: Option<usize>) {
     if let Some(size) = prev_size {

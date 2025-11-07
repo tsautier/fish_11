@@ -92,213 +92,164 @@ pub fn get_config_path() -> Result<PathBuf> {
 ///
 /// - `Result<FishConfig>` - The loaded configuration or an error
 pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
-    #[cfg(debug_assertions)]
-    log::info!("load_config: Starting configuration load...");
+    log::debug!("load_config: starting configuration load");
 
     // Set a timeout to prevent hanging
     let start_time = std::time::Instant::now();
     let timeout = std::time::Duration::from_secs(5);
 
-    #[cfg(debug_assertions)]
-    log::info!("load_config: Creating new FishConfig...");
-
     let mut config = FishConfig::new();
-
-    #[cfg(debug_assertions)]
-    log::info!("load_config: FishConfig created successfully");
-
-    #[cfg(debug_assertions)]
-    log::info!("load_config: Determining config path (override: {:?})...", path_override.is_some());
 
     let config_path = match path_override {
         Some(path) => {
-            #[cfg(debug_assertions)]
-            log::info!("load_config: Using override path: {}", path.display());
+            log::debug!("load_config: using override path: {}", path.display());
             path
         }
-        None => {
-            #[cfg(debug_assertions)]
-            log::info!("load_config: Calling get_config_path()...");
-            get_config_path()?
-        }
+        None => get_config_path()?,
     };
 
-    #[cfg(debug_assertions)]
-    log::info!("load_config: Config path determined: {}", config_path.display());
+    log::debug!("load_config: config path: {}", config_path.display());
 
     // Check if we've timed out already
     if start_time.elapsed() > timeout {
-        #[cfg(debug_assertions)]
-        log::error!("load_config: Timeout exceeded during path resolution");
-
         return Err(FishError::ConfigError("Configuration loading timed out".to_string()));
     }
 
-    #[cfg(debug_assertions)]
-    log::info!("load_config: Checking if config file exists...");
-
     // Check if the config file exists
     if !config_path.exists() {
-        #[cfg(debug_assertions)]
-        log::info!("load_config: Config file does not exist, generating new keypair...");
+        log::info!("load_config: config file does not exist, generating new keypair");
 
         // Generate a keypair using crypto module
         let keypair = crypto::generate_keypair();
-
-        #[cfg(debug_assertions)]
-        log::info!("load_config: Keypair generated successfully");
 
         // Store the keypair in the config
         config.our_private_key = Some(base64_encode(keypair.private_key.expose_secret()));
         config.our_public_key = Some(base64_encode(&keypair.public_key));
 
-        #[cfg(debug_assertions)]
-        log::info!("load_config: Saving new config to disk...");
-
         // Save the config
         save_config(&config, None)?;
 
-        #[cfg(debug_assertions)]
-        log::info!("load_config: New config saved successfully");
+        log::info!("load_config: new config saved successfully");
 
         return Ok(config);
     }
 
-    #[cfg(debug_assertions)]
-    log::info!("load_config: Config file exists, loading...");
+    log::trace!("load_config: loading existing config file");
 
     // Create a new Ini object and load the file
     let mut ini = Ini::new();
 
     // Check if we've timed out before loading ini
     if start_time.elapsed() > timeout {
-        #[cfg(debug_assertions)]
-        log::error!("load_config: Timeout before INI load");
-
         return Err(FishError::ConfigError(
             "Configuration loading timed out before ini load".to_string(),
         ));
     }
 
-    #[cfg(debug_assertions)]
-    log::info!("load_config: Loading INI file from {}...", config_path.display());
-
     match ini.load(&config_path) {
         Ok(_) => {
-            log::debug!("load_config: INI file loaded successfully from {}", config_path.display());
-            log::debug!("load_config: sections found: {:?}", ini.sections());
-            log::debug!("load_config: full INI map: {:?}", ini.get_map_ref());
-
-            #[cfg(debug_assertions)]
-            log::info!("load_config: INI file parsed successfully");
+            log::trace!("load_config: INI file loaded successfully from {}", config_path.display());
         }
         Err(e) => {
-            #[cfg(debug_assertions)]
-            log::error!("load_config: failed to load INI file: {}", e);
-
+            log::error!("load_config: failed to load INI file from {}: {}", config_path.display(), e);
             return Err(FishError::ConfigError(format!("Failed to load config: {}", e)));
         }
     };
 
     // Check if we've timed out after loading ini
     if start_time.elapsed() > timeout {
-        #[cfg(debug_assertions)]
-        log::error!("load_config: timeout after INI load");
-
         return Err(FishError::ConfigError(
             "Configuration loading timed out after ini load".to_string(),
         ));
     }
 
-    #[cfg(debug_assertions)]
-    log::info!("load_config: processing [Keys] section...");
+    // OPTIMISATION: Build case-insensitive section lookup cache ONCE
+    let sections_lower: std::collections::HashMap<String, String> = ini.sections()
+        .iter()
+        .map(|s| (s.to_lowercase(), s.clone()))
+        .collect();
 
-    // Load [Keys] section (case-insensitive)
-    for key in ["Keys", "keys"] {
-        if let Some(section_map) = ini.get_map_ref().get(key) {
+    log::trace!("load_config: processing [Keys] section...");
+
+    // Load [Keys] section (case-insensitive, optimized)
+    if let Some(section_name) = sections_lower.get("keys") {
+        if let Some(section_map) = ini.get_map_ref().get(section_name) {
             for (k, v_opt) in section_map.iter() {
                 if let Some(v) = v_opt {
                     config.keys.insert(k.clone(), v.clone());
                 }
             }
-            break; // Found the section, no need to check other cases
         }
     }
 
-    #[cfg(debug_assertions)]
-    log::info!("load_config: loaded {} keys", config.keys.len());
+    log::trace!("load_config: loaded {} keys", config.keys.len());
+    log::trace!("load_config: processing [KeyPair] section...");
 
-    #[cfg(debug_assertions)]
-    log::info!("load_config: processing [KeyPair] section...");
-
-    // Load [KeyPair] section (case-insensitive)
-    for key in ["KeyPair", "keypair"] {
-        if let Some(private) = ini.get(key, "private") {
+    // Load [KeyPair] section (case-insensitive, optimized)
+    if let Some(section_name) = sections_lower.get("keypair") {
+        if let Some(private) = ini.get(section_name, "private") {
             config.our_private_key = Some(private.to_string());
         }
-        if let Some(public) = ini.get(key, "public") {
+        if let Some(public) = ini.get(section_name, "public") {
             config.our_public_key = Some(public.to_string());
         }
     }
 
-    #[cfg(debug_assertions)]
-    log::info!("load_config: processing [NickNetworks] section...");
+    log::trace!("load_config: processing [NickNetworks] section...");
 
-    // Load [NickNetworks] section (case-insensitive)
-    for key in ["NickNetworks", "nicknetworks"] {
-        if let Some(section_map) = ini.get_map_ref().get(key) {
+    // Load [NickNetworks] section (case-insensitive, optimized)
+    if let Some(section_name) = sections_lower.get("nicknetworks") {
+        if let Some(section_map) = ini.get_map_ref().get(section_name) {
             for (k, v_opt) in section_map.iter() {
                 if let Some(v) = v_opt {
                     config.nick_networks.insert(k.clone(), v.clone());
                 }
             }
-            break; // Found the section, no need to check other cases
         }
     }
 
-    #[cfg(debug_assertions)]
-    log::info!("load_config: processing [FiSH11] section...");
+    log::trace!("load_config: processing [FiSH11] section...");
 
-    // Load [FiSH11] section (case-insensitive)
-    for section_key in ["FiSH11", "fish11"] {
-        if let Some(value) = ini.get(section_key, "process_incoming") {
+    // Load [FiSH11] section (case-insensitive, optimized)
+    if let Some(section_name) = sections_lower.get("fish11") {
+        if let Some(value) = ini.get(section_name, "process_incoming") {
             config.fish11.process_incoming = value.eq_ignore_ascii_case("true") || value == "1";
         }
 
-        if let Some(value) = ini.get(section_key, "process_outgoing") {
+        if let Some(value) = ini.get(section_name, "process_outgoing") {
             config.fish11.process_outgoing = value.eq_ignore_ascii_case("true") || value == "1";
         }
 
-        if let Some(value) = ini.get(section_key, "plain_prefix") {
+        if let Some(value) = ini.get(section_name, "plain_prefix") {
             config.fish11.plain_prefix = value.to_string();
         }
 
-        if let Some(value) = ini.get(section_key, "encrypt_notice") {
+        if let Some(value) = ini.get(section_name, "encrypt_notice") {
             config.fish11.encrypt_notice = value.eq_ignore_ascii_case("true") || value == "1";
         }
 
-        if let Some(value) = ini.get(section_key, "encrypt_action") {
+        if let Some(value) = ini.get(section_name, "encrypt_action") {
             config.fish11.encrypt_action = value.eq_ignore_ascii_case("true") || value == "1";
         }
 
-        if let Some(value) = ini.get(section_key, "mark_position") {
+        if let Some(value) = ini.get(section_name, "mark_position") {
             if let Ok(pos) = value.parse() {
                 config.fish11.mark_position = pos;
             }
         }
 
-        if let Some(value) = ini.get(section_key, "mark_encrypted") {
+        if let Some(value) = ini.get(section_name, "mark_encrypted") {
             config.fish11.mark_encrypted = value.to_string();
         }
 
-        if let Some(value) = ini.get(section_key, "no_fish10_legacy") {
+        if let Some(value) = ini.get(section_name, "no_fish10_legacy") {
             config.fish11.no_fish10_legacy = value.eq_ignore_ascii_case("true") || value == "1";
         }
     }
 
-    // Load [Startup] section (case-insensitive)
-    for section_key in ["Startup", "startup"] {
-        if let Some(value) = ini.get(section_key, "date") {
+    // Load [Startup] section (case-insensitive, optimized)
+    if let Some(section_name) = sections_lower.get("startup") {
+        if let Some(value) = ini.get(section_name, "date") {
             if let Ok(date) = value.parse() {
                 config.startup_data.date = Some(date);
             }
@@ -323,11 +274,14 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
         if section_name.contains('@') {
             println!("DEBUG:   -> processing entry section: '{}'", section_name);
 
+            // Clean section name: remove any brackets (should not be present, but defensive)
+            let clean_section = section_name.trim_start_matches('[').trim_end_matches(']');
+            
             // Transform chan_ prefix back to # for channels
-            let entry_key = if section_name.starts_with("chan_") {
-                section_name.replacen("chan_", "#", 1)
+            let entry_key = if clean_section.starts_with("chan_") {
+                clean_section.replacen("chan_", "#", 1)
             } else {
-                section_name.clone()
+                clean_section.to_string()
             };
 
             let mut entry = EntryData::default();
@@ -371,23 +325,17 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
 ///
 /// - `Result<()>` - Success (unit type) or an error
 pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Result<()> {
-    // Add timeout to prevent hanging during file operations
     let start_time = std::time::Instant::now();
-    let timeout = std::time::Duration::from_secs(3); // Slightly longer timeout for file operations
 
-    log::debug!("save_config: starting configuration save");
+    log::debug!("save_config: starting (entries: {}, keys: {})", 
+        config.entries.len(), config.keys.len());
 
     let mut ini = Ini::new();
 
-    // Check timeout
-    if start_time.elapsed() > timeout {
-        log::error!("save_config: timed out before saving keys");
-        return Err(FishError::ConfigError("Timed out before saving keys".to_string()));
-    }
-
     // Save [Keys] section
+    let keys_section = "Keys";
     for (k, v) in &config.keys {
-        ini.set("Keys", k, Some(v.to_string()));
+        ini.set(keys_section, k, Some(v.clone()));
     }
 
     // Save [KeyPair] section
@@ -399,8 +347,9 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
     }
 
     // Save [NickNetworks] section
+    let nick_section = "NickNetworks";
     for (k, v) in &config.nick_networks {
-        ini.set("NickNetworks", k, Some(v.to_string()));
+        ini.set(nick_section, k, Some(v.clone()));
     }
 
     // Save [FiSH11] section
@@ -416,24 +365,38 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
     // Save [Startup] section
     if let Some(date) = config.startup_data.date {
         ini.set("Startup", "date", Some(date.to_string()));
-    } // Save entry sections in new format [nickname@network] and [chan_channel@network]
+    }
+    
+    // OPTIMISATION: Save entry sections with minimal allocations
+    let entries_start = std::time::Instant::now();
+    
     for (key, entry) in &config.entries {
+        // Clean up the key: remove any existing brackets that might have been accidentally included
+        let clean_key = key.trim_start_matches('[').trim_end_matches(']');
+        
         // Transform keys that start with # to use chan_ prefix for INI compatibility
-        let section_name =
-            if key.starts_with('#') { key.replacen('#', "chan_", 1) } else { key.clone() };
+        // Use Cow to avoid unnecessary allocations when no transformation is needed
+        let section_name: std::borrow::Cow<str> = if clean_key.starts_with('#') {
+            std::borrow::Cow::Owned(clean_key.replacen('#', "chan_", 1))
+        } else {
+            std::borrow::Cow::Borrowed(clean_key)
+        };
 
         if let Some(key_val) = &entry.key {
-            ini.set(&section_name, "key", Some(key_val.clone()));
+            ini.set(section_name.as_ref(), "key", Some(key_val.clone()));
         }
         if let Some(date) = &entry.date {
-            ini.set(&section_name, "date", Some(date.clone()));
+            ini.set(section_name.as_ref(), "date", Some(date.clone()));
         }
     }
-
-    // Check timeout before file operations
-    if start_time.elapsed() > timeout {
-        log::error!("save_config: timed out before file operations");
-        return Err(FishError::ConfigError("Timed out before file operations".to_string()));
+    
+    let entries_duration = entries_start.elapsed();
+    if entries_duration.as_millis() > 100 {
+        log::warn!(
+            "save_config: entries processing took {:?} for {} entries", 
+            entries_duration, 
+            config.entries.len()
+        );
     }
 
     // Get config path
@@ -453,22 +416,37 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
 
     // Create a temp path for safe writing
     let temp_path = config_path.with_extension("tmp");
-    log::debug!("save_config: using temp file: {}", temp_path.display());
-
-    // Check timeout before writing file
-    if start_time.elapsed() > timeout {
-        log::error!("save_config: timed out before writing config file");
-        return Err(FishError::ConfigError("Timed out before writing config file".to_string()));
-    }
 
     // Write to the temp file first
+    let write_start = std::time::Instant::now();
+    
     match ini.write(&temp_path) {
         Ok(_) => {
-            log::debug!("save_config: successfully wrote to temp file");
+            let write_duration = write_start.elapsed();
+            
             // Now rename the temp file to the actual config file
             match fs::rename(&temp_path, &config_path) {
                 Ok(_) => {
-                    log::debug!("save_config: successfully renamed temp file to config file");
+                    let total_duration = start_time.elapsed();
+                    
+                    log::debug!(
+                        "save_config: completed in {:?} (write: {:?}, entries: {:?})", 
+                        total_duration, 
+                        write_duration,
+                        entries_duration
+                    );
+                    
+                    if total_duration.as_secs() > 1 {
+                        log::warn!(
+                            "save_config: SLOW SAVE! Took {:?} for {} entries. Check disk I/O.", 
+                            total_duration, 
+                            config.entries.len()
+                        );
+                    }
+                    
+                    // Mark config as clean after successful save
+                    config.mark_clean();
+                    
                     Ok(())
                 }
                 Err(e) => {
@@ -509,14 +487,14 @@ mod tests {
             "test_entry@test_net".to_string(),
             EntryData {
                 key: Some("entry_key_b64".to_string()),
-                date: Some("01/01/2025".to_string()),
+                date: Some("2025-01-01 00:00:00".to_string()),
             },
         );
         config.entries.insert(
             "#test_chan@test_net".to_string(),
             EntryData {
                 key: Some("chan_key_b64".to_string()),
-                date: Some("02/01/2025".to_string()),
+                date: Some("2025-01-02 00:00:00".to_string()),
             },
         );
         config

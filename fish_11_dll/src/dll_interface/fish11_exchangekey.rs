@@ -2,16 +2,15 @@ use std::ffi::c_char;
 use std::os::raw::c_int;
 use std::time::Instant;
 
-use log::{debug, info};
+use crate::platform_types::BOOL;
+use crate::platform_types::HWND;
+use log::{debug, info, warn};
 use rand::RngCore;
 use rand::rngs::OsRng;
 use secrecy::ExposeSecret;
 use subtle::ConstantTimeEq;
-use crate::platform_types::BOOL;
-use crate::platform_types::HWND;
 
 use crate::buffer_utils;
-//use crate::config::file_storage::save_config;
 use crate::config::save_config;
 use crate::config::{CONFIG, get_key_default, get_keypair, set_key_default, store_keypair};
 use crate::crypto::{KeyPair, format_public_key, generate_keypair};
@@ -21,6 +20,9 @@ use crate::unified_error::{DllError, DllResult};
 use crate::utils::normalize_nick;
 
 dll_function_identifier!(FiSH11_ExchangeKey, data, {
+    let overall_start = Instant::now();
+    info!("=== Key exchange initiated ===");
+
     // This function is time-sensitive as it's part of an interactive user workflow.
     // A timeout ensures we don't block mIRC indefinitely if crypto operations hang.
     let start_time = Instant::now();
@@ -37,22 +39,42 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     info!("Key exchange initiated for nickname: {}", nickname);
 
     // Timeout check 1
-    // Ensure the process hasn't stalled before the first significant operation.
     check_timeout(start_time, timeout, "before key check")?;
+
+    // Track if we need to save config at the end
+    let mut config_modified = false;
+
+    // Step 1: Ensure key exists (may generate new key)
+    let step1_start = Instant::now();
     let key_was_generated = ensure_key_exists(&nickname)?;
+    if key_was_generated {
+        config_modified = true;
+    }
+    debug!("Step 1 (key check/generation) took {:?}", step1_start.elapsed());
 
     // Timeout check 2
-    // Key generation can be slow; check again before the next step.
     check_timeout(start_time, timeout, "before keypair generation")?;
-    let keypair = get_or_generate_keypair()?;
+
+    // Step 2: Get or generate keypair
+    let step2_start = Instant::now();
+    let (keypair, keypair_was_generated) = get_or_generate_keypair_internal()?;
+    if keypair_was_generated {
+        config_modified = true;
+    }
+    debug!("Step 2 (keypair check/generation) took {:?}", step2_start.elapsed());
 
     // Timeout check 3
-    // Final check before formatting the output.
     check_timeout(start_time, timeout, "before keypair validation")?;
-    validate_keypair_safety(&keypair)?;
 
-    // Step 4: format public key for sharing
+    // Step 3: Validate keypair
+    let step3_start = Instant::now();
+    validate_keypair_safety(&keypair)?;
+    debug!("Step 3 (keypair validation) took {:?}", step3_start.elapsed());
+
+    // Step 4: Format public key for sharing
+    let step4_start = Instant::now();
     let formatted_key = format_public_key(&keypair.public_key);
+    debug!("Step 4 (key formatting) took {:?}", step4_start.elapsed());
 
     if !formatted_key.starts_with("FiSH11-PubKey:") {
         return Err(DllError::KeyInvalid {
@@ -62,17 +84,48 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
 
     debug!("Public key formatted successfully (length: {})", formatted_key.len());
 
+    // Step 5: Save config ONCE if anything was modified
+    if config_modified {
+        let save_start = Instant::now();
+        info!("Saving configuration changes...");
+
+        // Take a snapshot of the config and release the lock immediately
+        let config_snapshot = {
+            let config_guard = CONFIG.lock();
+            config_guard.clone()
+        }; // Lock released here
+
+        // Now save without holding the lock
+        save_config(&config_snapshot, None)?;
+
+        let save_duration = save_start.elapsed();
+        info!("Configuration saved in {:?}", save_duration);
+
+        if save_duration.as_secs() > 2 {
+            warn!("Config save took longer than 2 seconds! Check disk I/O performance.");
+        }
+    } else {
+        debug!("No configuration changes to save");
+    }
+
     // Return the formatted public key token directly so callers (like the mIRC
     // script) can use it programmatically instead of parsing a verbose /echo
     // message. Keep logging for UX and debugging.
+    let total_duration = overall_start.elapsed();
     if key_was_generated {
         info!(
-            "Key exchange setup completed for {} (generated new key)",
-            nickname
+            "Key exchange setup completed for {} (generated new key) in {:?}",
+            nickname, total_duration
         );
     } else {
-        info!("Key exchange setup completed successfully for {}", nickname);
+        info!("Key exchange setup completed successfully for {} in {:?}", nickname, total_duration);
     }
+
+    if total_duration.as_secs() > 3 {
+        warn!("Key exchange took longer than 3 seconds! Duration: {:?}", total_duration);
+    }
+
+    info!("=== Key exchange completed ===");
 
     // Return only the token, e.g. "FiSH11-PubKey:BASE64..."
     Ok(formatted_key)
@@ -81,6 +134,7 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
 // ========== HELPER FUNCTIONS ==========
 
 /// Ensure a key exists for the given nickname, generating one if needed
+/// Returns (key_was_generated: bool)
 fn ensure_key_exists(nickname: &str) -> DllResult<bool> {
     match get_key_default(nickname) {
         Ok(_) => {
@@ -90,44 +144,52 @@ fn ensure_key_exists(nickname: &str) -> DllResult<bool> {
         Err(_) => {
             info!("No existing key found for {}, generating new key", nickname);
 
+            let keygen_start = Instant::now();
+
             // Use the secure random key generator with retry logic
             let key_bytes = generate_secure_random_key()?;
 
-            // Store the key with overwrite enabled
+            debug!("Key generation took {:?}", keygen_start.elapsed());
+
+            // Store the key with overwrite enabled (in-memory only, no disk I/O yet)
             set_key_default(nickname, &key_bytes, true)?;
 
-            // Persist configuration to disk
-            let config_guard = CONFIG.lock();
-            save_config(&*config_guard, None)?;
-
-            info!("Successfully generated and stored new key for {}", nickname);
+            info!(
+                "Successfully generated and stored new key for {} (not yet saved to disk)",
+                nickname
+            );
             Ok(true) // Key was generated
         }
     }
 }
 
 /// Get or generate our Curve25519 keypair for Diffie-Hellman key exchange
-fn get_or_generate_keypair() -> DllResult<KeyPair> {
+/// Returns (keypair, was_generated: bool)
+fn get_or_generate_keypair_internal() -> DllResult<(KeyPair, bool)> {
     match get_keypair() {
         Ok(kp) => {
             debug!("Retrieved existing keypair");
-            Ok(kp)
+            Ok((kp, false))
         }
         Err(_) => {
             info!("No keypair found, generating new one");
-            let new_keypair = generate_keypair();
 
-            // Store the new keypair
+            let keygen_start = Instant::now();
+            let new_keypair = generate_keypair();
+            debug!("Keypair generation took {:?}", keygen_start.elapsed());
+
+            // Store the new keypair (in-memory only, no disk I/O yet)
             store_keypair(&new_keypair)?;
 
-            // Persist configuration to disk
-            let config_guard = CONFIG.lock();
-            save_config(&*config_guard, None)?;
-
-            info!("Successfully generated and stored new keypair");
-            Ok(new_keypair)
+            info!("Successfully generated and stored new keypair (not yet saved to disk)");
+            Ok((new_keypair, true))
         }
     }
+}
+
+/// Get or generate our Curve25519 keypair (public API, for backward compatibility)
+fn get_or_generate_keypair() -> DllResult<KeyPair> {
+    get_or_generate_keypair_internal().map(|(kp, _)| kp)
 }
 
 /// Validate that a keypair is not all zeros (safety check)
@@ -138,19 +200,23 @@ fn validate_keypair_safety(keypair: &KeyPair) -> DllResult<()> {
 
 /// Check if function has timed out
 fn check_timeout(start_time: Instant, timeout: std::time::Duration, stage: &str) -> DllResult<()> {
-    if start_time.elapsed() > timeout {
+    let elapsed = start_time.elapsed();
+    if elapsed > timeout {
         Err(DllError::Timeout {
             operation: "Key Exchange".to_string(),
             duration_secs: timeout.as_secs(),
             stage: stage.to_string(),
         })
     } else {
+        debug!("Timeout check passed at stage '{}': {:?} elapsed", stage, elapsed);
         Ok(())
     }
 }
 
 /// Generate a secure random key with enhanced error recovery
 fn generate_secure_random_key() -> DllResult<[u8; 32]> {
+    let start = Instant::now();
+
     // Use a local OsRng instance and retry a few times. If RNG panics or fails,
     // return a specific DllError instead of letting the panic propagate.
     for attempt in 1..=3 {
@@ -163,13 +229,23 @@ fn generate_secure_random_key() -> DllResult<[u8; 32]> {
 
         match generation_result {
             Ok(key_bytes) => {
-                debug!("Successfully generated random key on attempt {}", attempt);
+                let duration = start.elapsed();
+                debug!(
+                    "Successfully generated random key on attempt {} in {:?}",
+                    attempt, duration
+                );
+
+                if duration.as_millis() > 100 {
+                    warn!("RNG took longer than 100ms: {:?}", duration);
+                }
+
                 return Ok(key_bytes);
             }
             Err(_) => {
-                log::warn!("RNG failed on attempt {}/3", attempt);
+                warn!("RNG failed on attempt {}/3", attempt);
                 if attempt < 3 {
-                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    // Use a very short sleep to avoid blocking mIRC
+                    std::thread::sleep(std::time::Duration::from_millis(5));
                 }
             }
         }

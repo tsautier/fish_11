@@ -64,11 +64,11 @@ post-build = [
 ]
 
 [profile.release]
-debug = 1
-opt-level = 3
+#debug = 1
+#opt-level = 3
 codegen-units = 1
-lto = "thin"
-panic = "abort"
+#lto = "thin"
+#panic = "abort"
 
 [profile.release.package."*"]
 codegen-units = 1

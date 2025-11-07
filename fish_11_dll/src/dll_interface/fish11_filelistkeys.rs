@@ -57,8 +57,8 @@ mod tests {
             ptr::null_mut(),
             buffer.as_mut_ptr(),
             ptr::null_mut(),
-            0,
-            0,
+            ptr::null_mut(),
+            ptr::null_mut(),
         );
 
         // Restore previous buffer size
@@ -110,8 +110,8 @@ mod tests {
             ptr::null_mut(),
             buffer.as_mut_ptr(),
             bad_input.as_ptr() as *mut c_char,
-            0,
-            0,
+            ptr::null_mut(),
+            ptr::null_mut(),
         );
 
         let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
