@@ -20,8 +20,7 @@ x25519-dalek = { version = "2", features = ["static_secrets", "getrandom"] }
 chacha20poly1305 = "0.10"
 crypto = "0.5.1"
 
-# TODO : bump all the versions
-rand = "0.8.5"                                   #Hard to bump to 0.9
+rand = "0.8.5"                                   #Hard to bump to 0.9 because x25519 is not compatible >v0.9
 sha2 = "0.10"
 base64 = "0.22.1"
 configparser = "3.1.0"
@@ -31,26 +30,21 @@ ini = "1.3.0"
 
 # Security enhancements
 subtle = "2.5"
-secrecy = "0.8"            #Hard to bump to 0.10.3
+secrecy = "0.8"
 hkdf = "0.12"
 lru_time_cache = "0.11"
 zeroize = "1.6"
 regex = "1.11.1"
 libc = "0.2.177"
-parking_lot = "0.12"       # More robust mutex implementation
-thiserror = "2.0"          # Derive Error and Display implementations
+parking_lot = "0.12"
+thiserror = "2.0"
 
 # Platform-specific dependencies
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["windef", "winuser", "libloaderapi"] }
 
 [build-dependencies]
-vergen = { version = "9.0.6", features = [
-    "build",
-    "cargo",
-    "rustc",
-    "si",
-] } 
+vergen = { version = "9.0.6", features = ["build", "cargo", "rustc", "si"] }
 
 [dev-dependencies]
 tempfile = "3.0"
