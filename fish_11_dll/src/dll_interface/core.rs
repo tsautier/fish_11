@@ -1,10 +1,21 @@
 use std::sync::Mutex;
 
 use log;
-use winapi::shared::minwindef::{BOOL, DWORD, HINSTANCE, LPVOID, TRUE};
-use winapi::shared::windef::HWND;
+use crate::platform_types::{BOOL, HWND, c_int};
 
-use crate::dll_interface::{DEFAULT_MIRC_BUFFER_SIZE, c_int};
+#[cfg(windows)]
+use winapi::shared::minwindef::{DWORD, HINSTANCE, LPVOID, TRUE};
+
+#[cfg(not(windows))]
+type DWORD = u32;
+#[cfg(not(windows))]
+type HINSTANCE = *mut std::ffi::c_void;
+#[cfg(not(windows))]
+type LPVOID = *mut std::ffi::c_void;
+#[cfg(not(windows))]
+const TRUE: c_int = 1;
+
+use crate::dll_interface::DEFAULT_MIRC_BUFFER_SIZE;
 
 /// mIRC stuffaize
 #[allow(dead_code)]
@@ -88,6 +99,7 @@ pub(crate) fn get_buffer_size_basic() -> usize {
 /// This is an automatic Windows mechanism - not called directly by user code
 #[allow(non_snake_case)]
 #[no_mangle]
+#[cfg(windows)]
 pub extern "system" fn DllMain(_hinst: HINSTANCE, reason: DWORD, _: LPVOID) -> BOOL {
     match reason {
         winapi::um::winnt::DLL_PROCESS_ATTACH => {
@@ -106,6 +118,7 @@ pub extern "system" fn DllMain(_hinst: HINSTANCE, reason: DWORD, _: LPVOID) -> B
                 log::debug!("System information: Process ID: {}", std::process::id());
 
                 // When this DLL is loaded, it tries to register itself with the inject DLL.
+                #[cfg(windows)]
                 crate::engine_registration::register_engine();
 
                 // Log OS information if available
@@ -137,6 +150,7 @@ pub extern "system" fn DllMain(_hinst: HINSTANCE, reason: DWORD, _: LPVOID) -> B
 /// Load the DLL and initialize it
 /// This is needed for mIRC to load the DLL properly
 #[no_mangle]
+#[cfg(windows)]
 pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
     // Ensure logger is initialized (in case DllMain didn't do it)
     if !crate::logging::is_logger_initialized() {
@@ -212,6 +226,7 @@ pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
 /// # Returns
 /// Returns 0 to allow unload or 1 to prevent unload
 #[no_mangle]
+#[cfg(windows)]
 pub extern "stdcall" fn UnloadDll(_timeout: c_int) -> c_int {
     // Log function entry with parameters
     crate::logging::log_function_entry("UnloadDll", Some(_timeout));
@@ -238,3 +253,71 @@ pub extern "stdcall" fn UnloadDll(_timeout: c_int) -> c_int {
 
     0 // Allow unload
 }
+
+// Unix-compatible versions (extern "C" instead of "stdcall")
+#[no_mangle]
+#[cfg(not(windows))]
+pub extern "C" fn LoadDll(load: *mut LOADINFO) -> BOOL {
+    // Ensure logger is initialized
+    if !crate::logging::is_logger_initialized() {
+        let _ = crate::logging::init_logger(log::LevelFilter::Info);
+    }
+
+    log::debug!("LoadDll called for FiSH v{}", crate::FISH_11_VERSION);
+    crate::logging::log_function_entry("LoadDll", None::<i32>);
+    
+    crate::config::init_config();
+    
+    let mut mirc_version = String::from("Unknown version");
+    let mut buffer_size = DEFAULT_MIRC_BUFFER_SIZE;
+    let mut unicode_mode = false;
+
+    if !load.is_null() {
+        unsafe {
+            (*load).m_keep = TRUE;
+            let major = ((*load).m_version >> 16) & 0xFFFF;
+            let minor = (*load).m_version & 0xFFFF;
+            mirc_version = format!("{}.{}", major, minor);
+            buffer_size = (*load).m_bytes as usize;
+            unicode_mode = (*load).m_unicode != 0;
+
+            let mut global_info = LOAD_INFO.lock().expect("LOAD_INFO mutex should not be poisoned");
+            *global_info = Some(*load);
+
+            log::info!("CONFIG: version = {}", mirc_version);
+            log::info!("CONFIG: buffer_size = {}", buffer_size);
+            log::info!("CONFIG: unicode_mode = {}", unicode_mode);
+        }
+    } else {
+        log::warn!("LoadDll called with null pointer - using default buffer size");
+    }
+
+    log::info!("FiSH_11 v{} initialized successfully (version {})", crate::FISH_11_VERSION, mirc_version);
+    log::debug!("EXIT: LoadDll - returned TRUE");
+
+    TRUE
+}
+
+#[no_mangle]
+#[cfg(not(windows))]
+pub extern "C" fn UnloadDll(_timeout: c_int) -> c_int {
+    crate::logging::log_function_entry("UnloadDll", Some(_timeout));
+
+    if _timeout == 1 {
+        log::info!("Client is shutting down - preparing for unload");
+    } else {
+        log::info!("Client requested DLL unload - regular operation");
+    }
+
+    {
+        let mut state = LOAD_INFO.lock().expect("LOAD_INFO mutex should not be poisoned");
+        log::debug!("Cleaning up LOAD_INFO resources");
+        *state = None;
+    }
+
+    log::info!("FiSH_11 resources released and ready for unload");
+    crate::logging::log_function_exit("UnloadDll", Some(0));
+
+    0
+}
+

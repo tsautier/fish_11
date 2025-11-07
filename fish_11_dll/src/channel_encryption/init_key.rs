@@ -4,8 +4,8 @@ use crate::crypto;
 use crate::dll_function_identifier;
 use crate::unified_error::DllError;
 use std::ffi::{c_char, c_int};
-use winapi::shared::minwindef::BOOL;
-use winapi::shared::windef::HWND;
+use crate::platform_types::BOOL;
+use crate::platform_types::HWND;
 
 dll_function_identifier!(FiSH11_InitChannelKey, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };

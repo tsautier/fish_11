@@ -5,8 +5,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
-use winapi::shared::minwindef::BOOL;
-use winapi::shared::windef::HWND;
+use crate::platform_types::{BOOL, HWND};
 use x25519_dalek::PublicKey;
 
 use crate::dll_function_identifier;

@@ -277,7 +277,7 @@ pub unsafe fn store_ssl_mapping(ssl: *mut SSL, socket: SOCKET) {
 /// - buf is valid for writes of up to num bytes
 /// - ssl is a valid OpenSSL SSL* pointer
 pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int) -> c_int {
-    trace!("[HOOK] hooked_ssl_read() called: ssl={:p}, buf={:p}, num={}", ssl, buf, num);
+    trace!("[h00k] hooked_ssl_read() called: ssl={:p}, buf={:p}, num={}", ssl, buf, num);
     let ssl_read_guard = SSL_READ_HOOK.lock().unwrap_or_else(handle_poison);
     let original = ssl_read_guard.as_ref().expect("SSL_read hook not initialized");
 
@@ -357,7 +357,7 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
         }
         // Existing trace log
         trace!(
-            "[HOOK] hooked_ssl_read() decrypted data for socket {} ({} bytes): {:02X?}",
+            "[h00k] hooked_ssl_read() decrypted data for socket {} ({} bytes): {:02X?}",
             socket_id,
             bytes_read,
             &data_slice[..std::cmp::min(32, data_slice.len())]
@@ -408,11 +408,11 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
 /// # Safety
 /// Uses raw pointers and C FFI. Must ensure buffer and SSL context are valid.
 unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int) -> c_int {
-    trace!("[HOOK] hooked_ssl_write() called: ssl={:p}, buf={:p}, num={}", ssl, buf, num);
+    trace!("[h00k] hooked_ssl_write() called: ssl={:p}, buf={:p}, num={}", ssl, buf, num);
     // Log the plaintext data being sent (first 32 bytes)
     if num > 0 && !buf.is_null() {
         let data_slice = std::slice::from_raw_parts(buf, std::cmp::min(num as usize, 32));
-        trace!("[HOOK] hooked_ssl_write() plaintext data ({} bytes): {:02X?}", num, data_slice);
+        trace!("[h00k] hooked_ssl_write() plaintext data ({} bytes): {:02X?}", num, data_slice);
     }
     // Find socket ID associated with this SSL pointer.
     let socket_id = {
@@ -835,7 +835,7 @@ pub unsafe fn install_ssl_hooks(
     );
 
     #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: Creating SSL_read GenericDetour...");
+    info!("install_ssl_hooks: creating SSL_read GenericDetour...");
     *ssl_read_hook = Some(
         GenericDetour::new(ssl_read, hooked_ssl_read)
             .map_err(|e| {
@@ -1127,7 +1127,7 @@ pub fn uninstall_ssl_hooks() {
     if all_hooks_disabled {
         info!("All SSL hooks successfully uninstalled");
     } else {
-        warn!("Damn, some SSL hooks could not be properly uninstalled !");
+        warn!("Damn, some SSL h00ks could not be properly uninstalled !");
     }
 }
 

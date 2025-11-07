@@ -5,8 +5,8 @@ use crate::dll_function_identifier;
 use crate::unified_error::DllError;
 use base64::{Engine as _, engine::general_purpose};
 use std::ffi::{c_char, c_int};
-use winapi::shared::minwindef::BOOL;
-use winapi::shared::windef::HWND;
+use crate::platform_types::BOOL;
+use crate::platform_types::HWND;
 
 dll_function_identifier!(FiSH11_ProcessChannelKey, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };

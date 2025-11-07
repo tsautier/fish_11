@@ -2,8 +2,8 @@ use std::ffi::c_char;
 use std::os::raw::c_int;
 
 use base64::Engine;
-use winapi::shared::minwindef::BOOL;
-use winapi::shared::windef::HWND;
+use crate::platform_types::BOOL;
+use crate::platform_types::HWND;
 
 use crate::buffer_utils;
 use crate::config;

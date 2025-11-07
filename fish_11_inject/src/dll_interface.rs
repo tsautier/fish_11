@@ -47,8 +47,10 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
     let li = unsafe { &mut *loadinfo };
 
     #[cfg(debug_assertions)]
-    info!("LoadDll: LOADINFO fields - version: {}, unicode: {}, m_bytes: {}", 
-        li.m_version, li.m_unicode, li.m_bytes);
+    info!(
+        "LoadDll: LOADINFO fields - version: {}, unicode: {}, m_bytes: {}",
+        li.m_version, li.m_unicode, li.m_bytes
+    );
 
     #[cfg(debug_assertions)]
     info!("LoadDll: Acquiring MAX_MIRC_RETURN_BYTES lock...");
@@ -106,7 +108,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
 
     // Setup hooks via install_hooks()
     info!("Setting up socket hooks...");
-    
+
     #[cfg(debug_assertions)]
     info!("LoadDll: Calling install_hooks()...");
 
@@ -138,19 +140,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
     info!("LoadDll: install_hooks() completed successfully");
 
     #[cfg(debug_assertions)]
-    info!("LoadDll: Installing SSL inline patches...");
-
-    // Install inline SSL patches after hooks and after libssl-3.dll is likely loaded
-    /* unsafe {
-        if let Err(e) = ssl_inline_patch::install_ssl_inline_patches() {
-            error!("LoadDll: Failed to install SSL inline patches: {}", e);
-            #[cfg(debug_assertions)]
-            error!("LoadDll: SSL inline patch error: {}", e);
-        } else {
-            #[cfg(debug_assertions)]
-            info!("LoadDll: SSL inline patches installed successfully");
-        }
-    } */
+    info!("LoadDll: installing SSL inline patches...");
 
     #[cfg(debug_assertions)]
     info!("LoadDll: SSL inline patches installation completed");
@@ -173,17 +163,23 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
             if c_cmd.as_bytes_with_nul().len() <= current_max_len {
                 info!("Version info ready to be displayed via /fish11_version");
                 #[cfg(debug_assertions)]
-                info!("LoadDll: Version command fits in buffer (len: {} <= max: {})", 
-                    c_cmd.as_bytes_with_nul().len(), current_max_len);
+                info!(
+                    "LoadDll: Version command fits in buffer (len: {} <= max: {})",
+                    c_cmd.as_bytes_with_nul().len(),
+                    current_max_len
+                );
             } else {
                 warn!("Version info command too long for mIRC buffer.");
                 #[cfg(debug_assertions)]
-                warn!("LoadDll: Version command too long (len: {} > max: {})", 
-                    c_cmd.as_bytes_with_nul().len(), current_max_len);
+                warn!(
+                    "LoadDll: version command too long (len: {} > max: {})",
+                    c_cmd.as_bytes_with_nul().len(),
+                    current_max_len
+                );
             }
         } else {
             #[cfg(debug_assertions)]
-            error!("LoadDll: Failed to create CString for version command");
+            error!("LoadDll: failed to create CString for version command");
         }
     } else {
         #[cfg(debug_assertions)]
@@ -193,13 +189,13 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
     info!("=== LoadDll() finished successfully ===");
 
     #[cfg(debug_assertions)]
-    info!("LoadDll: Setting m_keep = 1 to keep DLL loaded");
+    info!("LoadDll: setting m_keep = 1 to keep DLL loaded");
 
     // Tell mIRC to keep the DLL loaded
     li.m_keep = 1;
 
     #[cfg(debug_assertions)]
-    info!("=== LoadDll: Returning MIRC_HALT (success) ===");
+    info!("=== LoadDll: returning MIRC_HALT (success) ===");
 
     MIRC_HALT // Return 0 for success
 }
@@ -277,16 +273,14 @@ pub extern "C" fn FiSH11_InjectDebugInfo(
 
     #[cfg(debug_assertions)]
     {
+        debug!("[DLL_INTERFACE DEBUG] FiSH11_InjectDebugInfo: preparing command buffer");
         debug!(
-            "[DLL_INTERFACE DEBUG] FiSH11_InjectDebugInfo: preparing command buffer"
-        );
-        debug!(
-            "[DLL_INTERFACE DEBUG] Command length: {} bytes (max_bytes: {})",
+            "[DLL_INTERFACE DEBUG] command length: {} bytes (max_bytes: {})",
             c_command.as_bytes().len(),
             max_bytes
         );
         debug!(
-            "[DLL_INTERFACE DEBUG] Command preview: {:?}",
+            "[DLL_INTERFACE DEBUG] command preview: {:?}",
             c_command.to_str().unwrap_or("<invalid UTF-8>")
         );
     }
@@ -299,12 +293,12 @@ pub extern "C" fn FiSH11_InjectDebugInfo(
 
         // Null terminate
         *data.add(std::cmp::min(src_len, max_bytes as usize - 1)) = 0;
-        
+
         #[cfg(debug_assertions)]
         {
             let copied_len = std::cmp::min(src_len, max_bytes as usize - 1);
             debug!(
-                "[DLL_INTERFACE DEBUG] Copied {} bytes to mIRC data buffer, null-terminated",
+                "[DLL_INTERFACE DEBUG] copied {} bytes to mIRC data buffer, null-terminated",
                 copied_len
             );
         }
@@ -340,15 +334,10 @@ pub extern "system" fn FiSH11_InjectVersion(
 
     #[cfg(debug_assertions)]
     {
+        debug!("[DLL_INTERFACE DEBUG] FiSH11_InjectVersion: preparing version command buffer");
+        debug!("[DLL_INTERFACE DEBUG] command length: {} bytes", command.as_bytes_with_nul().len());
         debug!(
-            "[DLL_INTERFACE DEBUG] FiSH11_InjectVersion: preparing version command buffer"
-        );
-        debug!(
-            "[DLL_INTERFACE DEBUG] Command length: {} bytes",
-            command.as_bytes_with_nul().len()
-        );
-        debug!(
-            "[DLL_INTERFACE DEBUG] Command preview: {:?}",
+            "[DLL_INTERFACE DEBUG] command preview: {:?}",
             command.to_str().unwrap_or("<invalid UTF-8>")
         );
     }
@@ -376,20 +365,17 @@ pub extern "system" fn FiSH11_InjectVersion(
             #[cfg(debug_assertions)]
             {
                 debug!(
-                    "[DLL_INTERFACE DEBUG] Copied {} bytes to mIRC data buffer, null-terminated",
+                    "[DLL_INTERFACE DEBUG] copied {} bytes to mIRC data buffer, null-terminated",
                     copy_len
                 );
-                
+
                 // Verify what was actually written to the buffer
                 let written_slice = std::slice::from_raw_parts(data as *const u8, copy_len);
                 if let Ok(written_text) = std::str::from_utf8(written_slice) {
-                    debug!(
-                        "[DLL_INTERFACE DEBUG] Buffer content verification: {:?}",
-                        written_text
-                    );
+                    debug!("[DLL_INTERFACE DEBUG] buffer content verification: {:?}", written_text);
                 } else {
                     debug!(
-                        "[DLL_INTERFACE DEBUG] Buffer content (hex): {:02X?}",
+                        "[DLL_INTERFACE DEBUG] buffer content (hex): {:02X?}",
                         &written_slice[..std::cmp::min(64, written_slice.len())]
                     );
                 }

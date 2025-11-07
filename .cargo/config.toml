@@ -1,5 +1,6 @@
 [build]
-target = "i686-pc-windows-msvc"
+# Default target for Windows builds (comment out for Linux/Unix builds)
+# target = "i686-pc-windows-msvc"
 
 [alias]
 package = "shell powershell -NoProfile -ExecutionPolicy Bypass -File .\\build_release.ps1"
