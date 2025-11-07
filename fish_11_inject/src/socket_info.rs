@@ -46,7 +46,7 @@ impl crate::socket_info::SocketInfo {
             }
             None => {
                 warn!(
-                    "Socket {}: Could not acquire stats lock in on_sending, assuming not first data",
+                    "Socket {}: could not acquire stats lock in on_sending, assuming not first data",
                     self.socket
                 );
                 false // Conservative assumption if lock is poisoned
@@ -60,7 +60,7 @@ impl crate::socket_info::SocketInfo {
 
         // Process the outgoing data through engines
         trace!(
-            "Socket {}: [OUT RAW] Full outgoing buffer ({} bytes): {:02X?}",
+            "Socket {}: [OUT RAW] full outgoing buffer ({} bytes): {:02X?}",
             self.socket,
             data.len(),
             data
@@ -94,7 +94,7 @@ impl crate::socket_info::SocketInfo {
                         None => {
                             // Handle mutex acquisition failure gracefully
                             warn!(
-                                "Socket {}: Could not acquire lock on outgoing_line_buffer, skipping processing",
+                                "Socket {}: could not acquire lock on outgoing_line_buffer, skipping processing",
                                 self.socket
                             );
                             return Ok(());
@@ -161,7 +161,7 @@ impl crate::socket_info::SocketInfo {
                         }
                         None => {
                             warn!(
-                                "Socket {}: Could not acquire lock to store remaining data",
+                                "Socket {}: could not acquire lock to store remaining data",
                                 self.socket
                             );
                         }
@@ -179,24 +179,24 @@ impl crate::socket_info::SocketInfo {
             }
             Err(e) => {
                 // Non-UTF8 data, likely binary/encrypted
-                trace!("Socket {}: [OUT RAW] Non-UTF8 data", self.socket);
+                trace!("Socket {}: [OUT RAW] non-UTF8 data", self.socket);
 
                 warn!(
-                    "Socket {}: Failed to interpret outgoing data as UTF-8: {}. First 16 bytes: {:02X?}",
+                    "Socket {}: failed to interpret outgoing data as UTF-8: {}. First 16 bytes: {:02X?}",
                     self.socket,
                     e,
                     &data.iter().take(16).cloned().collect::<Vec<u8>>()
                 );
                 if self.is_ssl() && self.get_state() == SocketState::TlsHandshake {
                     trace!(
-                        "Socket {}: [SSL OUT] Sending TLS handshake data ({} bytes): {:02X?}",
+                        "Socket {}: [SSL OUT] sending TLS handshake data ({} bytes): {:02X?}",
                         self.socket,
                         data.len(),
                         &data.iter().take(16).cloned().collect::<Vec<u8>>()
                     );
                 } else {
                     trace!(
-                        "Socket {}: [BIN OUT] Sending binary data ({} bytes): {:02X?}",
+                        "Socket {}: [BIN OUT] sending binary data ({} bytes): {:02X?}",
                         self.socket,
                         data.len(),
                         &data.iter().take(16).cloned().collect::<Vec<u8>>()
@@ -297,7 +297,7 @@ impl SocketInfo {
                 if buffer.len() + data.len() > 1_000_000 {
                     // TODO : 1MB limit as an example
                     warn!(
-                        "Socket {}: Received buffer exceeds 1MB limit, truncating older data to mitigate DoS attack",
+                        "Socket {}: received buffer exceeds 1MB limit, truncating older data to mitigate DoS attack",
                         self.socket
                     );
 
@@ -789,7 +789,7 @@ impl SocketInfo {
                 #[cfg(debug_assertions)]
                 {
                     debug!(
-                        "[PROCESS_LINES DEBUG] Socket {}: received_buffer has {} bytes before processing",
+                        "[PROCESS_LINES DEBUG] socket {}: received_buffer has {} bytes before processing",
                         self.socket,
                         buffer.len()
                     );
@@ -814,7 +814,7 @@ impl SocketInfo {
         };
 
         trace!(
-            "Socket {}: [IN RAW] Full received buffer ({} bytes): {:02X?}",
+            "Socket {}: [IN RAW] full received buffer ({} bytes): {:02X?}",
             self.socket,
             data.len(),
             data
@@ -823,13 +823,13 @@ impl SocketInfo {
         #[cfg(debug_assertions)]
         {
             debug!(
-                "[PROCESS_LINES DEBUG] Socket {}: processing buffer of {} bytes",
+                "[PROCESS_LINES DEBUG] socket {}: processing buffer of {} bytes",
                 self.socket,
                 data.len()
             );
             let preview_len = std::cmp::min(128, data.len());
             debug!(
-                "[PROCESS_LINES DEBUG] Socket {}: hex preview (first {} bytes): {:02X?}",
+                "[PROCESS_LINES DEBUG] socket {}: hex preview (first {} bytes): {:02X?}",
                 self.socket,
                 preview_len,
                 &data[..preview_len]
@@ -855,7 +855,7 @@ impl SocketInfo {
                         })
                         .collect();
                     debug!(
-                        "[PROCESS_LINES DEBUG] Socket {}: UTF-8 content preview (sanitized, first 256 chars): {:?}",
+                        "[PROCESS_LINES DEBUG] socket {}: UTF-8 content preview (sanitized, first 256 chars): {:?}",
                         self.socket, sanitized
                     );
                 }
@@ -879,7 +879,7 @@ impl SocketInfo {
                     {
                         // Log details about each IRC line
                         debug!(
-                            "[PROCESS_LINES DEBUG] Socket {}: processing IRC line ({} bytes): {:?}",
+                            "[PROCESS_LINES DEBUG] socket {}: processing IRC line ({} bytes): {:?}",
                             self.socket,
                             line.len(),
                             line
@@ -888,7 +888,7 @@ impl SocketInfo {
                         // Check for specific IRC commands or FiSH markers
                         if line.contains("PRIVMSG") || line.contains("NOTICE") {
                             debug!(
-                                "[PROCESS_LINES DEBUG] Socket {}: detected IRC message command",
+                                "[PROCESS_LINES DEBUG] socket {}: detected IRC message command",
                                 self.socket
                             );
 
@@ -898,7 +898,7 @@ impl SocketInfo {
                                 || line.contains("mcps ")
                             {
                                 debug!(
-                                    "[PROCESS_LINES DEBUG] Socket {}: detected encrypted FiSH message",
+                                    "[PROCESS_LINES DEBUG] socket {}: detected encrypted FiSH message",
                                     self.socket
                                 );
                             }
@@ -906,7 +906,7 @@ impl SocketInfo {
 
                         if line.contains("X25519_INIT") || line.contains("FiSH11-PubKey:") {
                             debug!(
-                                "[PROCESS_LINES DEBUG] Socket {}: detected FiSH key exchange",
+                                "[PROCESS_LINES DEBUG] socket {}: detected FiSH key exchange",
                                 self.socket
                             );
                         }
@@ -944,7 +944,7 @@ impl SocketInfo {
                             #[cfg(debug_assertions)]
                             {
                                 debug!(
-                                    "[PROCESS_LINES DEBUG] Socket {}: added {} bytes to processed_incoming_buffer (total now: {} bytes)",
+                                    "[PROCESS_LINES DEBUG] socket {}: added {} bytes to processed_incoming_buffer (total now: {} bytes)",
                                     self.socket,
                                     line_buffer.len(),
                                     buffer.len()
@@ -971,7 +971,7 @@ impl SocketInfo {
                 #[cfg(debug_assertions)]
                 {
                     debug!(
-                        "[PROCESS_LINES DEBUG] Socket {}: finished processing, {} lines total",
+                        "[PROCESS_LINES DEBUG] socket {}: finished processing, {} lines total",
                         self.socket, lines_processed
                     );
                 }

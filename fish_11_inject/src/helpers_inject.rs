@@ -184,7 +184,7 @@ pub fn install_hooks() -> Result<(), io::Error> {
 
             match install_ssl_hooks(ssl_read, ssl_write, ssl_get_fd, ssl_is_init_finished) {
                 Ok(_) => {
-                    info!("w00w00 ! All SSL h00ks successfully installed !");
+                    info!("w00w00h ! All SSL h00kz successfully installed !");
                     #[cfg(debug_assertions)]
                     info!("install_hooks: SSL hooks installation succeeded");
                 }
@@ -264,11 +264,11 @@ pub fn cleanup_hooks() {
     uninstall_socket_hooks();
     info!("  * Socket hooks uninstalled");
 
-    info!("All hooks cleaned up sucessfully !");
+    info!("All h00kz cleaned up sucessfully !");
 }
 
-/// 1. Getting a handle to ws2_32.dll.
-/// 2. Retrieving the addresses of connect(), send(), recv(), and closesocket() using GetProcAddress.
+/// 1) Getting a handle to ws2_32.dll.
+/// 2) Retrieving the addresses of connect(), send(), recv(), and closesocket() using GetProcAddress.
 unsafe fn get_winsock_function(func_name: &str) -> FARPROC {
     #[cfg(debug_assertions)]
     info!("get_winsock_function: looking for function '{}'", func_name);
@@ -276,7 +276,7 @@ unsafe fn get_winsock_function(func_name: &str) -> FARPROC {
     let ws2_32 = GetModuleHandleA(b"ws2_32.dll\0".as_ptr() as _);
     if ws2_32.is_null() {
         #[cfg(debug_assertions)]
-        error!("get_winsock_function: Failed to get ws2_32.dll handle!");
+        error!("get_winsock_function: failed to get ws2_32.dll handle!");
 
         panic!("Failed to get ws2_32.dll handle");
     }

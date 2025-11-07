@@ -1083,7 +1083,8 @@ mod fcep1_ratchet_tests {
 
             // Extract nonce and advance ratchet
             let encrypted_bytes = crate::utils::base64_decode(&encrypted).unwrap();
-            let nonce: [u8; NONCE_SIZE_BYTES] = encrypted_bytes[..NONCE_SIZE_BYTES].try_into().unwrap();
+            let nonce: [u8; NONCE_SIZE_BYTES] =
+                encrypted_bytes[..NONCE_SIZE_BYTES].try_into().unwrap();
             current_key = advance_ratchet_key(&current_key, &nonce, channel).unwrap();
         }
 
@@ -1114,20 +1115,20 @@ mod fcep1_ratchet_tests {
         let initial_key = [1u8; 32];
         let mut state = RatchetState::new(initial_key);
         let nonce = [0u8; 12];
-        
+
         let key1 = state.current_key;
         let next_key1 = advance_ratchet_key(&key1, &nonce, "#test").unwrap();
         state.advance(next_key1);
-        
+
         // Key 1 should be in previous_keys
         assert!(state.previous_keys.contains(&key1));
         assert_ne!(state.current_key, key1);
-        
+
         // Advance again
         let key2 = state.current_key;
         let next_key2 = advance_ratchet_key(&key2, &nonce, "#test").unwrap();
         state.advance(next_key2);
-        
+
         // Keys should all be different
         assert_ne!(next_key1, next_key2);
     }
@@ -1151,7 +1152,7 @@ mod fcep1_ratchet_tests {
         let nonce2 = [2u8; 12];
         let next_key2 = advance_ratchet_key(&key2, &nonce2, channel).unwrap();
         state.advance(next_key2);
-        
+
         let key3 = state.current_key;
 
         // At this point, state.current_key is key3, and state.previous_keys contains [key1, key2]
@@ -1159,15 +1160,20 @@ mod fcep1_ratchet_tests {
         // Encrypt messages with their corresponding keys
         let msg1 = "old message";
         let encrypted1 = encrypt_message(&key1, msg1, None, Some(channel.as_bytes())).unwrap();
-        
+
         let msg3 = "current message";
         let encrypted3 = encrypt_message(&key3, msg3, None, Some(channel.as_bytes())).unwrap();
 
         // Decrypting the current message with the current key should work
-        assert_eq!(decrypt_message(&state.current_key, &encrypted3, Some(channel.as_bytes())).unwrap(), msg3);
+        assert_eq!(
+            decrypt_message(&state.current_key, &encrypted3, Some(channel.as_bytes())).unwrap(),
+            msg3
+        );
 
         // Decrypting the old message (msg1) with the current key should fail
-        assert!(decrypt_message(&state.current_key, &encrypted1, Some(channel.as_bytes())).is_err());
+        assert!(
+            decrypt_message(&state.current_key, &encrypted1, Some(channel.as_bytes())).is_err()
+        );
 
         // But it should succeed if we search through the previous_keys
         let mut decrypted_old_message = None;

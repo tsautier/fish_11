@@ -26,6 +26,10 @@ pub static SEND_HOOK: StdMutex<Option<GenericDetour<SendFn>>> = StdMutex::new(No
 pub static CONNECT_HOOK: StdMutex<Option<GenericDetour<ConnectFn>>> = StdMutex::new(None);
 pub static CLOSESOCKET_HOOK: StdMutex<Option<GenericDetour<ClosesocketFn>>> = StdMutex::new(None);
 
+// Maximum number of bytes to preview in debug logs
+const MAXIMUM_PREVIEW_SIZE: usize = 64;
+const TRACE_PREVIEW_SIZE: usize = 16;
+
 /// Hook implementation for recv
 pub unsafe extern "system" fn hooked_recv(
     s: SOCKET,
@@ -55,12 +59,13 @@ pub unsafe extern "system" fn hooked_recv(
         #[cfg(debug_assertions)]
         {
             // Detailed debug logging for received socket data
-            debug!("[RECV DEBUG] Socket {}: received {} bytes from recv()", s, bytes_received);
+            debug!("[RECV DEBUG] socket {}: received {} bytes from recv()", s, bytes_received);
 
             // Log hex preview of first 64 bytes
-            let preview_len = std::cmp::min(64, data_slice.len());
+            let preview_len = std::cmp::min(MAXIMUM_PREVIEW_SIZE, data_slice.len());
+
             debug!(
-                "[RECV DEBUG] Socket {}: hex preview (first {} bytes): {:02X?}",
+                "[RECV DEBUG] socket {}: hex preview (first {} bytes): {:02X?}",
                 s,
                 preview_len,
                 &data_slice[..preview_len]
@@ -74,19 +79,19 @@ pub unsafe extern "system" fn hooked_recv(
                         if c.is_control() && c != '\r' && c != '\n' && c != '\t' { '.' } else { c }
                     })
                     .collect();
-                debug!("[RECV DEBUG] Socket {}: UTF-8 content (sanitized): {:?}", s, sanitized);
+                debug!("[RECV DEBUG] socket {}: UTF-8 content (sanitized): {:?}", s, sanitized);
 
                 // Check for IRC protocol markers
                 if text.contains("PRIVMSG") || text.contains("NOTICE") || text.contains("JOIN") {
-                    debug!("[RECV DEBUG] Socket {}: detected IRC protocol command", s);
+                    debug!("[RECV DEBUG] socket {}: detected IRC protocol command", s);
                 }
 
                 // Check for FiSH key exchange markers
                 if text.contains("X25519_INIT") || text.contains("FiSH11-PubKey:") {
-                    debug!("[RECV DEBUG] Socket {}: detected FiSH key exchange data", s);
+                    debug!("[RECV DEBUG] socket {}: detected FiSH key exchange data", s);
                 }
             } else {
-                debug!("[RECV DEBUG] Socket {}: non-UTF8 binary data", s);
+                debug!("[RECV DEBUG] socket {}: non-UTF8 binary data", s);
             }
         }
 
@@ -107,7 +112,7 @@ pub unsafe extern "system" fn hooked_recv(
             #[cfg(debug_assertions)]
             {
                 debug!(
-                    "[RECV DEBUG] Socket {}: returning {} bytes to mIRC (processed buffer had {} bytes)",
+                    "[RECV DEBUG] socket {}: returning {} bytes to mIRC (processed buffer had {} bytes)",
                     s,
                     bytes_to_copy,
                     processed_buffer.len()
@@ -125,12 +130,12 @@ pub unsafe extern "system" fn hooked_recv(
                             }
                         })
                         .collect();
-                    debug!("[RECV DEBUG] Socket {}: returning to mIRC: {:?}", s, sanitized);
+                    debug!("[RECV DEBUG] socket {}: returning to mIRC: {:?}", s, sanitized);
                 } else {
                     debug!(
-                        "[RECV DEBUG] Socket {}: returning binary data (first 64 bytes): {:02X?}",
+                        "[RECV DEBUG] socket {}: returning binary data (first 64 bytes): {:02X?}",
                         s,
-                        &processed_buffer[..std::cmp::min(64, bytes_to_copy)]
+                        &processed_buffer[..std::cmp::min(MAXIMUM_PREVIEW_SIZE, bytes_to_copy)]
                     );
                 }
             }
@@ -173,12 +178,13 @@ pub unsafe extern "system" fn hooked_send(
     #[cfg(debug_assertions)]
     {
         // Detailed debug logging for outgoing socket data
-        debug!("[SEND DEBUG] Socket {}: sending {} bytes via send()", s, len);
+        debug!("[SEND DEBUG] socket {}: sending {} bytes via send()", s, len);
 
         // Log hex preview of first 64 bytes
-        let preview_len = std::cmp::min(64, data_slice.len());
+        let preview_len = std::cmp::min(MAXIMUM_PREVIEW_SIZE, data_slice.len());
+
         debug!(
-            "[SEND DEBUG] Socket {}: hex preview (first {} bytes): {:02X?}",
+            "[SEND DEBUG] socket {}: hex preview (first {} bytes): {:02X?}",
             s,
             preview_len,
             &data_slice[..preview_len]
@@ -196,25 +202,25 @@ pub unsafe extern "system" fn hooked_send(
 
             // Check for IRC protocol markers
             if text.contains("PRIVMSG") || text.contains("NOTICE") || text.contains("JOIN") {
-                debug!("[SEND DEBUG] Socket {}: detected IRC protocol command", s);
+                debug!("[SEND DEBUG] socket {}: detected IRC protocol command", s);
             }
 
             // Check for FiSH key exchange markers
             if text.contains("X25519_INIT") || text.contains("FiSH11-PubKey:") {
-                debug!("[SEND DEBUG] Socket {}: detected FiSH key exchange data", s);
+                debug!("[SEND DEBUG] socket {}: detected FiSH key exchange data", s);
             }
 
             // Check for encrypted message markers
             if text.contains("+OK ") || text.contains("+FiSH ") || text.contains("mcps ") {
-                debug!("[SEND DEBUG] Socket {}: detected FiSH encrypted message", s);
+                debug!("[SEND DEBUG] socket {}: detected FiSH encrypted message", s);
             }
         } else {
-            debug!("[SEND DEBUG] Socket {}: non-UTF8 binary data", s);
+            debug!("[SEND DEBUG] socket {}: non-UTF8 binary data", s);
         }
     }
 
     trace!(
-        "Socket {}: [SEND HOOK] Full outgoing buffer ({} bytes): {:02X?}",
+        "Socket {}: [SEND HOOK] full outgoing buffer ({} bytes): {:02X?}",
         s,
         data_slice.len(),
         data_slice
@@ -222,14 +228,14 @@ pub unsafe extern "system" fn hooked_send(
     if let Ok(data_str) = std::str::from_utf8(data_slice) {
         trace!("Socket {}: [SEND HOOK] UTF-8: {}", s, data_str.trim_end());
     } else {
-        trace!("Socket {}: [SEND HOOK] Non-UTF8 data", s);
+        trace!("Socket {}: [SEND HOOK] non-UTF8 data", s);
     }
     if data_slice.len() > 128 {
         let mut hasher = Sha256::new();
         hasher.update(data_slice);
         let hash = hasher.finalize();
         trace!(
-            "Socket {}: [SEND HOOK] Large buffer: len={} SHA256={:x} preview={:02X?}",
+            "Socket {}: [SEND HOOK] large buffer: len={} SHA256={:x} preview={:02X?}",
             s,
             data_slice.len(),
             hash,
@@ -256,14 +262,14 @@ pub unsafe extern "system" fn hooked_send(
             trace!(
                 "Socket {}: sending TLS handshake [first 16 bytes]: {:?}",
                 s,
-                &data_slice[..std::cmp::min(16, data_slice.len())]
+                &data_slice[..std::cmp::min(TRACE_PREVIEW_SIZE, data_slice.len())]
             );
         } else {
             debug!("Socket {}: protocol not identified as IRC or TLS", s);
             trace!(
                 "Socket {}: unknown protocol [first 16 bytes]: {:?}",
                 s,
-                &data_slice[..std::cmp::min(16, data_slice.len())]
+                &data_slice[..std::cmp::min(TRACE_PREVIEW_SIZE, data_slice.len())]
             );
         }
     } else {
@@ -276,14 +282,14 @@ pub unsafe extern "system" fn hooked_send(
     // Log encrypted/plaintext data being sent
     if socket_info.is_ssl() {
         trace!(
-            "Socket {}: [SSL OUT] Encrypted packet ({} bytes): {:02X?}",
+            "Socket {}: [SSL OUT] encrypted packet ({} bytes): {:02X?}",
             s,
             data_slice.len(),
             data_slice
         );
     } else {
         trace!(
-            "Socket {}: [RAW OUT] Plaintext packet ({} bytes): {:02X?}",
+            "Socket {}: [RAW OUT] plaintext packet ({} bytes): {:02X?}",
             s,
             data_slice.len(),
             data_slice
@@ -327,7 +333,7 @@ pub unsafe extern "system" fn hooked_connect(
 
     if result == 0 {
         // Connection successful
-        debug!("Socket {}: Connection established", s);
+        debug!("Socket {}: connection established", s);
         socket_info.set_state(SocketState::Connected);
 
         // Check if this is likely to be a TLS connection (e.g., port 6697)
@@ -338,7 +344,7 @@ pub unsafe extern "system" fn hooked_connect(
         let error = winapi::um::winsock2::WSAGetLastError();
         if error != WSAEINTR {
             // Not interrupted
-            debug!("Socket {}: Connection failed with error {}", s, error);
+            debug!("Socket {}: connection failed with error {}", s, error);
             socket_info.set_state(SocketState::Closed);
         }
     }
@@ -423,7 +429,7 @@ pub unsafe extern "system" fn hooked_closesocket(s: SOCKET) -> c_int {
         let original = match hook_guard.as_ref() {
             Some(hook) => hook,
             None => {
-                error!("Original closesocket function not available!");
+                error!("Original closesocket function not available !");
                 return -1;
             }
         };

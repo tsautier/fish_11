@@ -205,16 +205,16 @@ pub unsafe fn write_error_to_buffer(
     trace_id: Option<&str>,
 ) {
     let formatted_msg = if let Some(id) = trace_id {
-        format!("/echo -ts Error [{}]: {}", id, error_msg)
+        format!("Error [{}]: {}", id, error_msg)
     } else {
-        format!("/echo -ts Error: {}", error_msg)
+        format!("Error: {}", error_msg)
     };
 
     let error_cstring = create_error_message(&formatted_msg, "/echo -ts Internal error occurred");
     if let Err(_) = write_cstring_to_buffer(data, buffer_size, &error_cstring) {
         // Last resort: write minimal error message
         let minimal_msg =
-            CString::new("/echo -ts Error").expect("Minimal error string should be valid");
+            CString::new("Error").expect("Minimal error string should be valid");
         let _ = write_cstring_to_buffer(data, buffer_size, &minimal_msg);
     }
 }
