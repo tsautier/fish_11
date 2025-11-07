@@ -6,6 +6,7 @@ FiSH_11 (work in progress) is a modernized implementation of the classic FiSH_10
 - **ChaCha20-Poly1305** for authenticated encryption
 - **HKDF** for enhanced key derivation
 - **Memory zeroization** and constant-time operations for security
+- **FCEP-1**, a protocol for establishing and maintaining a secure multi-party communication for an IRC channel
 
 ## Project structure
 
@@ -52,9 +53,10 @@ Standalone testing and integration tool :
 - [x] SHA-256 key fingerprinting for verification
 - [ ] Comprehensive mIRC script integration (WIP)
 - [x] mIRC key exchange and chat with encrypted session
-- [x] Command-line interface for testing
+- [x] Command-line interface
+- [x] Multi OS : Windows and GNU/Linux.
 - [x] Memory zeroization and constant-time operations
-- [ ] Configuration persistence and key management
+- [ ] Configuration persistence and key management (b0rked)
 
 ### Current limitations
 
@@ -64,21 +66,21 @@ Standalone testing and integration tool :
 ### Future roadmap
 
 - [x] **Log refactor** : rewrite all the loggin process for better debug
-- [ ] **Cross-platform CLI** : port to Linux/FreeBSD (eg. for eggdrop integration)
+- [ ] **Cross-platform CLI & lib** : port FreeBSD 
 - [ ] **Enhanced forward secrecy** : replace `StaticSecret` with `EphemeralSecret` ?
 - [ ] **Key rotation** : automatic key rotation with configurable intervals
 - [ ] **Master password** : encrypt key storage with user-specific master password
 - [ ] **Enhanced authentication** : add HMAC signatures to prevent MITM attacks
 - [ ] **Unicode support** : improved handling of international characters
 - [ ] **Fuzzing integration** : add `libfuzzer` for security testing
-- [ ] **CI/CD pipeline** : automated testing and releases
-- [ ] **more algo/cipher** : why not ?
+- [ ] **CI/CD pipeline** : automated testing and releases (I hate that)
+- [ ] **more algo/cipher** : why not ? :)
 
 ## Features
 
 ### Core cryptographic features
 
-- **Modern key exchange** : X25519 Diffie-Hellman with public key validation
+- **key exchange** : X25519 Diffie-Hellman with public key validation
 - **Authenticated encryption** : ChaCha20-Poly1305 AEAD preventing tampering
 - **Enhanced key derivation** : HKDF-SHA256 for improved shared secret processing  
 - **Anti-replay protection** : nonce tracking prevents message replay attacks
@@ -163,7 +165,7 @@ The core library exports the following functions for mIRC integration :
 3. In mIRC, load the script : `/load -rs fish_11.mrc`
 4. The DLLs will be automatically loaded in the correct order
 
-### Building from sources
+### Building from sources (Windows and Linux)
 
 #### Prerequisites
 
@@ -190,7 +192,7 @@ cargo build --target i686-pc-windows-msvc --workspace
 
 Binaries will be located in `target/i686-pc-windows-msvc/release/` or `target/i686-pc-windows-msvc/debug/`
 
-#### Linux cross-compilation
+#### Linux cross-compilation (linux source -> windows destination)
 
 ```bash
 # Install cross-compilation target
@@ -203,7 +205,24 @@ sudo apt-get install gcc-mingw-w64-i686
 cargo build --target i686-pc-windows-gnu --release
 ```
 
-## How FiSH_11 works
+#### Windows cross-compilation (windows source -> linux destination)
+
+```bash
+# Install cross-compilation target
+rustup target add x86_64-unknown-linux-gnu
+# Build Linux librairie in .so format
+cargo build --release --workspace --target x86_64-unknown-linux-gnu
+```
+
+#### Linux compilation 
+
+- Rust toolchain (install via [rustup](https://rustup.rs/))
+
+```bash
+rustup target add x86_64-unknown-linux-gnu
+```
+
+## How FiSH_11 works (Windows parts)
 
 FiSH_11 uses a multi-component architecture for transparent IRC encryption :
 
@@ -301,9 +320,9 @@ The injection DLL **must** be loaded before the crypto DLL :
 
 ## Command line interface (CLI)
 
-The `fish_11_cli.exe` tool provides standalone access to all DLL functions for testing and integration :
+The `fish_11_cli.exe` or `fish_11_cli` tool provides standalone access to all DLL functions for testing and integration :
 
-### CLI usage examples
+### CLI usage examples (Windows)
 
 ```powershell
 # Test DLL loading and get version
@@ -328,6 +347,13 @@ fish_11_cli.exe fish_11.dll listkeys
 fish_11_cli.exe -q fish_11.dll getversion
 ```
 
+### CLI usage examples (GNU/Linux)
+
+```bash
+# Test DLL loading and get version
+fish_11_cli fish_11.so getversion
+```
+
 ### CLI command mapping
 
 | CLI Command | DLL Function | Description |
@@ -350,10 +376,9 @@ fish_11_cli.exe -q fish_11.dll getversion
 
 ## Contributing
 
-We welcome contributions! The project is actively developed and looking for :
+We welcome contributions ! The project is looking for :
 
 - Developpers and helpers : my code is bad !#@%
-- **Security review** of cryptographic implementations
 - **Cross-platform porting** expertise  
 - **mIRC scripting** improvements and features
 - **Testing** with various IRC networks and scenarios
