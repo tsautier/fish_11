@@ -29,6 +29,7 @@ impl<'a> ConfigWriteGuard<'a> {
     /// Get a mutable reference to the inner configuration
     pub fn config_mut(&mut self) -> &mut FishConfig {
         self.modified = true;
+        self.guard.mark_dirty();
         &mut self.guard
     }
 
@@ -40,13 +41,15 @@ impl<'a> ConfigWriteGuard<'a> {
     /// Mark the configuration as modified
     pub fn mark_modified(&mut self) {
         self.modified = true;
+        self.guard.mark_dirty();
     }
     /// Save the configuration if it has been modified
     pub fn save_if_modified(&mut self) -> Result<()> {
-        if self.modified {
+        if self.modified || self.guard.is_dirty() {
             log::debug!("ConfigWriteGuard::save_if_modified - saving config due to modifications");
             save_config(&self.guard, None)?;
             self.modified = false;
+            // Note: save_config already calls mark_clean() internally
         } else {
             log::debug!("ConfigWriteGuard::save_if_modified - no modifications, skipping save");
         }
@@ -56,7 +59,7 @@ impl<'a> ConfigWriteGuard<'a> {
 
 impl<'a> Drop for ConfigWriteGuard<'a> {
     fn drop(&mut self) {
-        if self.modified {
+        if self.modified || self.guard.is_dirty() {
             // Add logging to track potential double-save issues
             log::debug!("ConfigWriteGuard::drop - attempting to save modified config");
             // Try to save, but ignore errors since we're in a destructor

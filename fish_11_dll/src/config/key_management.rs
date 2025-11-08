@@ -58,8 +58,8 @@ pub fn set_key(
                 return Err(FishError::DuplicateEntry(normalized_nick.clone()));
             }
         } // Create/update entry
-        let now = Local::now();
-        let date_str = now.format("%d/%m/%Y").to_string();
+    let now = Local::now();
+    let date_str = now.format("%Y-%m-%d %H:%M:%S").to_string();
 
         // Use network name in the entry key format or default to current network if not specified
         let network_name = network.unwrap_or("default");

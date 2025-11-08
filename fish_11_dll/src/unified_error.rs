@@ -374,12 +374,12 @@ macro_rules! dll_function {
         #[no_mangle]
         #[allow(non_snake_case)]
         pub extern "system" fn $name(
-            _m_wnd: HWND,
-            _a_wnd: HWND,
+            _m_wnd: *mut HWND,
+            _a_wnd: *mut HWND,
             $data: *mut c_char,
             _parms: *mut c_char,
-            _show: BOOL,
-            _nopause: BOOL,
+            _show: *mut BOOL,
+            _nopause: *mut BOOL,
         ) -> c_int {
             use $crate::unified_error::DllResult;
             // Note: mIRC passes input parameters in the `_parms` pointer when using
@@ -458,12 +458,12 @@ macro_rules! dll_function_identifier {
         #[no_mangle]
         #[allow(non_snake_case)]
         pub extern "system" fn $name(
-            _m_wnd: HWND,
-            _a_wnd: HWND,
+            _m_wnd: *mut HWND,
+            _a_wnd: *mut HWND,
             $data: *mut c_char,
             _parms: *mut c_char,
-            _show: BOOL,
-            _nopause: BOOL,
+            _show: *mut BOOL,
+            _nopause: *mut BOOL,
         ) -> c_int {
             use $crate::unified_error::DllResult;
             // See comment in dll_function! — ensure inner() operates on the

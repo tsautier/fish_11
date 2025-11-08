@@ -49,9 +49,10 @@ pub fn set_channel_data(
         if let Some(d) = date {
             entry.date = Some(d.to_string());
         } else if entry.date.is_none() {
-            // Set current date if none exists
+            // Set current date if none exists. Use ISO-like date/time format to include time
+            // This mirrors the logging timestamp style used elsewhere in the project.
             let now = Local::now();
-            entry.date = Some(now.format("%d/%m/%Y").to_string());
+            entry.date = Some(now.format("%Y-%m-%d %H:%M:%S").to_string());
         }
 
         config.set_entry(entry_key, entry);
@@ -96,9 +97,10 @@ pub fn set_user_data(
         if let Some(d) = date {
             entry.date = Some(d.to_string());
         } else if entry.date.is_none() {
-            // Set current date if none exists
+            // Set current date if none exists. Use ISO-like date/time format to include time
+            // This mirrors the logging timestamp style used elsewhere in the project.
             let now = Local::now();
-            entry.date = Some(now.format("%d/%m/%Y").to_string());
+            entry.date = Some(now.format("%Y-%m-%d %H:%M:%S").to_string());
         }
 
         config.set_entry(entry_key, entry);
