@@ -275,6 +275,9 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
             println!("DEBUG:   -> processing entry section: '{}'", section_name);
 
             // Clean section name: remove any brackets (should not be present, but defensive)
+            if section_name.starts_with('[') || section_name.ends_with(']') {
+                eprintln!("WARNING: Section name '{}' contains brackets. This may indicate malformed data.", section_name);
+            }
             let clean_section = section_name.trim_start_matches('[').trim_end_matches(']');
             
             // Transform chan_ prefix back to # for channels
