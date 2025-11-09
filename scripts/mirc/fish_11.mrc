@@ -52,18 +52,23 @@ alias fish11_startup {
   ;noop $dll(%Fish11DllFile, FiSH11_SetMircDir, $mircdir)
   echo 4 -a DEBUG : MIRCDIR set to: $mircdir
   
-  ;echo 4 -a DEBUG : Calling fish_11_inject.dll FiSH11_InjectVersion...
-  .dll %Fish11InjectDllFile FiSH11_InjectVersion
-  
-  ;echo 4 -a DEBUG : Calling fish_11.dll FiSH11_GetVersion...  
-  var %fish11_version = $dll(%Fish11DllFile, FiSH11_GetVersion, $null)
-  if (%fish11_version) {
-    echo 4 -a %fish11_version
+  ; Get and display inject DLL version
+  var %inject_version
+  if ($dll(%Fish11InjectDllFile, FiSH11_InjectVersion, &%inject_version)) {
+    echo -ts *** %inject_version ***
   }
-
-
+  else {
+    echo -ts *** FiSH_11: Warning - Could not load inject DLL version ***
+  }
   
-
+  ; Get and display core DLL version
+  var %core_version = $dll(%Fish11DllFile, FiSH11_GetVersion, $null)
+  if (%core_version) {
+    echo -ts *** %core_version ***
+  }
+  else {
+    echo -ts *** FiSH_11: Warning - Could not load core DLL version ***
+  }
 
   ; Initialize default settings if not already set
   if (%autokeyx == $null) { set %autokeyx [Off] }
@@ -888,18 +893,20 @@ alias fish11_help {
 
 
 alias fish11_version {
-  var %version
-  if ($dll(%Fish11DllFile, FiSH11_GetVersion, &%version)) {
-    ;echo -a *** FiSH_11 Version: %version
+  var %core_version = $dll(%Fish11DllFile, FiSH11_GetVersion, $null)
+  if (%core_version) {
+    echo -ts *** %core_version ***
+  } else {
+    echo -ts *** FiSH_11: Failed to get core DLL version ***
   }
 }
 
-
-
 alias fish11_injection_version {
-  var %injectionVersion
-  if ($dll(%Fish11InjectDllFile, FiSH11_InjectVersion, &%injectionVersion)) {
-    ;echo -a *** FiSH_11 Version: %injectionVersion
+  var %inject_version
+  if ($dll(%Fish11InjectDllFile, FiSH11_InjectVersion, &%inject_version)) {
+    echo -ts *** %inject_version ***
+  } else {
+    echo -ts *** FiSH_11: Failed to get inject DLL version ***
   }
 }
 
