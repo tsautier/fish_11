@@ -3,7 +3,7 @@ name = "fish_11-fuzz"
 version = "11.25.0"
 publish = false
 edition = "2021"
-license = "GPL v3.0"
+license = "GPL-3.0"
 authors = ["GuY"]
 
 [package.metadata]
