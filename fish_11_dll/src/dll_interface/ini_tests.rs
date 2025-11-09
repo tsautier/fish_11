@@ -103,9 +103,10 @@ mod tests {
     #[test]
     fn test_ini_getbool_empty_input() {
         setup_test_config();
-        let (result_code, _) = call_dll_function(INI_GetBool as _, "");
-        // Should halt because of missing parameter
-        assert_eq!(result_code, MIRC_HALT);
+        let (result_code, msg) = call_dll_function(INI_GetBool as _, "");
+        // Should return error message (MIRC_COMMAND with raw error text)
+        assert_eq!(result_code, crate::dll_interface::MIRC_COMMAND);
+        assert!(msg.to_lowercase().contains("missing") || msg.to_lowercase().contains("parameter"));
     }
 
     // INI_GetString Tests
