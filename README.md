@@ -1,6 +1,6 @@
 # FiSH-11, a modern IRC encryption (WiP)
 
-FiSH-11 is a modern implementation of an IRC encryption plugin, written in Rust. It provides strong, end-to-end encryption for both private messages and multi-user channels, based on [X25519](https://en.wikipedia.org/wiki/Curve25519) and [ChaCha20-Poly1305](https://en.wikipedia.org/wiki/ChaCha20-Poly1305). With a primary focus on the mIRC client for Windows but also librairies and CLI for Linux.
+FiSH-11 is a modern implementation of an IRC encryption plugin, written in Rust. It provides strong, end-to-end encryption for both private messages and multi-user channels, based on [X25519](https://en.wikipedia.org/wiki/Curve25519) and [ChaCha20-Poly1305](https://en.wikipedia.org/wiki/ChaCha20-Poly1305). With a primary focus on the mIRC client for Windows but also libraries and CLI for Linux.
 
 ## Documentation
 
