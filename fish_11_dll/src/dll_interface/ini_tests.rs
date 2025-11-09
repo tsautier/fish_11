@@ -104,10 +104,10 @@ mod tests {
     fn test_ini_getbool_empty_input() {
         setup_test_config();
         let (result_code, msg) = call_dll_function(INI_GetBool as _, "");
-        // Should return error message (MIRC_IDENTIFIER with raw error text - was MIRC_COMMAND before)
-        // Note: Some errors may still return MIRC_COMMAND depending on severity, checking both
-        assert!(result_code == crate::dll_interface::MIRC_COMMAND || result_code == crate::dll_interface::MIRC_IDENTIFIER);
-        assert!(msg.to_lowercase().contains("missing") || msg.to_lowercase().contains("parameter"));
+        // Should return error message (MIRC_COMMAND with raw error text)
+        assert_eq!(result_code, crate::dll_interface::MIRC_COMMAND);
+        // Empty input results in "invalid input" or "null pointer" error
+        assert!(msg.to_lowercase().contains("invalid") || msg.to_lowercase().contains("null") || msg.to_lowercase().contains("missing"));
     }
 
     // INI_GetString Tests
