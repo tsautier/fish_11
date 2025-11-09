@@ -9,8 +9,8 @@ authors = ["GuY"]
 
 [lib]
 name = "fish_11"
-# We are building a DLL
-crate-type = ["cdylib"]
+# We are building a DLL, but also rlib for fuzzing/testing
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 lazy_static = "1.4"
