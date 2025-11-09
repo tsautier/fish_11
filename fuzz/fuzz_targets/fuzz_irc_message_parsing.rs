@@ -27,7 +27,7 @@ fuzz_target!(|data: &[u8]| {
 
         // Test X25519 key exchange parsing
         if let Some(init_start) = message.find("X25519_INIT:") {
-            let key_part = &message[init_start + 12..].trim();
+            let key_part = message[init_start + 12..].trim();
             let _ = general_purpose::STANDARD.decode(key_part);
         }
 
