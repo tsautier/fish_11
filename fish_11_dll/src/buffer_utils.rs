@@ -91,7 +91,7 @@ pub unsafe fn write_error_message(data: *mut c_char, message: &str) -> c_int {
         .unwrap_or_else(|_| CString::new("Error occurred").expect("fallback valid"));
 
     let _ = write_cstring_to_buffer(data, buffer_size, &cstring);
-    MIRC_COMMAND
+    MIRC_IDENTIFIER
 }
 
 /// Write a result string to the buffer
