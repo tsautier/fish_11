@@ -1,0 +1,68 @@
+[package]
+name = "fish_11-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+license = "GPL v3.0"
+authors = ["GuY"]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.fish_11]
+path = "../fish_11_dll"
+
+[dependencies.tempfile]
+version = "3.8"
+
+[dependencies.base64]
+version = "0.22.1"
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "fuzz_decrypt_message"
+path = "fuzz_targets/fuzz_decrypt_message.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_encrypt_message"
+path = "fuzz_targets/fuzz_encrypt_message.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_base64_parsing"
+path = "fuzz_targets/fuzz_base64_parsing.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_ini_parsing"
+path = "fuzz_targets/fuzz_ini_parsing.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_irc_message_parsing"
+path = "fuzz_targets/fuzz_irc_message_parsing.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_wrap_unwrap_key"
+path = "fuzz_targets/fuzz_wrap_unwrap_key.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_ratchet"
+path = "fuzz_targets/fuzz_ratchet.rs"
+test = false
+doc = false
