@@ -62,7 +62,7 @@ Generates a new random symmetric key for a user. This command will fail if a key
 - **usage**: `/dll fish_11.dll FiSH11_GenKey <nickname>`
 - **parameters**:
   - `nickname`: the nickname to associate with the new key.
-- **returns**: an string confirming the key generation.
+- **returns**: a string confirming the key generation.
 
 ### `FiSH11_SetKey`
 
