@@ -26,8 +26,8 @@ dll_function_identifier!(FiSH11_FileDelKey, data, {
     let message = format!("Key deleted for {}", nickname);
     log::info!("{}", message);
 
-    // Return truthy identifier to signal success
-    Ok("1".to_string())
+    // Return success message (raw format, script will format display)
+    Ok(message)
 });
 
 #[cfg(test)]

@@ -31,7 +31,7 @@ pub struct LOADINFO {
 /// So this is the second entry point after DllMain().
 pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
     #[cfg(debug_assertions)]
-    info!("=== LoadDll: Function called ===");
+    info!("=== LoadDll: function called ===");
 
     // Safety check
     if loadinfo.is_null() {
@@ -318,36 +318,35 @@ pub extern "system" fn FiSH11_InjectVersion(
     _show: BOOL,
     _nopause: BOOL,
 ) -> c_int {
-    // Use the version from Cargo.toml
+    // Return raw version info for script to display (no /echo prefix)
     let version_info = format!(
-        "*** FiSH injection {} *** Compiled on {} at {}. Written by [GuY], licensed under the GPL v3. ***",
+        "*** FiSH injection v{}. Compiled on {} at {}. Written by [GuY], licensed under the GPL-v3. ***",
         FISH_11_VERSION, FISH_11_BUILD_DATE, FISH_11_BUILD_TIME
     );
 
-    let command = match CString::new(version_info) {
-        Ok(cmd) => cmd,
+    let data_str = match CString::new(version_info) {
+        Ok(s) => s,
         Err(e) => {
-            error!("FiSH_11 : error : failed to create CString: {}", e);
+            error!("FiSH11_InjectVersion: failed to create CString: {}", e);
             return MIRC_HALT;
         }
     };
 
     #[cfg(debug_assertions)]
     {
-        debug!("[DLL_INTERFACE DEBUG] FiSH11_InjectVersion: preparing version command buffer");
-        debug!("[DLL_INTERFACE DEBUG] command length: {} bytes", command.as_bytes_with_nul().len());
+        debug!("[DLL_INTERFACE DEBUG] FiSH11_InjectVersion: preparing version data buffer");
+        debug!("[DLL_INTERFACE DEBUG] data length: {} bytes", data_str.as_bytes_with_nul().len());
         debug!(
-            "[DLL_INTERFACE DEBUG] command preview: {:?}",
-            command.to_str().unwrap_or("<invalid UTF-8>")
+            "[DLL_INTERFACE DEBUG] data preview: {:?}",
+            data_str.to_str().unwrap_or("<invalid UTF-8>")
         );
     }
 
     unsafe {
         if !data.is_null() {
-            // Respect mIRC's reported maximum return buffer to avoid overflow/truncation
             let max_bytes = *MAX_MIRC_RETURN_BYTES.lock().unwrap();
-            let src = command.as_ptr();
-            let src_len = command.as_bytes_with_nul().len();
+            let src = data_str.as_ptr();
+            let src_len = data_str.as_bytes_with_nul().len();
             let copy_len = std::cmp::min(src_len, max_bytes as usize - 1);
 
             #[cfg(debug_assertions)]
@@ -358,7 +357,6 @@ pub extern "system" fn FiSH11_InjectVersion(
                 );
             }
 
-            // Copy bounded amount and ensure null termination
             std::ptr::copy_nonoverlapping(src, data, copy_len);
             *data.add(copy_len) = 0;
 
@@ -368,28 +366,11 @@ pub extern "system" fn FiSH11_InjectVersion(
                     "[DLL_INTERFACE DEBUG] copied {} bytes to mIRC data buffer, null-terminated",
                     copy_len
                 );
-
-                // Verify what was actually written to the buffer
-                let written_slice = std::slice::from_raw_parts(data as *const u8, copy_len);
-                if let Ok(written_text) = std::str::from_utf8(written_slice) {
-                    debug!("[DLL_INTERFACE DEBUG] buffer content verification: {:?}", written_text);
-                } else {
-                    debug!(
-                        "[DLL_INTERFACE DEBUG] buffer content (hex): {:02X?}",
-                        &written_slice[..std::cmp::min(64, written_slice.len())]
-                    );
-                }
             }
 
-            info!(
-                "FiSH_11 : command copied to data buffer (len {}): {}",
-                copy_len,
-                command
-                    .to_str()
-                    .unwrap_or("FiSH_11 : error converting command to string")
-            );
+            info!("FiSH11_Inject: returned version info (len {})", copy_len);
         } else {
-            error!("FiSH_11 : data buffer pointer is null.");
+            error!("FiSH11_Inject: data buffer pointer is null");
             return MIRC_HALT;
         }
     }

@@ -82,7 +82,7 @@ pub unsafe fn write_cstring_to_buffer(
     Ok(())
 }
 
-/// Write an error message to the buffer with mIRC echo formatting
+/// Write an error message to the buffer (raw message, script will format)
 pub unsafe fn write_error_message(data: *mut c_char, message: &str) -> c_int {
     let buffer_size = get_buffer_size() as usize;
     let error_msg = format!("Error: {}", message);
@@ -91,7 +91,7 @@ pub unsafe fn write_error_message(data: *mut c_char, message: &str) -> c_int {
         .unwrap_or_else(|_| CString::new("Error occurred").expect("fallback valid"));
 
     let _ = write_cstring_to_buffer(data, buffer_size, &cstring);
-    MIRC_COMMAND
+    MIRC_IDENTIFIER
 }
 
 /// Write a result string to the buffer
@@ -141,12 +141,12 @@ pub fn create_error_message(message: &str, fallback: &str) -> CString {
         .unwrap_or_else(|_| CString::new(fallback).expect("Fallback string should be valid"))
 }
 
-/// Create a mIRC echo command string
+/// Create a message string (raw without /echo prefix - script will format)
 pub fn create_echo_command(message: &str, style: EchoStyle) -> String {
     match style {
-        EchoStyle::Normal => format!("/echo -a {}", message),
-        EchoStyle::Timestamp => format!("{}", message),
-        EchoStyle::Error => format!("/echo -cr {}", message),
+        EchoStyle::Normal => message.to_string(),
+        EchoStyle::Timestamp => message.to_string(),
+        EchoStyle::Error => format!("Error: {}", message),
     }
 }
 
@@ -164,12 +164,12 @@ pub unsafe fn write_echo_command_to_buffer(
     write_string_to_buffer(data, buffer_size, &echo_command)
 }
 
-/// Echo command styles for mIRC
+/// Message styles (messages are raw - script handles display)
 #[derive(Debug, Clone, Copy)]
 pub enum EchoStyle {
-    Normal,    // /echo -a
-    Timestamp, // plain text
-    Error,     // /echo -cr
+    Normal,    // Normal message
+    Timestamp, // Message with timestamp (script adds /echo -ts)
+    Error,     // Error message (prefixed with "Error:")
 }
 
 /// Validate buffer parameters
@@ -217,7 +217,7 @@ unsafe fn _perform_buffer_write(
     *data.add(safe_len) = 0;
 }
 
-/// Helper to write error messages with automatic fallback
+/// Helper to write error messages with automatic fallback (raw format)
 ///
 /// # Safety
 /// The caller must ensure that `data` points to a valid buffer of at least `buffer_size` bytes
