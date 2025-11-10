@@ -72,7 +72,7 @@ Manually sets the symmetric key for a user. The key must be a 32-byte value, enc
 - **parameters**:
   - `nickname`: the nickname to associate with the key.
   - `base64_key`: the 32-byte key, encoded in Base64.
-- **returns**: `1` on success. on failure, returns an `/echo` command with an error message.
+- **returns**: `1` on success. on failure, returns an error message.
 
 ### `FiSH11_FileGetKey`
 
@@ -81,7 +81,7 @@ Retrieves the stored symmetric key for a given nickname, encoded in Base64.
 - **usage**: `/dll fish_11.dll FiSH11_FileGetKey <nickname>`
 - **parameters**:
   - `nickname`: the nickname whose key you want to retrieve.
-- **returns**: the base64-encoded key as a string. on failure, returns an `/echo` command with an error message.
+- **returns**: the base64-encoded key as a string. on failure, returns an error message.
 
 ### `FiSH11_FileDelKey`
 
@@ -90,7 +90,7 @@ Deletes the key associated with a specific nickname from the configuration.
 - **usage**: `/dll fish_11.dll FiSH11_FileDelKey <nickname>`
 - **parameters**:
   - `nickname`: the nickname whose key should be deleted.
-- **returns**: `1` on success. on failure, returns an `/echo` command with an error message.
+- **returns**: `1` on success. on failure, returns an error message.
 
 ### `FiSH11_FileListKeys`
 

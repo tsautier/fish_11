@@ -60,7 +60,7 @@ When a function returns an `Err(DllError)`, a central wrapper:
 
 1. **logs the error**: a detailed, technical version of the error is written to the log file for debugging purposes.
 2. **formats a user message**: a clear, concise message is created explaining what went wrong in simple terms.
-3. **writes to mIRC**: the message is written back to the mIRC `data` buffer, typically as an `/echo` command.
+3. **writes to mIRC**: the message is written back to the mIRC `data` buffer, typically as a message.
 4. **returns the correct code**: it returns `MIRC_COMMAND` to mIRC so the error message is executed.
 
 ### Example error messages
