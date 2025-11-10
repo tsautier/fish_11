@@ -80,3 +80,9 @@ name = "fuzz_set_key"
 path = "fuzz_targets/fuzz_set_key.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "fuzz_set_mirc_dir"
+path = "fuzz_targets/fuzz_set_mirc_dir.rs"
+test = false
+doc = false

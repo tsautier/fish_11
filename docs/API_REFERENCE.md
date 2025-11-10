@@ -41,7 +41,7 @@ Sets the path to the mIRC installation directory. This is used to help the DLL l
 - **usage**: `/dll fish_11.dll FiSH11_SetMircDir C:\mIRC`
 - **parameters**:
   - `path`: the absolute path to the mIRC directory.
-- **returns**: an `/echo` command confirming the directory has been set.
+- **returns**: a string confirming the directory has been set.
 
 ### `FiSH11_GetConfigPath`
 
@@ -62,7 +62,7 @@ Generates a new random symmetric key for a user. This command will fail if a key
 - **usage**: `/dll fish_11.dll FiSH11_GenKey <nickname>`
 - **parameters**:
   - `nickname`: the nickname to associate with the new key.
-- **returns**: an `/echo` command confirming the key generation.
+- **returns**: an string confirming the key generation.
 
 ### `FiSH11_SetKey`
 
@@ -132,7 +132,7 @@ Processes a public key token received from another user, computes the shared sec
 - **parameters**:
   - `nickname`: the nickname of the user who sent the key.
   - `public_key_token`: the full public key token string received from the user.
-- **returns**: an `/echo` command confirming the successful key exchange.
+- **returns**: a string confirming the successful key exchange.
 
 ---
 
@@ -179,7 +179,7 @@ Generates a new channel key and distributes it to the specified members. This fu
   - `<#channel>`: the name of the channel.
   - `<nick1> <nick2> ...`: a space-separated list of member nicknames who should receive the key.
 - **pre-requisite**: a 1-to-1 symmetric key must already exist for each member (established via `FiSH11_ExchangeKey`).
-- **returns**: a series of `/notice` commands (concatenated with `|`) for the mIRC script to execute, which sends the wrapped channel key to each member. Also includes a final `/echo` confirmation.
+- **returns**: a series of `/notice` commands (concatenated with `|`) for the mIRC script to execute, which sends the wrapped channel key to each member. Also includes a final confirmation message.
 
 ### `FiSH11_ProcessChannelKey`
 
@@ -191,4 +191,4 @@ Processes a received channel key from a coordinator. This function is typically 
   - `<coordinator_nick>`: the nickname of the user who claims to have initiated the key distribution.
   - `<actual_sender>`: the real IRC nickname of the sender (provided by the mIRC script, e.g., `$nick`). This is a security measure to prevent impersonation.
   - `<wrapped_key>`: the Base64-encoded wrapped channel key.
-- **returns**: an `/echo` command confirming the key was received and stored. Rejects the key if `coordinator_nick` does not match `actual_sender`.
+- **returns**: a confirmation message that the key was received and stored. Rejects the key if `coordinator_nick` does not match `actual_sender`.

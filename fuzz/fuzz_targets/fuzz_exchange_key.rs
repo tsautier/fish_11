@@ -1,6 +1,5 @@
 #![no_main]
 
-use libfuzzer_sys::fuzz_target;
 use std::ffi::CString;
 use std::os::raw::c_char;
 use std::ptr;
@@ -8,6 +7,7 @@ use std::ptr;
 // Import the DLL function to be tested.
 // NOTE: Requires setup in fuzz/Cargo.toml.
 use fish_11_dll::dll_interface::fish11_exchangekey::FiSH11_ExchangeKey;
+use libfuzzer_sys::fuzz_target;
 
 const BUFFER_SIZE: usize = 4096;
 
@@ -19,9 +19,7 @@ fuzz_target!(|data: &[u8]| {
     let rust_string = String::from_utf8_lossy(data);
 
     // 2. Allocate a mutable buffer like mIRC would.
-    let buffer = unsafe {
-        libc::malloc(BUFFER_SIZE) as *mut c_char
-    };
+    let buffer = unsafe { libc::malloc(BUFFER_SIZE) as *mut c_char };
     if buffer.is_null() {
         // Allocation failed, abort.
         return;
