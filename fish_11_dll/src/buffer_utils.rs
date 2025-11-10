@@ -85,10 +85,10 @@ pub unsafe fn write_cstring_to_buffer(
 /// Write an error message to the buffer with mIRC echo formatting
 pub unsafe fn write_error_message(data: *mut c_char, message: &str) -> c_int {
     let buffer_size = get_buffer_size() as usize;
-    let error_msg = format!("/echo -ts Error: {}", message);
+    let error_msg = format!("Error: {}", message);
 
     let cstring = CString::new(error_msg)
-        .unwrap_or_else(|_| CString::new("/echo -ts Error occurred").expect("fallback valid"));
+        .unwrap_or_else(|_| CString::new("Error occurred").expect("fallback valid"));
 
     let _ = write_cstring_to_buffer(data, buffer_size, &cstring);
     MIRC_COMMAND
@@ -145,7 +145,7 @@ pub fn create_error_message(message: &str, fallback: &str) -> CString {
 pub fn create_echo_command(message: &str, style: EchoStyle) -> String {
     match style {
         EchoStyle::Normal => format!("/echo -a {}", message),
-        EchoStyle::Timestamp => format!("/echo -ts {}", message),
+        EchoStyle::Timestamp => format!("{}", message),
         EchoStyle::Error => format!("/echo -cr {}", message),
     }
 }
@@ -168,7 +168,7 @@ pub unsafe fn write_echo_command_to_buffer(
 #[derive(Debug, Clone, Copy)]
 pub enum EchoStyle {
     Normal,    // /echo -a
-    Timestamp, // /echo -ts
+    Timestamp, // plain text
     Error,     // /echo -cr
 }
 
@@ -228,16 +228,16 @@ pub unsafe fn write_error_to_buffer(
     trace_id: Option<&str>,
 ) {
     let formatted_msg = if let Some(id) = trace_id {
-        format!("/echo -ts Error [{}]: {}", id, error_msg)
+        format!("Error [{}]: {}", id, error_msg)
     } else {
-        format!("/echo -ts Error: {}", error_msg)
+        format!("Error: {}", error_msg)
     };
 
-    let error_cstring = create_error_message(&formatted_msg, "/echo -ts Internal error occurred");
+    let error_cstring = create_error_message(&formatted_msg, "Internal error occurred");
     if let Err(_) = write_cstring_to_buffer(data, buffer_size, &error_cstring) {
         // Last resort: write minimal error message
         let minimal_msg =
-            CString::new("/echo -ts Error").expect("Minimal error string should be valid");
+            CString::new("Error").expect("Minimal error string should be valid");
         let _ = write_cstring_to_buffer(data, buffer_size, &minimal_msg);
     }
 }

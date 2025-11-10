@@ -65,7 +65,7 @@ pub fn validate_nickname(
     if nickname.is_empty() {
         log_warn!("FiSH11_ExchangeKey[{}]: empty nickname provided", trace_id);
         let error_msg =
-            CString::new("/echo -ts Usage: /dll fish_11.dll FiSH11_ExchangeKey <nickname>")
+            CString::new("Usage: /dll fish_11.dll FiSH11_ExchangeKey <nickname>")
                 .expect("Static usage string contains no null bytes");
         unsafe {
             let _ = buffer_utils::write_cstring_to_buffer(data, buffer_size, &error_msg);
@@ -80,7 +80,7 @@ pub fn validate_nickname(
             trace_id,
             nickname
         );
-        let error_msg = CString::new("/echo -ts Error: nickname contains invalid characters")
+        let error_msg = CString::new("Error: nickname contains invalid characters")
             .expect("Static error string contains no null bytes");
         unsafe {
             let _ = buffer_utils::write_cstring_to_buffer(data, buffer_size, &error_msg);
@@ -98,10 +98,10 @@ pub fn validate_nickname(
 
         // Safe CString creation with fallback
         let error_msg = match CString::new(
-            "/echo -ts Error: nickname must be 1-16 characters, start with letter/[\\]`_^{|}, contain only valid IRC characters",
+            "Error: nickname must be 1-16 characters, start with letter/[\\]`_^{|}, contain only valid IRC characters",
         ) {
             Ok(msg) => msg,
-            Err(_) => CString::new("/echo -ts Error: invalid nickname format")
+            Err(_) => CString::new("Error: invalid nickname format")
                 .expect("Fallback string contains no null bytes"),
         };
 

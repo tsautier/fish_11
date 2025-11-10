@@ -155,7 +155,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
 
         // Prepare version string as a command
         let version_cmd =
-            format!("/echo -ts *** FiSH_11 Inject v{} loaded successfully. ***", FISH_11_VERSION);
+            format!("*** FiSH_11 inject v{} loaded successfully. ***", FISH_11_VERSION);
         if let Ok(c_cmd) = CString::new(version_cmd) {
             // Check size (Corrected comparison)
             let current_max_len = *MAX_MIRC_RETURN_BYTES.lock().unwrap();
@@ -320,14 +320,14 @@ pub extern "system" fn FiSH11_InjectVersion(
 ) -> c_int {
     // Use the version from Cargo.toml
     let version_info = format!(
-        "/echo -ts *** FiSH injection {} *** Compiled on {} at {}. Written by [GuY], licensed under the GPL v3. ***",
+        "*** FiSH injection {} *** Compiled on {} at {}. Written by [GuY], licensed under the GPL v3. ***",
         FISH_11_VERSION, FISH_11_BUILD_DATE, FISH_11_BUILD_TIME
     );
 
     let command = match CString::new(version_info) {
         Ok(cmd) => cmd,
         Err(e) => {
-            error!("/echo -ts FiSH_11 : error : failed to create CString: {}", e);
+            error!("FiSH_11 : error : failed to create CString: {}", e);
             return MIRC_HALT;
         }
     };
@@ -382,14 +382,14 @@ pub extern "system" fn FiSH11_InjectVersion(
             }
 
             info!(
-                "/echo -ts FiSH_11 : command copied to data buffer (len {}): {}",
+                "FiSH_11 : command copied to data buffer (len {}): {}",
                 copy_len,
                 command
                     .to_str()
-                    .unwrap_or("/echo -ts FiSH_11 : error converting command to string")
+                    .unwrap_or("FiSH_11 : error converting command to string")
             );
         } else {
-            error!("/echo -ts FiSH_11 : data buffer pointer is null.");
+            error!("FiSH_11 : data buffer pointer is null.");
             return MIRC_HALT;
         }
     }
