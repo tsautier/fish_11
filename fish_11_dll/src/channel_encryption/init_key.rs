@@ -95,7 +95,7 @@ dll_function_identifier!(FiSH11_InitChannelKey, data, {
     // 4. Return all commands concatenated for mIRC to execute
     // Add a confirmation echo at the end
     commands.push(format!(
-        "/echo -ats [KEY] Channel key for {} generated and distributed to {} member(s)",
+        "[KEY] Channel key for {} generated and distributed to {} member(s)",
         channel_name,
         commands.len()
     ));

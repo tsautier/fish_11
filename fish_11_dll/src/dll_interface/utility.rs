@@ -14,10 +14,15 @@ use crate::utils::normalize_nick;
 use crate::{buffer_utils, config};
 
 dll_function_identifier!(FiSH11_GetVersion, _data, {
-    // Return the main version string as data (no /echo)
-    let version_info = format!("{} - Licensed under the GPL v3.", crate::FISH_MAIN_VERSION);
+    // Return raw version info for script to display
+    let version_info = format!(
+        "FiSH_11 core v{} - Compiled {} at {} - Licensed under GPL-v3",
+        crate::FISH_11_VERSION,
+        crate::FISH_11_BUILD_DATE,
+        crate::FISH_11_BUILD_TIME
+    );
 
-    log::debug!("FiSH11_GetVersion called, returning version: {}", crate::FISH_MAIN_VERSION);
+    log::debug!("FiSH11_GetVersion called, returning: {}", version_info);
 
     Ok(version_info)
 });

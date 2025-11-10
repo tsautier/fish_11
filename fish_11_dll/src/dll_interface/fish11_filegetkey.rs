@@ -75,8 +75,8 @@ mod tests {
 
         let (code, msg) = call_getkey("alice", 256);
         assert_eq!(code, MIRC_COMMAND);
-        // Structured check: message should start with echo and mention alice
-        assert!(msg.starts_with("/echo -ts Key for alice:"));
+        // Structured check: message should mention alice (raw format without /echo)
+        assert!(msg.starts_with("Key for alice:"));
     }
 
     #[test]
