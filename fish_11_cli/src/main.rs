@@ -568,7 +568,8 @@ fn main() {
             }
         }
         Err(e) => {
-            // Always show errors even in quiet mode                println!("Error calling function: {}", e);
+            // Always show errors even in quiet mode
+            println!("Error calling function: {}", e);
             println!("Try using the 'list' command to see available functions.");
         }
     }
