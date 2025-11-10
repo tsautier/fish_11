@@ -173,10 +173,10 @@ Table of Contents
    The Key Distribution Message is sent from the coordinator to each
    participant individually.
 
-   Syntax: `NOTICE <recipient> :!FCEP-KEY <channel> <sender> <data>`
+   Syntax: `NOTICE <recipient> :+FiSH-CEP-KEY <channel> <sender> <data>`
 
    - `<recipient>`: the nickname of the user who should receive the key.
-   - `!FCEP-KEY`: the prefix indicating a FiSH-11 Channel Encryption
+   - `+FiSH-CEP-KEY`: the prefix indicating a FiSH-11 Channel Encryption
      Protocol message.
    - `<channel>`: the IRC channel for which the key is intended.
    - `<sender>`: the nickname of the coordinator.
@@ -576,7 +576,7 @@ Table of Contents
    - A security warning MUST be logged and displayed to the user.
    - The message MUST NOT be processed further (halt execution).
 
-   This prevents an attacker from sending forged !FCEP-KEY messages claiming
+   This prevents an attacker from sending forged +FiSH-CEP-KEY messages claiming
    to be from another user. Since IRC does not cryptographically authenticate
    nicknames, this check relies on IRC server authentication (services, SASL).
 

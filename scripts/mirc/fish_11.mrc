@@ -270,10 +270,10 @@ on ^*:NOTICE:X25519_FINISH*:?:{
 ; channel encryption using a hub-and-spoke model where a coordinator distributes
 ; a shared channel key to all participants via their pre-established pairwise keys.
 
-on ^*:NOTICE:!FCEP-KEY*:?:{
+on ^*:NOTICE:+FiSH-CEP-KEY*:?:{
   ; This event triggers when receiving a channel key distribution message.
-  ; Format: !FCEP-KEY <#channel> <coordinator_nick> <base64_wrapped_key>
-  ; $1 = !FCEP-KEY
+  ; Format: +FiSH-CEP-KEY <#channel> <coordinator_nick> <base64_wrapped_key>
+  ; $1 = +FiSH-CEP-KEY
   ; $2 = #channel
   ; $3 = coordinator_nick (claimed sender)
   ; $4 = base64_wrapped_key
@@ -282,7 +282,7 @@ on ^*:NOTICE:!FCEP-KEY*:?:{
   
   ; Validate message format
   if (%num_tokens < 4) {
-    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FCEP-1 ERROR: Invalid FCEP-KEY format from $nick (expected 4 tokens, got %num_tokens $+ )
+    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FCEP-1 ERROR: Invalid +FiSH-CEP-KEY format from $nick (expected 4 tokens, got %num_tokens $+ )
     halt
   }
   
@@ -292,7 +292,7 @@ on ^*:NOTICE:!FCEP-KEY*:?:{
   
   ; SECURITY: Verify sender authenticity
   ; The actual IRC sender ($nick) MUST match the claimed coordinator
-  ; This prevents impersonation attacks where an attacker sends a FCEP-KEY
+  ; This prevents impersonation attacks where an attacker sends a +FiSH-CEP-KEY
   ; message claiming to be from a trusted user
   if ($nick != %coordinator) {
     echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FCEP-1 SECURITY WARNING: Key distribution from $nick claims to be from %coordinator - REJECTED
@@ -547,7 +547,7 @@ alias fish11_initchannel {
   }
   
   ; Execute the returned commands (series of NOTICE commands separated by |)
-  ; The DLL returns commands like: /notice alice :!FCEP-KEY #chan me <key> | /notice bob ...
+  ; The DLL returns commands like: /notice alice :+FiSH-CEP-KEY #chan me <key> | /notice bob ...
   %result
 }
 

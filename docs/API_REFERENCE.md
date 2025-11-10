@@ -183,7 +183,7 @@ Generates a new channel key and distributes it to the specified members. This fu
 
 ### `FiSH11_ProcessChannelKey`
 
-Processes a received channel key from a coordinator. This function is typically called automatically by the mIRC script when a `!FCEP-KEY` notice is received.
+Processes a received channel key from a coordinator. This function is typically called automatically by the mIRC script when a `+FiSH-CEP-KEY` notice is received.
 
 - **usage**: `/dll fish_11.dll FiSH11_ProcessChannelKey <#channel> <coordinator_nick> <actual_sender> <wrapped_key>`
 - **parameters**:

@@ -66,9 +66,9 @@ dll_function_identifier!(FiSH11_InitChannelKey, data, {
         let wrapped_key = crypto::wrap_key(&channel_key, &shared_key)?;
 
         // Create the NOTICE command for this member
-        // Format: /notice <nick> :!FCEP-KEY <channel> <coordinator> <wrapped_key_b64>
+        // Format: /notice <nick> :+FiSH-CEP-KEY <channel> <coordinator> <wrapped_key_b64>
         let command = format!(
-            "/notice {} :!FCEP-KEY {} {} {}",
+            "/notice {} :+FiSH-CEP-KEY {} {} {}",
             member_nick, channel_name, self_nick, wrapped_key
         );
         commands.push(command);

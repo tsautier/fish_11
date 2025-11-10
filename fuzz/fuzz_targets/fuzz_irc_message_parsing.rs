@@ -37,7 +37,7 @@ fuzz_target!(|data: &[u8]| {
         }
 
         // Test FCEP-1 key exchange parsing
-        if let Some(fcep_start) = message.find("FCEP-KEY:") {
+        if let Some(fcep_start) = message.find("+FiSH-CEP-KEY:") {
             let key_part = message[fcep_start + 9..].trim();
             let _ = general_purpose::STANDARD.decode(key_part);
         }

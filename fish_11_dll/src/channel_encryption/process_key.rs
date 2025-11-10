@@ -33,7 +33,7 @@ dll_function_identifier!(FiSH11_ProcessChannelKey, data, {
         return Err(DllError::InvalidInput {
             param: "sender".to_string(),
             reason: format!(
-                "SECURITY: FCEP-KEY sender mismatch - claims to be '{}' but actually from '{}' (REJECTED)",
+                "SECURITY: +FiSH-CEP-KEY sender mismatch - claims to be '{}' but actually from '{}' (REJECTED)",
                 coordinator_nick, actual_sender
             ),
         });
