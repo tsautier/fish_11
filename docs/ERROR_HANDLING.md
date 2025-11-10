@@ -60,21 +60,21 @@ When a function returns an `Err(DllError)`, a central wrapper:
 
 1. **logs the error**: a detailed, technical version of the error is written to the log file for debugging purposes.
 2. **formats a user message**: a clear, concise message is created explaining what went wrong in simple terms.
-3. **writes to mIRC**: the message is written back to the mIRC `data` buffer, typically as an `/echo` command.
+3. **writes to mIRC**: the message is written back to the mIRC `data` buffer, typically as a message.
 4. **returns the correct code**: it returns `MIRC_COMMAND` to mIRC so the error message is executed.
 
 ### Example error messages
 
 - **`DllError::KeyNotFound`**:
   - **log**: `ERROR: KeyNotFound for user 'bob'`
-  - **mirc response**: `/echo -ts [FiSH-11] Error: no encryption key found for 'bob'. please perform a key exchange first.`
+  - **mirc response**: `[FiSH-11] Error: no encryption key found for 'bob'. please perform a key exchange first.`
 
 - **`DllError::InvalidInput`**:
   - **log**: `ERROR: InvalidInput: expected format: <nickname> <base64_key>`
-  - **mirc response**: `/echo -ts [FiSH-11] Error: invalid input. usage: /dll fish_11.dll FiSH11_SetKey <nickname> <base64_key>`
+  - **mirc response**: `[FiSH-11] Error: invalid input. usage: /dll fish_11.dll FiSH11_SetKey <nickname> <base64_key>`
 
 - **`DllError::ReplayAttackDetected`**:
   - **log**: `SECURITY WARNING: ReplayAttackDetected in channel '#secret'`
-  - **mirc response**: `/echo -ts [FiSH-11] SECURITY WARNING: a replayed message was detected and rejected in #secret.`
+  - **mirc response**: `[FiSH-11] SECURITY WARNING: a replayed message was detected and rejected in #secret.`
 
 This approach ensures that the user is always informed of issues, and developers have the detailed logs they need to diagnose problems, all while preventing the DLL from ever crashing due to an unhandled error.

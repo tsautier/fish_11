@@ -16,7 +16,6 @@ Cargo.lock
 **/fish_11.toml
 
 # Exclude some useless generated files
-*.log
 *.new
 *.bak
 *.old
@@ -28,6 +27,7 @@ copydll.bat
 .vscode
 .idea
 GEMINI.md
+QWEN.md
 
 # Generated during rust tests
 # Ignore any fish*.ini file anywhere in the repository (config/test artifacts)

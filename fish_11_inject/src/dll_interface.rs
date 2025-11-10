@@ -155,7 +155,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
 
         // Prepare version string as a command
         let version_cmd =
-            format!("/echo -ts *** FiSH_11 Inject v{} loaded successfully. ***", FISH_11_VERSION);
+            format!("*** FiSH_11 inject v{} loaded successfully. ***", FISH_11_VERSION);
         if let Ok(c_cmd) = CString::new(version_cmd) {
             // Check size (Corrected comparison)
             let current_max_len = *MAX_MIRC_RETURN_BYTES.lock().unwrap();
@@ -320,7 +320,7 @@ pub extern "system" fn FiSH11_InjectVersion(
 ) -> c_int {
     // Return raw version info for script to display (no /echo prefix)
     let version_info = format!(
-        "FiSH_11 inject v{} - Compiled {} at {} - Written by [GuY] - GPL-v3",
+        "*** FiSH injection v{}. Compiled on {} at {}. Written by [GuY], licensed under the GPL-v3. ***",
         FISH_11_VERSION, FISH_11_BUILD_DATE, FISH_11_BUILD_TIME
     );
 
@@ -368,9 +368,9 @@ pub extern "system" fn FiSH11_InjectVersion(
                 );
             }
 
-            info!("FiSH11_InjectVersion: returned version info (len {})", copy_len);
+            info!("FiSH11_Inject: returned version info (len {})", copy_len);
         } else {
-            error!("FiSH11_InjectVersion: data buffer pointer is null");
+            error!("FiSH11_Inject: data buffer pointer is null");
             return MIRC_HALT;
         }
     }

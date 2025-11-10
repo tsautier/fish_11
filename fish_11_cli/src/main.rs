@@ -6,14 +6,14 @@
 //! Written by [GuY], 2025. Licenced under GPL v3.
 
 mod platform_types;
-use platform_types::{BOOL, DWORD, HWND, LIB_NAME};
-
 use std::env;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
+
+use platform_types::{BOOL, DWORD, HWND, LIB_NAME};
 
 mod helpers_cli;
 use crate::helpers_cli::{get_output_format, process_mirc_output, validate_config_file};
@@ -56,9 +56,9 @@ struct LOADINFO {
 }
 
 // Function signatures for the DLL functions
-type DllLoadFn = extern "stdcall" fn(*mut LOADINFO) -> c_int;
+type DllLoadFn = extern "system" fn(*mut LOADINFO) -> c_int;
 type DllFunctionFn =
-    extern "stdcall" fn(HWND, HWND, *mut c_char, *mut c_char, c_int, c_int) -> c_int;
+    extern "system" fn(HWND, HWND, *mut c_char, *mut c_char, c_int, c_int) -> c_int;
 
 /// Helper enum to specify different output formatting styles
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -517,60 +517,61 @@ fn main() {
     } else {
         String::new()
     };
-    
+
     // Call the DLL function using our enhanced helper that handles timeouts
     match call_dll_function(&dll, function_name, &params) {
-            Ok(output) => {
-                // For listkeys, directly process the mIRC-formatted output for simplicity
-                if function_name == "FiSH11_FileListKeys" {
-                    // Process the output
-                    if output.is_empty() {
-                        println!("No keys found or empty configuration.");
+        Ok(output) => {
+            // For listkeys, directly process the mIRC-formatted output for simplicity
+            if function_name == "FiSH11_FileListKeys" {
+                // Process the output
+                if output.is_empty() {
+                    println!("No keys found or empty configuration.");
+                } else {
+                    // Split by lines and display each line properly
+                    let lines = if output.contains("\r\n") {
+                        output.split("\r\n").collect::<Vec<&str>>()
                     } else {
-                        // Split by lines and display each line properly
-                        let lines = if output.contains("\r\n") {
-                            output.split("\r\n").collect::<Vec<&str>>()
-                        } else {
-                            output.split('\n').collect::<Vec<&str>>()
-                        };
+                        output.split('\n').collect::<Vec<&str>>()
+                    };
 
-                        // Process each line
-                        let mut displayed_something = false;
+                    // Process each line
+                    let mut displayed_something = false;
 
-                        for line in lines {
-                            // Handle mIRC-style /echo commands
-                            if line.starts_with("/echo -a ") {
-                                let content = line.trim_start_matches("/echo -a ");
+                    for line in lines {
+                        // Handle mIRC-style /echo commands
+                        if line.starts_with("/echo -a ") {
+                            let content = line.trim_start_matches("/echo -a ");
 
-                                // Skip duplicating header if we already printed it
-                                if content == "FiSH Keys:" && displayed_something {
-                                    continue;
-                                }
-
-                                println!("{}", content);
-                                displayed_something = true;
-                            } else if !line.trim().is_empty() {
-                                println!("{}", line);
-                                displayed_something = true;
+                            // Skip duplicating header if we already printed it
+                            if content == "FiSH Keys:" && displayed_something {
+                                continue;
                             }
-                        }
 
-                        // If nothing was displayed but we had output, show it raw
-                        if !displayed_something && !output.is_empty() {
-                            println!("Raw output: {}", output);
+                            println!("{}", content);
+                            displayed_something = true;
+                        } else if !line.trim().is_empty() {
+                            println!("{}", line);
+                            displayed_something = true;
                         }
                     }
-                } else {
-                    // For other functions, use the normal formatter
-                    let format = get_output_format(function_name);
-                    let formatted_output = process_mirc_output(&output, format);
-                    println!("{}", formatted_output);
+
+                    // If nothing was displayed but we had output, show it raw
+                    if !displayed_something && !output.is_empty() {
+                        println!("Raw output: {}", output);
+                    }
                 }
-            }
-            Err(e) => {
-                // Always show errors even in quiet mode                println!("Error calling function: {}", e);
-                println!("Try using the 'list' command to see available functions.");
+            } else {
+                // For other functions, use the normal formatter
+                let format = get_output_format(function_name);
+                let formatted_output = process_mirc_output(&output, format);
+                println!("{}", formatted_output);
             }
         }
+        Err(e) => {
+            // Always show errors even in quiet mode
+            println!("Error calling function: {}", e);
+            println!("Try using the 'list' command to see available functions.");
+        }
+    }
     // Debug file handling removed - we now directly process output from the DLL
 }

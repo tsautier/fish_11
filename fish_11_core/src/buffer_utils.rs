@@ -121,9 +121,18 @@ pub fn create_error_message(message: &str, fallback: &str) -> CString {
 /// Create an echo command string
 pub fn create_echo_command(message: &str, style: EchoStyle) -> String {
     match style {
-        EchoStyle::Normal => format!("/echo -a {}", message),
-        EchoStyle::Timestamp => format!("/echo -ts {}", message),
-        EchoStyle::Error => format!("/echo -cr {}", message),
+        EchoStyle::Normal => format!("{}", message),
+        EchoStyle::Timestamp => {
+            // Use a simple timestamp (HH:MM:SS) for demonstration
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+            let secs = now.as_secs() % 86400; // seconds since midnight
+            let hours = secs / 3600;
+            let minutes = (secs % 3600) / 60;
+            let seconds = secs % 60;
+            format!("[{:02}:{:02}:{:02}] {}", hours, minutes, seconds, message)
+        },
+        EchoStyle::Error => format!("ERROR: {}", message),
     }
 }
 
@@ -145,7 +154,7 @@ pub unsafe fn write_echo_command_to_buffer(
 #[derive(Debug, Clone, Copy)]
 pub enum EchoStyle {
     Normal,    // /echo -a
-    Timestamp, // /echo -ts
+    Timestamp, // plain text
     Error,     // /echo -cr
 }
 
@@ -210,7 +219,7 @@ pub unsafe fn write_error_to_buffer(
         format!("Error: {}", error_msg)
     };
 
-    let error_cstring = create_error_message(&formatted_msg, "/echo -ts Internal error occurred");
+    let error_cstring = create_error_message(&formatted_msg, "Internal error occurred");
     if let Err(_) = write_cstring_to_buffer(data, buffer_size, &error_cstring) {
         // Last resort: write minimal error message
         let minimal_msg =
