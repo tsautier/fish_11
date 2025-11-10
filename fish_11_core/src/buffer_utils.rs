@@ -122,8 +122,17 @@ pub fn create_error_message(message: &str, fallback: &str) -> CString {
 pub fn create_echo_command(message: &str, style: EchoStyle) -> String {
     match style {
         EchoStyle::Normal => format!("{}", message),
-        EchoStyle::Timestamp => format!("{}", message),
-        EchoStyle::Error => format!("{}", message),
+        EchoStyle::Timestamp => {
+            // Use a simple timestamp (HH:MM:SS) for demonstration
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+            let secs = now.as_secs() % 86400; // seconds since midnight
+            let hours = secs / 3600;
+            let minutes = (secs % 3600) / 60;
+            let seconds = secs % 60;
+            format!("[{:02}:{:02}:{:02}] {}", hours, minutes, seconds, message)
+        },
+        EchoStyle::Error => format!("ERROR: {}", message),
     }
 }
 
