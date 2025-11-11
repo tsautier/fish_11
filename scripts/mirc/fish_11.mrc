@@ -25,8 +25,8 @@ alias fish11_startup {
   %Fish11DllFile = $qt(%exe_dir $+ fish_11.dll)
 
   echo 4 -a DEBUG : loading DLLs...
-  echo 4 -a DEBUG : Fish11InjectDllFile = %Fish11InjectDllFile
-  echo 4 -a DEBUG : Fish11DllFile = %Fish11DllFile
+  echo 4 -a DEBUG : Fish11_InjectDllFile = %Fish11InjectDllFile
+  echo 4 -a DEBUG : Fish11_DllFile = %Fish11DllFile
 
   ; Check if DLLs exist
   if (!$exists(%Fish11InjectDllFile)) {
@@ -48,7 +48,7 @@ alias fish11_startup {
     halt
   }
 
-  echo 4 -a DEBUG : Calling fish_11.dll FiSH11_SetMircDir to set configuration path...
+  echo 4 -a DEBUG : calling fish_11.dll FiSH11_SetMircDir to set configuration path...
   ;noop $dll(%Fish11DllFile, FiSH11_SetMircDir, $mircdir)
   echo 4 -a DEBUG : MIRCDIR set to: $mircdir
   
@@ -58,7 +58,7 @@ alias fish11_startup {
     echo -ts *** %inject_version ***
   }
   else {
-    echo -ts *** FiSH_11: Warning - Could not load inject DLL version ***
+    echo -ts *** FiSH_11: WARNING - could not load inject DLL version ***
   }
   
   ; Get and display core DLL version
@@ -67,7 +67,7 @@ alias fish11_startup {
     echo -ts *** %core_version ***
   }
   else {
-    echo -ts *** FiSH_11: Warning - Could not load core DLL version ***
+    echo -ts *** FiSH_11: WARNING - could not load core DLL version ***
   }
 
   ; Initialize default settings if not already set
@@ -215,7 +215,10 @@ on ^*:NOTICE:X25519_INIT*:?:{
   var %our_pub = $dll(%Fish11DllFile, FiSH11_ExchangeKey, $nick)
 
   ; 2. Process their public key. This computes and saves the shared secret.
-  if ($dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $nick %their_pub)) {
+  var %process_result = $dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $nick %their_pub)
+  
+  ; Check if processing was successful (no error message)
+  if (%process_result && $left(%process_result, 6) != Error:) {
     ; 3. If successful, send our public key back to them so they can complete the exchange.
     if ($regex(%our_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/=]{44}/i)) {
       .notice $nick X25519_FINISH %our_pub
@@ -226,7 +229,8 @@ on ^*:NOTICE:X25519_INIT*:?:{
     }
   }
   else {
-    echo $color(Mode text) -tm $nick *** FiSH_11: ERROR - failed to process public key from $nick
+    ; Display error message from DLL
+    echo $color(Mode text) -tm $nick *** FiSH_11: %process_result
   }
 
   halt
@@ -246,7 +250,10 @@ on ^*:NOTICE:X25519_FINISH*:?:{
   ; Use regex to validate the key format from the peer.
   if ($regex(%their_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/=]{44}/i)) {
     ; Process the received public key. The DLL computes and stores the shared secret.
-    if ($dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $nick %their_pub)) {
+    var %process_result = $dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $nick %their_pub)
+    
+    ; Check if processing was successful (no error message)
+    if (%process_result && $left(%process_result, 6) != Error:) {
       ; Success! Clean up state variables.
       hdel fish11.dh $nick
 
@@ -255,7 +262,8 @@ on ^*:NOTICE:X25519_FINISH*:?:{
       echo $color(Error) -tm $nick *** FiSH_11: use /fish_fp11 $nick to see their key fingerprint and verify it with them through a secure channel.
     }
     else {
-      echo $color(Mode text) -tm $nick *** FiSH_11: ERROR - processing peer's public key failed.
+      ; Display error message from DLL
+      echo $color(Mode text) -tm $nick *** FiSH_11: %process_result
     }
   }
   else {
@@ -282,7 +290,7 @@ on ^*:NOTICE:+FiSH-CEP-KEY*:?:{
   
   ; Validate message format
   if (%num_tokens < 4) {
-    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FCEP-1 ERROR: Invalid +FiSH-CEP-KEY format from $nick (expected 4 tokens, got %num_tokens $+ )
+    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FISH_11 : FCEP-1 ERROR : Invalid +FiSH-CEP-KEY format from $nick (expected 4 tokens, got %num_tokens $+ )
     halt
   }
   
@@ -295,22 +303,22 @@ on ^*:NOTICE:+FiSH-CEP-KEY*:?:{
   ; This prevents impersonation attacks where an attacker sends a +FiSH-CEP-KEY
   ; message claiming to be from a trusted user
   if ($nick != %coordinator) {
-    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FCEP-1 SECURITY WARNING: Key distribution from $nick claims to be from %coordinator - REJECTED
-    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FCEP-1: This may indicate an impersonation attack attempt!
+    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FiSH_11 : FCEP-1 SECURITY WARNING : key distribution from $nick claims to be from %coordinator - REJECTED
+    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FiSH_11 : FCEP-1 : this may indicate an impersonation attack attempt!
     halt
   }
   
   ; Validate channel name format
   if (!$regex(%channel, /^[#&]/)) {
-    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FCEP-1 ERROR: Invalid channel name format: %channel (must start with # or &)
+    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FiSH_11 : FCEP-1 ERROR : invalid channel name format: %channel (must start with # or &)
     halt
   }
   
   ; Verify we have a pre-shared key with the coordinator
   var %existing_key = $dll(%Fish11DllFile, FiSH11_FileGetKey, %coordinator)
   if ($len(%existing_key) < 4) {
-    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FCEP-1 ERROR: No pre-shared key found for coordinator %coordinator
-    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FCEP-1: You must establish a key with %coordinator first using /fish11_X25519_INIT %coordinator
+    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FiSH_11 : FCEP-1 ERROR: no pre-shared key found for coordinator %coordinator
+    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FiSH_11 : FCEP-1 : you must establish a key with %coordinator first using /fish11_X25519_INIT %coordinator
     halt
   }
   
@@ -318,15 +326,14 @@ on ^*:NOTICE:+FiSH-CEP-KEY*:?:{
   ; DLL will: decode base64, verify sender, unwrap key with pre-shared key, store channel key
   var %result = $dll(%Fish11DllFile, FiSH11_ProcessChannelKey, %channel %coordinator $nick %wrapped_key)
   
-  ; Check if DLL returned a command to execute (starts with /)
-  if ($left(%result, 1) == /) {
-    ; Execute the returned mIRC command (typically /echo confirmation)
-    %result
+  ; Check for success (DLL returns raw message, check if it's an error)
+  if (%result && $left(%result, 6) != Error:) {
+    ; Success - display confirmation message
+    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FiSH_11 : FCEP-1 : %result
   }
   else {
-    ; Error occurred
-    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FCEP-1 ERROR: Failed to process channel key for %channel from %coordinator
-    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FCEP-1: %result
+    ; Error occurred - display error from DLL
+    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FiSH_11 : FCEP-1 ERROR: %result
   }
   
   halt
@@ -423,8 +430,13 @@ alias fish11_setkey {
     return
   }
   ; $1 = nickname (data), $2- = key (parms)
-  noop $dll(%Fish11DllFile, FiSH11_SetKey, $1, $2-)
-  if ($result == 3) echo -a Key set for $1
+  var %msg = $dll(%Fish11DllFile, FiSH11_SetKey, $1, $2-)
+  if (%msg) {
+    echo -a *** FiSH_11: key set for $1
+  }
+  else {
+    echo -a *** FiSH_11: error - could not set key for $1
+  }
 }
 
 
@@ -494,13 +506,17 @@ alias fish11_ProcessPublicKey {
   }
   
   ; Process the public key
-  if ($dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $1 $2-)) {
+  var %result = $dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $1 $2-)
+  
+  ; Check if processing was successful (no error message)
+  if (%result && $left(%result, 6) != Error:) {
     echo $color(Mode text) -at *** FiSH_11: key exchange completed with $1
     echo $color(Error) -at *** FiSH_11 WARNING: key exchange complete, but the identity of $1 is NOT VERIFIED.
     echo $color(Error) -at *** FiSH_11: use /fish_fp11 $1 to see their key fingerprint and verify it with them through a secure channel (e.g., voice call).
   }
   else {
-    echo $color(Mode text) -at *** FiSH_11: key exchange failed with $1
+    ; Display error message from DLL
+    echo $color(Mode text) -at *** FiSH_11: %result
   }
 }
 
@@ -540,15 +556,36 @@ alias fish11_initchannel {
   ; Call DLL to generate key and create distribution commands
   var %result = $dll(%Fish11DllFile, FiSH11_InitChannelKey, %channel %members)
   
-  ; Check for errors
-  if ($left(%result, 1) != /) {
+  ; Check for errors (DLL returns "Error: ..." for errors)
+  if ($left(%result, 6) == Error:) {
     echo $color(Error) -at *** FiSH_11 FCEP-1 ERROR: %result
     return
   }
   
-  ; Execute the returned commands (series of NOTICE commands separated by |)
-  ; The DLL returns commands like: /notice alice :+FiSH-CEP-KEY #chan me <key> | /notice bob ...
-  %result
+  ; Parse result: commands are separated by | and last item is confirmation message
+  ; Example: "/notice alice :... | /notice bob :... | [KEY] Channel key for #chan..."
+  var %num_parts = $numtok(%result, 124)
+  var %i = 1
+  var %has_commands = $false
+  
+  ; Execute all commands (parts starting with /)
+  while (%i <= %num_parts) {
+    var %part = $gettok(%result, %i, 124)
+    if ($left(%part, 1) == /) {
+      %part
+      %has_commands = $true
+    }
+    else {
+      ; This is the confirmation message - display it
+      echo $color(Mode text) -at *** FiSH_11 FCEP-1: %part
+    }
+    inc %i
+  }
+  
+  ; If no commands were found, something went wrong
+  if (!%has_commands) {
+    echo $color(Error) -at *** FiSH_11 FCEP-1 ERROR: No distribution commands generated
+  }
 }
 
 ; Shorthand alias for channel encryption
@@ -597,11 +634,15 @@ alias fish11_removekey {
   if ($1 == /query) var %cur_contact = $active
   else var %cur_contact = $1
   
-  if ($dll(%Fish11DllFile, FiSH11_FileDelKey, $+($network," ",%cur_contact))) {
-    echo $color(Mode text) -at *** FiSH_11: key for %cur_contact has been removed
+  ; Get result message from DLL
+  var %msg = $dll(%Fish11DllFile, FiSH11_FileDelKey, $+($network," ",%cur_contact))
+  
+  ; Display message from DLL (works for both success and error)
+  if (%msg) {
+    echo $color(Mode text) -at *** FiSH_11: %msg
   }
   else {
-    echo $color(Mode text) -at *** FiSH_11: could not remove key for %cur_contact
+    echo $color(Mode text) -at *** FiSH_11: error - could not remove key for %cur_contact
   }
 }
 
