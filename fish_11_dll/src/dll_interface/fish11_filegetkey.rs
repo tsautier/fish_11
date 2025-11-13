@@ -9,6 +9,7 @@ use crate::config;
 use crate::dll_function_identifier;
 use crate::unified_error::DllError;
 use crate::utils::{base64_encode, normalize_nick};
+use crate::log_debug;
 
 dll_function_identifier!(FiSH11_FileGetKey, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
@@ -18,13 +19,13 @@ dll_function_identifier!(FiSH11_FileGetKey, data, {
         return Err(DllError::MissingParameter("nickname".to_string()));
     }
 
-    log::debug!("Retrieving key for nickname: {}", nickname);
+    log_debug!("Retrieving key for nickname: {}", nickname);
 
     // The `?` operator will automatically convert the error from `config::get_key_default`
     // into our `DllError` type, thanks to the `From<FishError>` implementation.
     let key = config::get_key_default(&nickname)?;
 
-    log::debug!("Key found, encoding as base64");
+    log_debug!("Key found, encoding as base64");
     let base64_key = base64_encode(&key);
     Ok(base64_key)
 });

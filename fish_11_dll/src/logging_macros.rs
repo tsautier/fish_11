@@ -10,6 +10,7 @@ macro_rules! log_info {
     };
 }
 
+#[cfg(debug_assertions)]
 #[macro_export]
 macro_rules! log_debug {
     ($($arg:tt)*) => {
@@ -17,6 +18,12 @@ macro_rules! log_debug {
             log::debug!($($arg)*);
         }
     };
+}
+
+#[cfg(not(debug_assertions))]
+#[macro_export]
+macro_rules! log_debug {
+    ($($arg:tt)*) => {};
 }
 
 #[macro_export]
@@ -37,6 +44,7 @@ macro_rules! log_error {
     };
 }
 
+#[cfg(debug_assertions)]
 #[macro_export]
 macro_rules! log_trace {
     ($($arg:tt)*) => {
@@ -44,4 +52,10 @@ macro_rules! log_trace {
             log::trace!($($arg)*);
         }
     };
+}
+
+#[cfg(not(debug_assertions))]
+#[macro_export]
+macro_rules! log_trace {
+    ($($arg:tt)*) => {};
 }

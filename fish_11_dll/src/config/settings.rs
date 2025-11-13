@@ -5,17 +5,18 @@ use chrono::{DateTime, Local, TimeZone};
 use crate::config::Fish11Section;
 use crate::config::config_access::{with_config, with_config_mut};
 use crate::error::{FishError, Result};
+use crate::log_debug;
 
 /// Get a reference to the FiSH11 configuration section
 pub fn get_fish11_config() -> Result<Fish11Section> {
-    log::debug!("get_fish11_config: Calling with_config...");
+    log_debug!("get_fish11_config: Calling with_config...");
     let result = with_config(|config| {
-        log::debug!("get_fish11_config: Inside with_config closure, about to clone fish11 section...");
+        log_debug!("get_fish11_config: Inside with_config closure, about to clone fish11 section...");
         let cloned = config.fish11.clone();
-        log::debug!("get_fish11_config: fish11 section cloned successfully");
+        log_debug!("get_fish11_config: fish11 section cloned successfully");
         Ok(cloned)
     });
-    log::debug!("get_fish11_config: with_config returned, result={:?}", result.is_ok());
+    log_debug!("get_fish11_config: with_config returned, result={:?}", result.is_ok());
     result
 }
 

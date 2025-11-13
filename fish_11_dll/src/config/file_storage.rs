@@ -6,9 +6,9 @@ use configparser::ini::Ini;
 use secrecy::ExposeSecret;
 
 use crate::config::models::{EntryData, FishConfig};
-use crate::crypto;
 use crate::error::{FishError, Result};
 use crate::utils::base64_encode;
+use crate::{crypto, log_debug, log_trace};
 
 /// Initialize the config file if it doesn't exist
 pub fn init_config_file() -> Result<()> {
@@ -30,15 +30,15 @@ pub fn init_config_file() -> Result<()> {
 
 /// Get the path to the config file
 pub fn get_config_path() -> Result<PathBuf> {
-    log::debug!("get_config_path: Determining configuration file path");
+    log_debug!("get_config_path: Determining configuration file path");
 
     // Use environment variable for mIRC directory
     match std::env::var("MIRCDIR") {
         Ok(mirc_path) => {
-            log::debug!("get_config_path: Found MIRCDIR environment variable: {}", mirc_path);
+            log_debug!("get_config_path: Found MIRCDIR environment variable: {}", mirc_path);
 
             let mut path = PathBuf::from(mirc_path);
-            log::debug!("get_config_path: Created path from MIRCDIR: {}", path.display());
+            log_debug!("get_config_path: Created path from MIRCDIR: {}", path.display());
 
             // Validate path - detect directory traversal attempts
             if path.to_string_lossy().contains("..") {
@@ -92,7 +92,7 @@ pub fn get_config_path() -> Result<PathBuf> {
 ///
 /// - `Result<FishConfig>` - The loaded configuration or an error
 pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
-    log::debug!("load_config: starting configuration load");
+    log_debug!("load_config: starting configuration load");
 
     // Set a timeout to prevent hanging
     let start_time = std::time::Instant::now();
@@ -102,13 +102,13 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
 
     let config_path = match path_override {
         Some(path) => {
-            log::debug!("load_config: using override path: {}", path.display());
+            log_debug!("load_config: using override path: {}", path.display());
             path
         }
         None => get_config_path()?,
     };
 
-    log::debug!("load_config: config path: {}", config_path.display());
+    log_debug!("load_config: config path: {}", config_path.display());
 
     // Check if we've timed out already
     if start_time.elapsed() > timeout {
@@ -134,7 +134,7 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
         return Ok(config);
     }
 
-    log::trace!("load_config: loading existing config file");
+    log_trace!("load_config: loading existing config file");
 
     // Create a new Ini object and load the file
     let mut ini = Ini::new();
@@ -148,10 +148,14 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
 
     match ini.load(&config_path) {
         Ok(_) => {
-            log::trace!("load_config: INI file loaded successfully from {}", config_path.display());
+            log_trace!("load_config: INI file loaded successfully from {}", config_path.display());
         }
         Err(e) => {
-            log::error!("load_config: failed to load INI file from {}: {}", config_path.display(), e);
+            log::error!(
+                "load_config: failed to load INI file from {}: {}",
+                config_path.display(),
+                e
+            );
             return Err(FishError::ConfigError(format!("Failed to load config: {}", e)));
         }
     };
@@ -164,12 +168,10 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
     }
 
     // OPTIMISATION: Build case-insensitive section lookup cache ONCE
-    let sections_lower: std::collections::HashMap<String, String> = ini.sections()
-        .iter()
-        .map(|s| (s.to_lowercase(), s.clone()))
-        .collect();
+    let sections_lower: std::collections::HashMap<String, String> =
+        ini.sections().iter().map(|s| (s.to_lowercase(), s.clone())).collect();
 
-    log::trace!("load_config: processing [Keys] section...");
+    log_trace!("load_config: processing [Keys] section...");
 
     // Load [Keys] section (case-insensitive, optimized)
     if let Some(section_name) = sections_lower.get("keys") {
@@ -182,8 +184,8 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
         }
     }
 
-    log::trace!("load_config: loaded {} keys", config.keys.len());
-    log::trace!("load_config: processing [KeyPair] section...");
+    log_trace!("load_config: loaded {} keys", config.keys.len());
+    log_trace!("load_config: processing [KeyPair] section...");
 
     // Load [KeyPair] section (case-insensitive, optimized)
     if let Some(section_name) = sections_lower.get("keypair") {
@@ -195,7 +197,7 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
         }
     }
 
-    log::trace!("load_config: processing [NickNetworks] section...");
+    log_trace!("load_config: processing [NickNetworks] section...");
 
     // Load [NickNetworks] section (case-insensitive, optimized)
     if let Some(section_name) = sections_lower.get("nicknetworks") {
@@ -208,7 +210,7 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
         }
     }
 
-    log::trace!("load_config: processing [FiSH11] section...");
+    log_trace!("load_config: processing [FiSH11] section...");
 
     // Load [FiSH11] section (case-insensitive, optimized)
     if let Some(section_name) = sections_lower.get("fish11") {
@@ -272,14 +274,19 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
 
         // Check if this is a valid entry section (contains @ indicating network format)
         if section_name.contains('@') {
+            #[cfg(debug_assertions)]
             println!("DEBUG:   -> processing entry section: '{}'", section_name);
 
             // Clean section name: remove any brackets (should not be present, but defensive)
             if section_name.starts_with('[') || section_name.ends_with(']') {
-                eprintln!("WARNING: Section name '{}' contains brackets. This may indicate malformed data.", section_name);
+                #[cfg(debug_assertions)]
+                eprintln!(
+                    "WARNING: Section name '{}' contains brackets. This may indicate malformed data.",
+                    section_name
+                );
             }
             let clean_section = section_name.trim_start_matches('[').trim_end_matches(']');
-            
+
             // Transform chan_ prefix back to # for channels
             let entry_key = if clean_section.starts_with("chan_") {
                 clean_section.replacen("chan_", "#", 1)
@@ -290,25 +297,32 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
             let mut entry = EntryData::default();
 
             if let Some(key_value) = ini.get(&section_name, "key") {
+                #[cfg(debug_assertions)]
                 println!("DEBUG:     found key: '{}'", key_value);
                 entry.key = Some(key_value.to_string());
             } else {
+                #[cfg(debug_assertions)]
                 println!("DEBUG:     no key found for section '{}'", section_name);
             }
 
             if let Some(date_value) = ini.get(&section_name, "date") {
+                #[cfg(debug_assertions)]
                 println!("DEBUG:     found date: '{}'", date_value);
                 entry.date = Some(date_value.to_string());
             } else {
+                #[cfg(debug_assertions)]
                 println!("DEBUG:     no date found for section '{}'", section_name);
             }
             config.entries.insert(entry_key.clone(), entry);
+            #[cfg(debug_assertions)]
             println!("DEBUG:     inserted entry for: '{}'", entry_key);
         } else {
+            #[cfg(debug_assertions)]
             println!("DEBUG:   -> skipping non-entry section (no @): '{}'", section_name);
         }
     }
 
+    #[cfg(debug_assertions)]
     println!("DEBUG: finished processing sections. Total entries loaded: {}", config.entries.len());
 
     Ok(config)
@@ -330,8 +344,11 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
 pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Result<()> {
     let start_time = std::time::Instant::now();
 
-    log::debug!("save_config: starting (entries: {}, keys: {})", 
-        config.entries.len(), config.keys.len());
+    log_debug!(
+        "save_config: starting (entries: {}, keys: {})",
+        config.entries.len(),
+        config.keys.len()
+    );
 
     let mut ini = Ini::new();
 
@@ -369,14 +386,14 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
     if let Some(date) = config.startup_data.date {
         ini.set("Startup", "date", Some(date.to_string()));
     }
-    
+
     // OPTIMISATION: Save entry sections with minimal allocations
     let entries_start = std::time::Instant::now();
-    
+
     for (key, entry) in &config.entries {
         // Clean up the key: remove any existing brackets that might have been accidentally included
         let clean_key = key.trim_start_matches('[').trim_end_matches(']');
-        
+
         // Transform keys that start with # to use chan_ prefix for INI compatibility
         // Use Cow to avoid unnecessary allocations when no transformation is needed
         let section_name: std::borrow::Cow<str> = if clean_key.starts_with('#') {
@@ -392,12 +409,12 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
             ini.set(section_name.as_ref(), "date", Some(date.clone()));
         }
     }
-    
+
     let entries_duration = entries_start.elapsed();
     if entries_duration.as_millis() > 100 {
         log::warn!(
-            "save_config: entries processing took {:?} for {} entries", 
-            entries_duration, 
+            "save_config: entries processing took {:?} for {} entries",
+            entries_duration,
             config.entries.len()
         );
     }
@@ -407,12 +424,12 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
         Some(path) => path,
         None => get_config_path()?,
     };
-    log::debug!("save_config: Config path: {}", config_path.display());
+    log_debug!("save_config: Config path: {}", config_path.display());
 
     // Create parent directories if they don't exist
     if let Some(parent) = config_path.parent() {
         if !parent.exists() {
-            log::debug!("save_config: creating parent directory: {}", parent.display());
+            log_debug!("save_config: creating parent directory: {}", parent.display());
             fs::create_dir_all(parent)?;
         }
     }
@@ -422,34 +439,34 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
 
     // Write to the temp file first
     let write_start = std::time::Instant::now();
-    
+
     match ini.write(&temp_path) {
         Ok(_) => {
             let write_duration = write_start.elapsed();
-            
+
             // Now rename the temp file to the actual config file
             match fs::rename(&temp_path, &config_path) {
                 Ok(_) => {
                     let total_duration = start_time.elapsed();
-                    
-                    log::debug!(
-                        "save_config: completed in {:?} (write: {:?}, entries: {:?})", 
-                        total_duration, 
+
+                    log_debug!(
+                        "save_config: completed in {:?} (write: {:?}, entries: {:?})",
+                        total_duration,
                         write_duration,
                         entries_duration
                     );
-                    
+
                     if total_duration.as_secs() > 1 {
                         log::warn!(
-                            "save_config: SLOW SAVE! Took {:?} for {} entries. Check disk I/O.", 
-                            total_duration, 
+                            "save_config: SLOW SAVE! Took {:?} for {} entries. Check disk I/O.",
+                            total_duration,
                             config.entries.len()
                         );
                     }
-                    
+
                     // Mark config as clean after successful save
                     config.mark_clean();
-                    
+
                     Ok(())
                 }
                 Err(e) => {
@@ -469,10 +486,11 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
 
 #[cfg(test)]
 mod tests {
+    use tempfile::NamedTempFile;
+
     use super::*;
     use crate::config::models::{EntryData, FishConfig};
     use crate::utils::generate_random_bytes;
-    use tempfile::NamedTempFile;
 
     // Helper to create a dummy config for testing
     fn create_dummy_config() -> FishConfig {

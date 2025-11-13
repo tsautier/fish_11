@@ -6,6 +6,7 @@ use crate::config::CONFIG;
 use crate::config::file_storage::save_config;
 use crate::config::models::FishConfig;
 use crate::error::{FishError, Result};
+use crate::log_debug;
 
 /// A read-only guard for the configuration
 pub struct ConfigReadGuard<'a> {
@@ -46,12 +47,12 @@ impl<'a> ConfigWriteGuard<'a> {
     /// Save the configuration if it has been modified
     pub fn save_if_modified(&mut self) -> Result<()> {
         if self.modified || self.guard.is_dirty() {
-            log::debug!("ConfigWriteGuard::save_if_modified - saving config due to modifications");
+            log_debug!("ConfigWriteGuard::save_if_modified - saving config due to modifications");
             save_config(&self.guard, None)?;
             self.modified = false;
             // Note: save_config already calls mark_clean() internally
         } else {
-            log::debug!("ConfigWriteGuard::save_if_modified - no modifications, skipping save");
+            log_debug!("ConfigWriteGuard::save_if_modified - no modifications, skipping save");
         }
         Ok(())
     }
@@ -61,14 +62,14 @@ impl<'a> Drop for ConfigWriteGuard<'a> {
     fn drop(&mut self) {
         if self.modified || self.guard.is_dirty() {
             // Add logging to track potential double-save issues
-            log::debug!("ConfigWriteGuard::drop - attempting to save modified config");
+            log_debug!("ConfigWriteGuard::drop - attempting to save modified config");
             // Try to save, but ignore errors since we're in a destructor
             match save_config(&self.guard, None) {
-                Ok(_) => log::debug!("ConfigWriteGuard::drop - config saved successfully"),
+                Ok(_) => log_debug!("ConfigWriteGuard::drop - config saved successfully"),
                 Err(e) => log::warn!("ConfigWriteGuard::drop - failed to save config: {}", e),
             }
         } else {
-            log::debug!("ConfigWriteGuard::drop - config not modified, skipping save");
+            log_debug!("ConfigWriteGuard::drop - config not modified, skipping save");
         }
     }
 }
@@ -117,13 +118,13 @@ where
         }
 
         // Try to get the lock - parking_lot::Mutex doesn't poison and returns Option
-        // Debug logging: printed either in debug builds or when FISH11_DEBUG is set at runtime
-        if cfg!(debug_assertions) || std::env::var("FISH11_DEBUG").is_ok() {
+        #[cfg(debug_assertions)]
+        {
             // Capture some context for debugging: PID, TID, timestamp, attempt
             let pid = std::process::id();
             let tid = std::thread::current().id();
             let now = chrono::Local::now();
-            log::debug!(
+            log_debug!(
                 "with_config: before try_lock - pid={}, tid={:?}, attempt={}, time={}",
                 pid,
                 tid,
@@ -134,11 +135,12 @@ where
 
         match CONFIG.try_lock() {
             Some(guard) => {
-                if cfg!(debug_assertions) || std::env::var("FISH11_DEBUG").is_ok() {
+                #[cfg(debug_assertions)]
+                {
                     let pid = std::process::id();
                     let tid = std::thread::current().id();
                     let now = chrono::Local::now();
-                    log::debug!(
+                    log_debug!(
                         "with_config: acquired lock - pid={}, tid={:?}, attempts={}, time={}",
                         pid,
                         tid,
@@ -151,11 +153,12 @@ where
                 return f(guard.config());
             }
             None => {
-                if cfg!(debug_assertions) || std::env::var("FISH11_DEBUG").is_ok() {
+                #[cfg(debug_assertions)]
+                {
                     let pid = std::process::id();
                     let tid = std::thread::current().id();
                     let now = chrono::Local::now();
-                    log::debug!(
+                    log_debug!(
                         "with_config: try_lock WOULD_BLOCK - pid={}, tid={:?}, attempt={}, time={}",
                         pid,
                         tid,
@@ -166,7 +169,7 @@ where
                     // Optional small backtrace to help diagnose where threads are
                     if std::env::var("FISH11_DEBUG_BACKTRACE").is_ok() {
                         let bt = std::backtrace::Backtrace::capture();
-                        log::debug!("with_config: backtrace:\n{:?}", bt);
+                        log_debug!("with_config: backtrace:\n{:?}", bt);
                     }
                 }
 
@@ -227,11 +230,12 @@ where
         }
 
         // Try to get the lock - parking_lot::Mutex doesn't poison and returns Option
-        if cfg!(debug_assertions) || std::env::var("FISH11_DEBUG").is_ok() {
+        #[cfg(debug_assertions)]
+        {
             let pid = std::process::id();
             let tid = std::thread::current().id();
             let now = chrono::Local::now();
-            log::debug!(
+            log_debug!(
                 "with_config_mut: before try_lock - pid={}, tid={:?}, attempt={}, time={}",
                 pid,
                 tid,
@@ -242,11 +246,12 @@ where
 
         match CONFIG.try_lock() {
             Some(guard) => {
-                if cfg!(debug_assertions) || std::env::var("FISH11_DEBUG").is_ok() {
+                #[cfg(debug_assertions)]
+                {
                     let pid = std::process::id();
                     let tid = std::thread::current().id();
                     let now = chrono::Local::now();
-                    log::debug!(
+                    log_debug!(
                         "with_config_mut: acquired lock - pid={}, tid={:?}, attempts={}, time={}",
                         pid,
                         tid,
@@ -255,7 +260,7 @@ where
                     );
                 }
 
-                log::debug!("with_config_mut: acquired lock after {} attempts", attempts);
+                log_debug!("with_config_mut: acquired lock after {} attempts", attempts);
                 let mut guard = ConfigWriteGuard { guard, modified: false };
                 let result = f(guard.config_mut());
 
@@ -279,7 +284,7 @@ where
                     }
                     Err(_) => {
                         // Operation failed, don't save changes
-                        log::debug!("with_config_mut: operation failed, not saving config");
+                        log_debug!("with_config_mut: operation failed, not saving config");
                         guard.modified = false; // Prevent save in Drop
                     }
                 }
@@ -287,11 +292,12 @@ where
                 return result;
             }
             None => {
-                if cfg!(debug_assertions) || std::env::var("FISH11_DEBUG").is_ok() {
+                #[cfg(debug_assertions)]
+                {
                     let pid = std::process::id();
                     let tid = std::thread::current().id();
                     let now = chrono::Local::now();
-                    log::debug!(
+                    log_debug!(
                         "with_config_mut: try_lock WOULD_BLOCK - pid={}, tid={:?}, attempt={}, time={}",
                         pid,
                         tid,
@@ -301,7 +307,7 @@ where
 
                     if std::env::var("FISH11_DEBUG_BACKTRACE").is_ok() {
                         let bt = std::backtrace::Backtrace::capture();
-                        log::debug!("with_config_mut: backtrace:\n{:?}", bt);
+                        log_debug!("with_config_mut: backtrace:\n{:?}", bt);
                     }
                 }
 

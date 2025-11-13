@@ -2,14 +2,11 @@ use std::ffi::c_char;
 use std::os::raw::c_int;
 
 use base64::Engine;
-use crate::platform_types::BOOL;
-use crate::platform_types::HWND;
 
-use crate::buffer_utils;
-use crate::config;
-use crate::dll_function_identifier;
+use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
+use crate::{buffer_utils, config, dll_function_identifier, log_debug};
 
 dll_function_identifier!(FiSH11_SetKey, data, {
     // 1. Parse input: <nickname> <base64_key>
@@ -33,7 +30,7 @@ dll_function_identifier!(FiSH11_SetKey, data, {
         return Err(DllError::MissingParameter("base64_key".to_string()));
     }
 
-    log::debug!("Setting key for nickname: {}", nickname);
+    log_debug!("Setting key for nickname: {}", nickname);
 
     // 2. Decode the base64 key.
     let key_bytes = base64::engine::general_purpose::STANDARD.decode(base64_key).map_err(|e| {
@@ -51,7 +48,7 @@ dll_function_identifier!(FiSH11_SetKey, data, {
     let mut key = [0u8; 32];
     key.copy_from_slice(&key_bytes);
 
-    log::debug!("Key decoded successfully, storing...");
+    log_debug!("Key decoded successfully, storing...");
 
     // 4. Store the key, allowing overwrite.
     config::set_key(&nickname, &key, None, true)?;
@@ -65,9 +62,11 @@ dll_function_identifier!(FiSH11_SetKey, data, {
 #[cfg(test)]
 mod tests {
 
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD;
+
     use crate::config;
     use crate::utils::normalize_nick;
-    use base64::{Engine, engine::general_purpose::STANDARD};
 
     #[test]
     fn test_normalize_nick() {

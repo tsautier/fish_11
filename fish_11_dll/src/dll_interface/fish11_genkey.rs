@@ -1,14 +1,10 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
-use crate::platform_types::BOOL;
-use crate::platform_types::HWND;
-
-use crate::buffer_utils;
-use crate::config;
-use crate::dll_function_identifier;
+use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::{self, normalize_nick};
+use crate::{buffer_utils, config, dll_function_identifier, log_debug};
 
 dll_function_identifier!(FiSH11_GenKey, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
@@ -22,11 +18,7 @@ dll_function_identifier!(FiSH11_GenKey, data, {
 
     let network = parts.get(1).map(|s| s.trim());
 
-    log::debug!(
-        "Generating key for nickname: {} (network: {:?})",
-        nickname,
-        network
-    );
+    log_debug!("Generating key for nickname: {} (network: {:?})", nickname, network);
 
     // 1. Generate a cryptographically secure random key.
     let mut key = [0u8; 32];
