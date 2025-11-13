@@ -52,7 +52,7 @@ pub fn set_key(
             };
 
             let entry_key = format!("{}:{}", net, nickname);
-            log::debug!("Checking for existing key with entry: {}", entry_key);
+            log_debug!("Checking for existing key with entry: {}", entry_key);
 
             if config.entries.contains_key(&entry_key) {
                 return Err(FishError::DuplicateEntry(normalized_nick.clone()));
@@ -71,7 +71,7 @@ pub fn set_key(
             format!("{}@{}", normalized_nick, network_name) // Format: nickname@network
         };
 
-        log::debug!("Setting key for entry: {}", entry_key);
+        log_debug!("Setting key for entry: {}", entry_key);
 
         let entry = EntryData { key: Some(base64_encode(key)), date: Some(date_str) };
 
@@ -152,16 +152,16 @@ pub fn delete_key(nickname: &str, network: Option<&str>) -> Result<()> {
             format!("{}@{}", normalized_nick, network_name)
         };
 
-        log::debug!("Attempting to delete key with entry: {}", entry_key);
+        log_debug!("Attempting to delete key with entry: {}", entry_key);
 
         let entry_removed = config.entries.remove(&entry_key).is_some(); // Remove from keys map too if present
         let key_removed = config.keys.remove(&normalized_nick).is_some();
 
         if entry_removed || key_removed {
-            log::debug!("Successfully removed key for {}", normalized_nick);
+            log_debug!("Successfully removed key for {}", normalized_nick);
             Ok(())
         } else {
-            log::debug!("Key not found for {} in any format", normalized_nick);
+            log_debug!("Key not found for {} in any format", normalized_nick);
             Err(FishError::KeyNotFound(normalized_nick))
         }
     })
@@ -236,7 +236,7 @@ pub fn list_keys() -> Result<Vec<(String, String, Option<String>, Option<String>
                         entry.date.clone(),
                     ));
 
-                    log::debug!(
+                    log_debug!(
                         "Found key for {} on network {} ({})",
                         name_part,
                         network,
@@ -246,7 +246,7 @@ pub fn list_keys() -> Result<Vec<(String, String, Option<String>, Option<String>
             }
         }
 
-        log::debug!("list_keys: Found {} total keys", result.len());
+        log_debug!("list_keys: Found {} total keys", result.len());
         Ok(result)
     })
 }

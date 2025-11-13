@@ -115,7 +115,7 @@ pub extern "system" fn DllMain(_hinst: HINSTANCE, reason: DWORD, _: LPVOID) -> B
                     crate::FISH_11_VERSION, 
                     crate::FISH_11_BUILD_DATE, 
                     crate::FISH_11_BUILD_TIME);
-                log::debug!("System information: Process ID: {}", std::process::id());
+                log_debug!("System information: Process ID: {}", std::process::id());
 
                 // When this DLL is loaded, it tries to register itself with the inject DLL.
                 #[cfg(windows)]
@@ -126,7 +126,7 @@ pub extern "system" fn DllMain(_hinst: HINSTANCE, reason: DWORD, _: LPVOID) -> B
                 {
                     use std::env;
                     if let Ok(os_info) = env::var("OS") {
-                        log::debug!("Operating System: {}", os_info);
+                        log_debug!("Operating System: {}", os_info);
                     }
                 }
             }
@@ -158,7 +158,7 @@ pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
     }
 
     // Log version information to file, not to console
-    log::debug!("LoadDll called for FiSH v{}", crate::FISH_11_VERSION);
+    log_debug!("LoadDll called for FiSH v{}", crate::FISH_11_VERSION);
 
     // Log function entry with structured logging
     crate::logging::log_function_entry("LoadDll", None::<i32>);
@@ -210,7 +210,7 @@ pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
     );
 
     // Log function exit
-    log::debug!("EXIT: LoadDll - returned TRUE");
+    log_debug!("EXIT: LoadDll - returned TRUE");
 
     TRUE
 }
@@ -241,7 +241,7 @@ pub extern "stdcall" fn UnloadDll(_timeout: c_int) -> c_int {
     // Clean up resources
     {
         let mut state = LOAD_INFO.lock().expect("LOAD_INFO mutex should not be poisoned");
-        log::debug!("Cleaning up LOAD_INFO resources");
+        log_debug!("Cleaning up LOAD_INFO resources");
         *state = None;
     }
 
@@ -263,7 +263,7 @@ pub extern "C" fn LoadDll(load: *mut LOADINFO) -> BOOL {
         let _ = crate::logging::init_logger(log::LevelFilter::Info);
     }
 
-    log::debug!("LoadDll called for FiSH v{}", crate::FISH_11_VERSION);
+    log_debug!("LoadDll called for FiSH v{}", crate::FISH_11_VERSION);
     crate::logging::log_function_entry("LoadDll", None::<i32>);
     
     crate::config::init_config();
@@ -293,7 +293,7 @@ pub extern "C" fn LoadDll(load: *mut LOADINFO) -> BOOL {
     }
 
     log::info!("FiSH_11 v{} initialized successfully (version {})", crate::FISH_11_VERSION, mirc_version);
-    log::debug!("EXIT: LoadDll - returned TRUE");
+    log_debug!("EXIT: LoadDll - returned TRUE");
 
     TRUE
 }
@@ -311,7 +311,7 @@ pub extern "C" fn UnloadDll(_timeout: c_int) -> c_int {
 
     {
         let mut state = LOAD_INFO.lock().expect("LOAD_INFO mutex should not be poisoned");
-        log::debug!("Cleaning up LOAD_INFO resources");
+        log_debug!("Cleaning up LOAD_INFO resources");
         *state = None;
     }
 
@@ -320,4 +320,3 @@ pub extern "C" fn UnloadDll(_timeout: c_int) -> c_int {
 
     0
 }
-
