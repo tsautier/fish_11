@@ -8,6 +8,7 @@ use crate::buffer_utils;
 use crate::config;
 use crate::dll_function_identifier;
 use crate::unified_error::DllError;
+use crate::log_debug;
 
 dll_function_identifier!(FiSH11_FileListKeysItem, data, {
     // Parse input to get the index
@@ -15,7 +16,7 @@ dll_function_identifier!(FiSH11_FileListKeysItem, data, {
 
     // Parse index (default to 0 if not provided or invalid)
     let index = input.trim().parse::<usize>().unwrap_or_else(|_| {
-        log::debug!("Invalid index provided, defaulting to 0");
+        log_debug!("Invalid index provided, defaulting to 0");
         0
     });
 
@@ -42,7 +43,7 @@ dll_function_identifier!(FiSH11_FileListKeysItem, data, {
     let net_display = if network.is_empty() || network == "default" { "default" } else { network };
 
     log::info!("Returning key info for nickname '{}' at index {}", nickname, index);
-    log::debug!("Key details - Network: {}, Date: {:?}", net_display, date);
+    log_debug!("Key details - Network: {}, Date: {:?}", net_display, date);
 
     // Format the message with date if available (plain text, no /echo)
     let key_msg = if let Some(date_str) = date {

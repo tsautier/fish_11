@@ -5,6 +5,7 @@ use chrono::{DateTime, Local, TimeZone};
 use crate::config::Fish11Section;
 use crate::config::config_access::{with_config, with_config_mut};
 use crate::error::{FishError, Result};
+use crate::log_debug;
 
 /// Get a reference to the FiSH11 configuration section
 pub fn get_fish11_config() -> Result<Fish11Section> {

@@ -1,7 +1,8 @@
 use std::sync::Mutex;
-
 use log;
 use crate::platform_types::{BOOL, HWND, c_int};
+use crate::log_debug;
+use crate::dll_interface::DEFAULT_MIRC_BUFFER_SIZE;
 
 #[cfg(windows)]
 use winapi::shared::minwindef::{DWORD, HINSTANCE, LPVOID, TRUE};
@@ -14,8 +15,6 @@ type HINSTANCE = *mut std::ffi::c_void;
 type LPVOID = *mut std::ffi::c_void;
 #[cfg(not(windows))]
 const TRUE: c_int = 1;
-
-use crate::dll_interface::DEFAULT_MIRC_BUFFER_SIZE;
 
 /// mIRC stuffaize
 #[allow(dead_code)]

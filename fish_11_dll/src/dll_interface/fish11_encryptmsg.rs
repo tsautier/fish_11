@@ -9,6 +9,7 @@ use crate::crypto;
 use crate::dll_function_identifier;
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
+use crate::log_debug;
 
 /// Encrypts a message for a specific nickname or channel.
 /// This function handles the complete encryption workflow, including:

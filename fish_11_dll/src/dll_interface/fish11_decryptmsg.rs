@@ -10,6 +10,7 @@ use crate::crypto;
 use crate::dll_function_identifier;
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
+use crate::log_debug;
 
 dll_function_identifier!(FiSH11_DecryptMsg, data, {
     // 1. Parse input: <target> <encrypted_message>

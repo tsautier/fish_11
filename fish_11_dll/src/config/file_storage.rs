@@ -6,9 +6,9 @@ use configparser::ini::Ini;
 use secrecy::ExposeSecret;
 
 use crate::config::models::{EntryData, FishConfig};
-use crate::crypto;
 use crate::error::{FishError, Result};
 use crate::utils::base64_encode;
+use crate::{crypto, log_debug, log_trace};
 
 /// Initialize the config file if it doesn't exist
 pub fn init_config_file() -> Result<()> {
@@ -151,7 +151,11 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
             log_trace!("load_config: INI file loaded successfully from {}", config_path.display());
         }
         Err(e) => {
-            log::error!("load_config: failed to load INI file from {}: {}", config_path.display(), e);
+            log::error!(
+                "load_config: failed to load INI file from {}: {}",
+                config_path.display(),
+                e
+            );
             return Err(FishError::ConfigError(format!("Failed to load config: {}", e)));
         }
     };
@@ -164,10 +168,8 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
     }
 
     // OPTIMISATION: Build case-insensitive section lookup cache ONCE
-    let sections_lower: std::collections::HashMap<String, String> = ini.sections()
-        .iter()
-        .map(|s| (s.to_lowercase(), s.clone()))
-        .collect();
+    let sections_lower: std::collections::HashMap<String, String> =
+        ini.sections().iter().map(|s| (s.to_lowercase(), s.clone())).collect();
 
     log_trace!("load_config: processing [Keys] section...");
 
@@ -278,10 +280,13 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
             // Clean section name: remove any brackets (should not be present, but defensive)
             if section_name.starts_with('[') || section_name.ends_with(']') {
                 #[cfg(debug_assertions)]
-                eprintln!("WARNING: Section name '{}' contains brackets. This may indicate malformed data.", section_name);
+                eprintln!(
+                    "WARNING: Section name '{}' contains brackets. This may indicate malformed data.",
+                    section_name
+                );
             }
             let clean_section = section_name.trim_start_matches('[').trim_end_matches(']');
-            
+
             // Transform chan_ prefix back to # for channels
             let entry_key = if clean_section.starts_with("chan_") {
                 clean_section.replacen("chan_", "#", 1)
@@ -339,8 +344,11 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
 pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Result<()> {
     let start_time = std::time::Instant::now();
 
-    log_debug!("save_config: starting (entries: {}, keys: {})", 
-        config.entries.len(), config.keys.len());
+    log_debug!(
+        "save_config: starting (entries: {}, keys: {})",
+        config.entries.len(),
+        config.keys.len()
+    );
 
     let mut ini = Ini::new();
 
@@ -378,14 +386,14 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
     if let Some(date) = config.startup_data.date {
         ini.set("Startup", "date", Some(date.to_string()));
     }
-    
+
     // OPTIMISATION: Save entry sections with minimal allocations
     let entries_start = std::time::Instant::now();
-    
+
     for (key, entry) in &config.entries {
         // Clean up the key: remove any existing brackets that might have been accidentally included
         let clean_key = key.trim_start_matches('[').trim_end_matches(']');
-        
+
         // Transform keys that start with # to use chan_ prefix for INI compatibility
         // Use Cow to avoid unnecessary allocations when no transformation is needed
         let section_name: std::borrow::Cow<str> = if clean_key.starts_with('#') {
@@ -401,12 +409,12 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
             ini.set(section_name.as_ref(), "date", Some(date.clone()));
         }
     }
-    
+
     let entries_duration = entries_start.elapsed();
     if entries_duration.as_millis() > 100 {
         log::warn!(
-            "save_config: entries processing took {:?} for {} entries", 
-            entries_duration, 
+            "save_config: entries processing took {:?} for {} entries",
+            entries_duration,
             config.entries.len()
         );
     }
@@ -431,34 +439,34 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
 
     // Write to the temp file first
     let write_start = std::time::Instant::now();
-    
+
     match ini.write(&temp_path) {
         Ok(_) => {
             let write_duration = write_start.elapsed();
-            
+
             // Now rename the temp file to the actual config file
             match fs::rename(&temp_path, &config_path) {
                 Ok(_) => {
                     let total_duration = start_time.elapsed();
-                    
+
                     log_debug!(
-                        "save_config: completed in {:?} (write: {:?}, entries: {:?})", 
-                        total_duration, 
+                        "save_config: completed in {:?} (write: {:?}, entries: {:?})",
+                        total_duration,
                         write_duration,
                         entries_duration
                     );
-                    
+
                     if total_duration.as_secs() > 1 {
                         log::warn!(
-                            "save_config: SLOW SAVE! Took {:?} for {} entries. Check disk I/O.", 
-                            total_duration, 
+                            "save_config: SLOW SAVE! Took {:?} for {} entries. Check disk I/O.",
+                            total_duration,
                             config.entries.len()
                         );
                     }
-                    
+
                     // Mark config as clean after successful save
                     config.mark_clean();
-                    
+
                     Ok(())
                 }
                 Err(e) => {
@@ -478,10 +486,11 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
 
 #[cfg(test)]
 mod tests {
+    use tempfile::NamedTempFile;
+
     use super::*;
     use crate::config::models::{EntryData, FishConfig};
     use crate::utils::generate_random_bytes;
-    use tempfile::NamedTempFile;
 
     // Helper to create a dummy config for testing
     fn create_dummy_config() -> FishConfig {

@@ -7,6 +7,7 @@ use crate::config::networks;
 use crate::crypto;
 use crate::error::{FishError, Result};
 use crate::utils::{base64_decode, base64_encode, normalize_nick};
+use crate::log_debug;
 
 /// Set a key for a nickname
 pub fn set_key(

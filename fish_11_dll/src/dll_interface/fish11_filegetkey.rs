@@ -9,6 +9,7 @@ use crate::config;
 use crate::dll_function_identifier;
 use crate::unified_error::DllError;
 use crate::utils::{base64_encode, normalize_nick};
+use crate::log_debug;
 
 dll_function_identifier!(FiSH11_FileGetKey, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
