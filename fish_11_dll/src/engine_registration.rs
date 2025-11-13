@@ -114,7 +114,7 @@ fn attempt_encryption(line: &str) -> Option<String> {
     
     // Parse the line to extract target and message
     // Format expected: "PRIVMSG target :message" or ":prefix PRIVMSG target :message"
-    let parts: Vec<&str> = line.split(" :").collect();
+    let parts: Vec<&str> = line.split(" :" ).collect();
     if parts.len() < 2 {
         log::warn!("Engine: malformed outgoing line (no message part)");
         return None;
@@ -122,7 +122,7 @@ fn attempt_encryption(line: &str) -> Option<String> {
     
     // Get the command part (before the first " :")
     let cmd_part = parts[0];
-    let message = parts[1..].join(" :");
+    let message = parts[1..].join(" :" );
     
     // Extract target from command part
     // Could be "PRIVMSG #channel" or ":prefix PRIVMSG #channel"
@@ -169,7 +169,7 @@ fn attempt_encryption(line: &str) -> Option<String> {
     // Reconstruct line with encrypted data
     // Keep prefix if present, replace message with "+FiSH <encrypted>"
     // Add \r\n for IRC protocol compliance
-    let encrypted_line = format!("{} :+FiSH {}\r\n", cmd_part, encrypted);
+    let encrypted_line = format!("{} :+FiSH {}\n", cmd_part, encrypted);
     
     Some(encrypted_line)
 }
@@ -254,7 +254,7 @@ fn attempt_decryption(line: &str) -> Option<String> {
     let target_end = line[target_start..].find(' ').map(|p| target_start + p).unwrap_or(line.len());
     
     let reconstructed = format!(
-        "{} PRIVMSG {} :{}\r\n",
+        "{} PRIVMSG {} :{}\\r\\n",
         &line[..prefix_end],
         &line[target_start..target_end],
         decrypted

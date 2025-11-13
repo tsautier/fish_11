@@ -1,14 +1,10 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
-use crate::platform_types::BOOL;
-use crate::platform_types::HWND;
-
-use crate::buffer_utils;
-use crate::dll_function_identifier;
+use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
-use crate::{config, crypto};
+use crate::{buffer_utils, config, crypto, dll_function_identifier, log_debug};
 
 dll_function_identifier!(FiSH11_ProcessPublicKey, data, {
     // Parse input: accept either "<nickname> <received_key>" or "<received_key> <nickname>"
@@ -20,12 +16,17 @@ dll_function_identifier!(FiSH11_ProcessPublicKey, data, {
     if parts.len() < 2 {
         return Err(DllError::InvalidInput {
             param: "input".to_string(),
-            reason: "expected format: <nickname> <received_key> or <received_key> <nickname>".to_string(),
+            reason: "expected format: <nickname> <received_key> or <received_key> <nickname>"
+                .to_string(),
         });
     }
 
     // Helper to check if a part is a formatted public key token
-    let looks_like_token = |s: &str| s.starts_with("FiSH11-PubKey:") || s.len() == 44 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=');
+    let looks_like_token = |s: &str| {
+        s.starts_with("FiSH11-PubKey:")
+            || s.len() == 44
+                && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=')
+    };
 
     // We will own any joined remainder to avoid referencing temporaries
     let mut _joined_remainder: Option<String> = None;
@@ -38,8 +39,8 @@ dll_function_identifier!(FiSH11_ProcessPublicKey, data, {
         (parts[0], parts[parts.len() - 1])
     } else {
         // fallback: assume first is nickname, remainder is key (may be raw base64)
-    _joined_remainder = Some(parts[1..].join(" "));
-    (parts[0], _joined_remainder.as_ref().map(|s| s.as_str()).unwrap_or(""))
+        _joined_remainder = Some(parts[1..].join(" "));
+        (parts[0], _joined_remainder.as_ref().map(|s| s.as_str()).unwrap_or(""))
     };
 
     let nickname = normalize_nick(nickname_raw);
@@ -59,7 +60,7 @@ dll_function_identifier!(FiSH11_ProcessPublicKey, data, {
         DllError::KeyInvalid { reason: format!("invalid public key format: {}", e) }
     })?;
 
-    log::debug!("Successfully extracted public key");
+    log_debug!("Successfully extracted public key");
 
     // Get our keypair
     let keypair = config::get_keypair().map_err(|_| {
@@ -68,7 +69,7 @@ dll_function_identifier!(FiSH11_ProcessPublicKey, data, {
         )
     })?;
 
-    log::debug!("Retrieved local keypair");
+    log_debug!("Retrieved local keypair");
 
     // Compute the shared secret using Curve25519 Diffie-Hellman
     let shared_secret = crypto::compute_shared_secret(&keypair.private_key, &their_public_key)
@@ -76,7 +77,7 @@ dll_function_identifier!(FiSH11_ProcessPublicKey, data, {
             DllError::KeyExchangeFailed(format!("failed to compute shared secret: {}", e))
         })?;
 
-    log::debug!("Computed shared secret successfully");
+    log_debug!("Computed shared secret successfully");
 
     // Store the shared secret with intelligent duplicate handling:
     // - First try without overwrite (fail if key exists)
@@ -113,28 +114,28 @@ dll_function_identifier!(FiSH11_TestCrypt, data, {
         return Err(DllError::MissingParameter("message".to_string()));
     }
 
-    log::debug!("Testing encryption/decryption cycle with message: {}", input);
+    log_debug!("Testing encryption/decryption cycle with message: {}", input);
 
     // Generate a random 32-byte key for testing
     let key_bytes = crate::utils::generate_random_bytes(32);
     let mut key = [0u8; 32];
     key.copy_from_slice(&key_bytes);
 
-    log::debug!("Generated random test key: {:02x?}", &key[..8]); // Log first 8 bytes only
+    log_debug!("Generated random test key: {:02x?}", &key[..8]); // Log first 8 bytes only
 
     // Encrypt the message
     let encrypted = crypto::encrypt_message(&key, &input, None, None).map_err(|e| {
         DllError::EncryptionFailed { context: "test encryption".to_string(), cause: e.to_string() }
     })?;
 
-    log::debug!("Successfully encrypted message");
+    log_debug!("Successfully encrypted message");
 
     // Decrypt the message to verify the cycle
     let decrypted = crypto::decrypt_message(&key, &encrypted, None).map_err(|e| {
         DllError::DecryptionFailed { context: "test decryption".to_string(), cause: e.to_string() }
     })?;
 
-    log::debug!("Successfully decrypted message");
+    log_debug!("Successfully decrypted message");
 
     // Verify that decryption matches original
     if decrypted != input {

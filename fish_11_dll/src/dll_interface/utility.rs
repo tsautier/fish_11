@@ -1,6 +1,6 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
-
+use crate::log_debug;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use sha2::{Digest, Sha256};
@@ -22,7 +22,7 @@ dll_function_identifier!(FiSH11_GetVersion, _data, {
         crate::FISH_11_BUILD_TIME
     );
 
-    log::debug!("FiSH11_GetVersion called, returning: {}", version_info);
+    log_debug!("FiSH11_GetVersion called, returning: {}", version_info);
 
     Ok(version_info)
 });
@@ -41,7 +41,7 @@ dll_function_identifier!(FiSH11_GetKeyFingerprint, data, {
     // Get the key for the nickname
     let key = config::get_key_default(&nickname)?;
 
-    log::debug!("Retrieved key, generating SHA-256 hash");
+    log_debug!("Retrieved key, generating SHA-256 hash");
 
     // Generate fingerprint using SHA-256
     let mut hasher = Sha256::new();
