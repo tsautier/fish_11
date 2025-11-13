@@ -36,12 +36,12 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
     // 2. Strip the "+FiSH " prefix if present.
     if let Some(stripped) = encrypted_message.strip_prefix("+FiSH ") {
         encrypted_message = stripped;
-        log::debug!("Stripped +FiSH prefix from encrypted message");
+        log_debug!("Stripped +FiSH prefix from encrypted message");
     }
 
     // --- Channel Decryption Logic ---
     if target.starts_with('#') || target.starts_with('&') {
-        log::debug!("Decrypting for channel: {}", target);
+        log_debug!("Decrypting for channel: {}", target);
 
         let encrypted_bytes = crate::utils::base64_decode(encrypted_message)?;
         if encrypted_bytes.len() < 12 {
@@ -104,7 +104,7 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
 
     // --- Private Message Decryption Logic ---
     let nickname = normalize_nick(target);
-    log::debug!("Decrypting for nickname: {}", nickname);
+    log_debug!("Decrypting for nickname: {}", nickname);
 
     let key_vec = config::get_key_default(&nickname)?;
     let key: &[u8; 32] = key_vec.as_slice().try_into().map_err(|_|
@@ -114,7 +114,7 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
         }
     )?;
 
-    log::debug!("Successfully retrieved decryption key");
+    log_debug!("Successfully retrieved decryption key");
 
     // Decrypt the message (no AD for private messages).
     let decrypted = crypto::decrypt_message(key, encrypted_message, None).map_err(|e| {

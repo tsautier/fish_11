@@ -40,7 +40,7 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
 
     // --- Channel Encryption Logic ---
     if target.starts_with('#') || target.starts_with('&') {
-        log::debug!("Encrypting for channel: {}", target);
+        log_debug!("Encrypting for channel: {}", target);
 
         // Atomically get the current key and advance the ratchet for the next message.
         let encrypted_base64 = config::with_ratchet_state_mut(target, |state| {
@@ -83,7 +83,7 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
         return Err(DllError::MissingParameter("nickname".to_string()));
     }
 
-    log::debug!("Encrypting for nickname: {}", nickname);
+    log_debug!("Encrypting for nickname: {}", nickname);
 
     // 2. Retrieve the encryption key for the target.
     let key_vec = config::get_key_default(&nickname)?;
@@ -92,7 +92,7 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
         reason: format!("Key for {} must be exactly 32 bytes, got {}", nickname, key_vec.len()),
     })?;
 
-    log::debug!("Successfully retrieved encryption key");
+    log_debug!("Successfully retrieved encryption key");
 
     // 3. Encrypt the message using the retrieved key (no AD for private messages).
     let encrypted_base64 =
