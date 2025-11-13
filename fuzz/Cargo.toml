@@ -13,8 +13,7 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 libc = "0.2"
 
-# Dépendance vers la DLL pour pouvoir appeler ses fonctions
-[dependencies.fish_11_dll]
+[dependencies.fish_11]
 path = "../fish_11_dll"
 
 [dependencies.tempfile]
@@ -22,10 +21,6 @@ version = "3.8"
 
 [dependencies.base64]
 version = "0.22.1"
-
-# Prevent this from interfering with workspaces
-[workspace]
-members = ["."]
 
 [[bin]]
 name = "fuzz_decrypt_message"

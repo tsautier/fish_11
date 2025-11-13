@@ -5,7 +5,7 @@ use std::os::raw::c_char;
 use std::ptr;
 
 // Import the DLL function to be tested.
-use fish_11_dll::dll_interface::fish11_setmircdir::FiSH11_SetMircDir;
+use fish_11::dll_interface::fish11_setmircdir::FiSH11_SetMircDir;
 use libfuzzer_sys::fuzz_target;
 
 const BUFFER_SIZE: usize = 4096;
@@ -58,7 +58,16 @@ fuzz_target!(|data: &[u8]| {
         // 4. Call the unsafe DLL function.
         unsafe {
             // We only care about panics/crashes, so ignore the result.
-            let _ = FiSH11_SetMircDir(ptr::null_mut(), buffer, BUFFER_SIZE as i32);
+            let mut show: i32 = 0;
+            let mut nopause: i32 = 0;
+            let _ = FiSH11_SetMircDir(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                buffer,
+                buffer,
+                &mut show as *mut i32,
+                &mut nopause as *mut i32,
+            );
         }
     }
 
