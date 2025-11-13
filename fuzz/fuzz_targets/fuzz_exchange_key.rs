@@ -6,7 +6,7 @@ use std::ptr;
 
 // Import the DLL function to be tested.
 // NOTE: Requires setup in fuzz/Cargo.toml.
-use fish_11_dll::dll_interface::fish11_exchangekey::FiSH11_ExchangeKey;
+use fish_11::dll_interface::fish11_exchangekey::FiSH11_ExchangeKey;
 use libfuzzer_sys::fuzz_target;
 
 const BUFFER_SIZE: usize = 4096;
@@ -37,7 +37,16 @@ fuzz_target!(|data: &[u8]| {
             // The `size` is the buffer's capacity.
             unsafe {
                 // We only care about panics/crashes, so ignore the result.
-                let _ = FiSH11_ExchangeKey(ptr::null_mut(), buffer, BUFFER_SIZE as i32);
+                let mut show: i32 = 0;
+                let mut nopause: i32 = 0;
+                let _ = FiSH11_ExchangeKey(
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    buffer,
+                    buffer,
+                    &mut show as *mut i32,
+                    &mut nopause as *mut i32,
+                );
             }
         }
     }
