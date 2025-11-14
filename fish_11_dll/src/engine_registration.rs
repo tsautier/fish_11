@@ -4,11 +4,14 @@
 use std::ffi::{CString, c_char};
 use std::ptr;
 
-use log::{error, info, warn};
 use winapi::shared::minwindef::{FARPROC, HMODULE};
 use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
 
 use crate::crypto::{decrypt_message, encrypt_message};
+use crate::log_debug;
+use crate::log_error;
+use crate::log_info;
+use crate::log_warn;
 
 // C-style struct for engine registration
 #[repr(C)]
@@ -30,13 +33,13 @@ unsafe extern "C" fn on_outgoing(_socket: u32, line: *const c_char, _len: usize)
     if line.is_null() {
         return ptr::null_mut();
     }
-    
+
     // CRITICAL: Use CStr::from_ptr (borrow) NOT CString::from_raw (take ownership)
     // The caller (inject DLL) still owns this pointer!
     let c_str = match std::ffi::CStr::from_ptr(line).to_str() {
         Ok(s) => s,
         Err(e) => {
-            error!("Invalid UTF-8 in outgoing line: {}", e);
+            log_error!("Invalid UTF-8 in outgoing line: {}", e);
             return ptr::null_mut();
         }
     };
@@ -45,7 +48,7 @@ unsafe extern "C" fn on_outgoing(_socket: u32, line: *const c_char, _len: usize)
         match CString::new(encrypted) {
             Ok(s) => return s.into_raw(),
             Err(e) => {
-                error!("Failed to create CString for encrypted data: {}", e);
+                log_error!("Failed to create CString for encrypted data: {}", e);
                 return ptr::null_mut();
             }
         }
@@ -58,13 +61,13 @@ unsafe extern "C" fn on_incoming(_socket: u32, line: *const c_char, _len: usize)
     if line.is_null() {
         return ptr::null_mut();
     }
-    
+
     // CRITICAL: Use CStr::from_ptr (borrow) NOT CString::from_raw (take ownership)
     // The caller (inject DLL) still owns this pointer!
     let c_str = match std::ffi::CStr::from_ptr(line).to_str() {
         Ok(s) => s,
         Err(e) => {
-            error!("Invalid UTF-8 in incoming line: {}", e);
+            log_error!("Invalid UTF-8 in incoming line: {}", e);
             return ptr::null_mut();
         }
     };
@@ -73,7 +76,7 @@ unsafe extern "C" fn on_incoming(_socket: u32, line: *const c_char, _len: usize)
         match CString::new(decrypted) {
             Ok(s) => return s.into_raw(),
             Err(e) => {
-                error!("Failed to create CString for decrypted data: {}", e);
+                log_error!("Failed to create CString for decrypted data: {}", e);
                 return ptr::null_mut();
             }
         }
@@ -109,21 +112,22 @@ fn attempt_encryption(line: &str) -> Option<String> {
     if !line.contains(" PRIVMSG ") && !line.contains(" NOTICE ") {
         return None;
     }
-    
-    log::debug!("Engine: attempting to encrypt outgoing line");
-    
+
+    log_debug!("Engine: attempting to encrypt outgoing line");
+
     // Parse the line to extract target and message
     // Format expected: "PRIVMSG target :message" or ":prefix PRIVMSG target :message"
-    let parts: Vec<&str> = line.split(" :" ).collect();
+    let parts: Vec<&str> = line.split(" :").collect();
+
     if parts.len() < 2 {
-        log::warn!("Engine: malformed outgoing line (no message part)");
+        log_warn!("Engine: malformed outgoing line (no message part)");
         return None;
     }
-    
+
     // Get the command part (before the first " :")
     let cmd_part = parts[0];
-    let message = parts[1..].join(" :" );
-    
+    let message = parts[1..].join(" :");
+
     // Extract target from command part
     // Could be "PRIVMSG #channel" or ":prefix PRIVMSG #channel"
     let target = if let Some(privmsg_pos) = cmd_part.find(" PRIVMSG ") {
@@ -131,47 +135,46 @@ fn attempt_encryption(line: &str) -> Option<String> {
     } else if let Some(notice_pos) = cmd_part.find(" NOTICE ") {
         cmd_part[notice_pos + 8..].trim()
     } else {
-        log::warn!("Engine: could not extract target from command part");
+        log_warn!("Engine: could not extract target from command part");
         return None;
     };
-    
-    log::debug!("Engine: target={}, message_len={}", target, message.len());
-    
+
+    log_debug!("Engine: target={}, message_len={}", target, message.len());
+
     // Try to get encryption key for target
     let key = match crate::config::get_key_default(target) {
         Ok(k) => k,
         Err(_) => {
             // No key = no encryption, pass through
-            log::debug!("Engine: no key for target '{}', not encrypting", target);
+            log_debug!("Engine: no key for target '{}', not encrypting", target);
             return None;
         }
     };
-    
+
     let key_array: &[u8; 32] = match key.as_slice().try_into() {
         Ok(arr) => arr,
         Err(_) => {
-            log::error!("Engine: invalid key length for target '{}'", target);
+            log_error!("Engine: invalid key length for target '{}'", target);
             return None;
         }
     };
-    
+
     // Encrypt the message
     let encrypted = match encrypt_message(key_array, &message, Some(target), None) {
         Ok(enc) => enc,
         Err(e) => {
-            log::error!("Engine: encryption failed for target '{}': {}", target, e);
+            log_error!("Engine: encryption failed for target '{}': {}", target, e);
             return None;
         }
     };
-    
-    log::info!("Engine: successfully encrypted message to '{}'", target);
-    
+
+    log_info!("Engine: successfully encrypted message to '{}'", target);
+
     // Reconstruct line with encrypted data
     // Keep prefix if present, replace message with "+FiSH <encrypted>"
     // Add \r\n for IRC protocol compliance
-    let encrypted_line = format!("{} :+FiSH {}
-\n", cmd_part, encrypted);
-    
+    let encrypted_line = format!("{} :+FiSH {}\n", cmd_part, encrypted);
+
     Some(encrypted_line)
 }
 
@@ -181,99 +184,98 @@ fn attempt_decryption(line: &str) -> Option<String> {
     if !line.contains(":+FiSH ") {
         return None;
     }
-    
+
     // CRITICAL: Do NOT decrypt key exchange messages!
     // X25519_INIT and X25519_FINISH must pass through unchanged so mIRC can handle them
-    if line.contains("X25519_INIT") || line.contains("X25519_FINISH") || line.contains("FiSH11-PubKey:") {
-        log::debug!("Engine: ignoring key exchange message (X25519_INIT/FINISH)");
+    if line.contains("X25519_INIT")
+        || line.contains("X25519_FINISH")
+        || line.contains("FiSH11-PubKey:")
+    {
+        log_debug!("Engine: ignoring key exchange message (X25519_INIT/FINISH)");
         return None;
     }
-    
-    log::debug!("Engine: attempting to decrypt line: {}", line);
-    
+
+    log_debug!("Engine: attempting to decrypt line: {}", line);
+
     // Parse IRC line format: ":nick!user@host PRIVMSG target :+FiSH <data>"
     let parts: Vec<&str> = line.split_whitespace().collect();
     if parts.len() < 4 {
-        log::warn!("Engine: malformed IRC line (not enough parts): {}", line);
+        log_warn!("Engine: malformed IRC line (not enough parts): {}", line);
         return None;
     }
-    
+
     // Extract sender nickname (remove : prefix and everything after !)
     let sender_raw = parts[0].trim_start_matches(':');
-    let sender = if let Some(pos) = sender_raw.find('!') {
-        &sender_raw[..pos]
-    } else {
-        sender_raw
-    };
-    
+    let sender = if let Some(pos) = sender_raw.find('!') { &sender_raw[..pos] } else { sender_raw };
+
     // Find the encrypted data after ":+FiSH "
     let fish_marker = ":+FiSH ";
     let fish_start = match line.find(fish_marker) {
         Some(pos) => pos + fish_marker.len(),
         None => {
-            log::warn!("Engine: FiSH marker found but position parse failed");
+            log_warn!("Engine: FiSH marker found but position parse failed");
             return None;
         }
     };
     let encrypted_data = line[fish_start..].trim();
-    
-    log::debug!("Engine: sender={}, encrypted_data_len={}", sender, encrypted_data.len());
-    
+
+    log_debug!("Engine: sender={}, encrypted_data_len={}", sender, encrypted_data.len());
+
     // Try to get the decryption key
     let key = match crate::config::get_key_default(sender) {
         Ok(k) => k,
         Err(e) => {
-            log::warn!("Engine: no key found for sender '{}': {}", sender, e);
+            log_warn!("Engine: no key found for sender '{}': {}", sender, e);
             return None;
         }
     };
-    
+
     let key_array: &[u8; 32] = match key.as_slice().try_into() {
         Ok(arr) => arr,
         Err(_) => {
-            log::error!("Engine: invalid key length for sender '{}'", sender);
+            log_error!("Engine: invalid key length for sender '{}'", sender);
             return None;
         }
     };
-    
+
     // Decrypt the message
     let decrypted = match decrypt_message(key_array, encrypted_data, None) {
         Ok(msg) => msg,
         Err(e) => {
-            log::error!("Engine: decryption failed for sender '{}': {}", sender, e);
+            log_error!("Engine: decryption failed for sender '{}': {}", sender, e);
             return None;
         }
     };
-    
-    log::info!("Engine: successfully decrypted message from '{}'", sender);
-    
+
+    log_info!("Engine: successfully decrypted message from '{}'", sender);
+
     // Reconstruct the IRC line with decrypted plaintext
     // Format: ":nick!user@host PRIVMSG target :decrypted_message\r\n"
     // CRITICAL: IRC protocol requires \r\n at the end of each line!
     let prefix_end = line.find(" PRIVMSG ").unwrap_or(0);
     let target_start = prefix_end + 9; // Length of " PRIVMSG "
     let target_end = line[target_start..].find(' ').map(|p| target_start + p).unwrap_or(line.len());
-    
+
+    let reconstructed = format!(
         "{} PRIVMSG {} :{}\r\n",
-        "{} PRIVMSG {} :{}\\r\\n",
         &line[..prefix_end],
         &line[target_start..target_end],
         decrypted
     );
-    
+
     Some(reconstructed)
 }
 
 type RegisterEngineFn = extern "C" fn(*const FishInjectEngine) -> i32;
 
 pub fn register_engine() {
-    info!("Attempting to register FiSH_11 engine with injector...");
+    log_info!("Attempting to register FiSH_11 engine with inject0r...");
     unsafe {
         let inject_dll_name = CString::new("fish_11_inject.dll").unwrap();
         let h_module: HMODULE = GetModuleHandleA(inject_dll_name.as_ptr());
 
         if h_module.is_null() {
-            warn!("fish_11_inject.dll not found in process. Engine not registered.");
+            log_warn!("fish_11_inject.dll not found in process. Engine not registered.");
             return;
         }
 
@@ -281,7 +283,7 @@ pub fn register_engine() {
         let register_fn: FARPROC = GetProcAddress(h_module, register_fn_name.as_ptr());
 
         if register_fn.is_null() {
-            error!("RegisterEngine function not found in fish_11_inject.dll.");
+            log_error!("RegisterEngine function not found in fish_11_inject.dll.");
             return;
         }
 
@@ -289,9 +291,9 @@ pub fn register_engine() {
         let result = register_engine_fn(&FISH_INJECT_ENGINE);
 
         if result == 0 {
-            info!("Successfully registered FiSH_11 engine.");
+            log_info!("Successfully registered FiSH_11 engine.");
         } else {
-            error!("Failed to register FiSH_11 engine. Error code: {}", result);
+            log_error!("Failed to register FiSH_11 engine. Error code : {}", result);
         }
     }
 }

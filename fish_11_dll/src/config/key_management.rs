@@ -2,12 +2,57 @@ use chrono::Local;
 use secrecy::ExposeSecret;
 
 use crate::config::config_access::{with_config, with_config_mut};
-use crate::config::models::EntryData;
+use crate::config::models::{EntryData, FishConfig};
 use crate::config::networks;
 use crate::crypto;
 use crate::error::{FishError, Result};
-use crate::utils::{base64_decode, base64_encode, normalize_nick};
 use crate::log_debug;
+use crate::utils::{base64_decode, base64_encode, normalize_nick};
+
+use crate::log_info;
+
+
+// ============================================================================
+// Internal lock-free helper functions
+// ============================================================================
+// These functions work with a provided &FishConfig or &mut FishConfig reference
+// and do NOT acquire locks. They are used by the public functions to avoid
+// nested lock acquisition which causes deadlocks.
+// ============================================================================
+
+/// Internal: get a key from config without acquiring locks
+fn get_key_internal(config: &FishConfig, nickname: &str, network: Option<&str>) -> Result<Vec<u8>> {
+    let normalized_nick = normalize_nick(nickname);
+
+    // Get the network name (using internal lock-free version)
+    let network_name = match network {
+        Some(net) => net.to_string(),
+        None => match networks::get_network_for_nick_internal(config, &normalized_nick) {
+            Some(net) => net,
+            None => "default".to_string(),
+        },
+    };
+
+    // Create the entry key to look for
+    let entry_key = if normalized_nick.starts_with('#') {
+        format!("{}@{}", normalized_nick, network_name)
+    } else {
+        format!("{}@{}", normalized_nick, network_name)
+    };
+
+    // Find the key
+    if let Some(entry) = config.entries.get(&entry_key) {
+        if let Some(ref key_str) = entry.key {
+            return base64_decode(key_str).map_err(FishError::from);
+        }
+    }
+
+    Err(FishError::KeyNotFound(normalized_nick))
+}
+
+// ============================================================================
+// Public API functions - these acquire locks and call internal versions
+// ============================================================================
 
 /// Set a key for a nickname
 pub fn set_key(
@@ -17,26 +62,29 @@ pub fn set_key(
     overwrite: bool,
 ) -> Result<()> {
     #[cfg(debug_assertions)]
-    log::info!("set_key: Called with nickname='{}', network={:?}, overwrite={}", nickname, network, overwrite);
+    log_debug!(
+        "set_key: Called with nickname='{}', network={:?}, overwrite={}",
+        nickname, network, overwrite
+    );
 
     let normalized_nick = normalize_nick(nickname);
 
     #[cfg(debug_assertions)]
-    log::info!("set_key: Normalized nickname: '{}'", normalized_nick);
+    log_debug!("set_key: normalized nickname: '{}'", normalized_nick);
 
     // Validate network name if provided
     if let Some(net) = network {
         #[cfg(debug_assertions)]
-        log::info!("set_key: Validating network name '{}'...", net);
+        log_debug!("set_key: validating network name '{}'...", net);
 
         networks::validate_network_name(net)?;
 
         #[cfg(debug_assertions)]
-        log::info!("set_key: Network name validated");
+        log_debug!("set_key: network name validated");
     }
 
     #[cfg(debug_assertions)]
-    log::info!("set_key: Calling with_config_mut...");
+    log_info!("set_key: calling with_config_mut...");
 
     with_config_mut(|config| {
         // Check for existing key if not overwriting
@@ -46,9 +94,9 @@ pub fn set_key(
             } // Check for existing entries in the proper network format if not overwriting
             let net = match network {
                 Some(n) => n.to_string(),
-                None => match networks::get_network_for_nick(&normalized_nick) {
-                    Ok(Some(n)) => n,
-                    _ => ".".to_string(),
+                None => match networks::get_network_for_nick_internal(config, &normalized_nick) {
+                    Some(n) => n,
+                    None => ".".to_string(),
                 },
             };
 
@@ -59,8 +107,8 @@ pub fn set_key(
                 return Err(FishError::DuplicateEntry(normalized_nick.clone()));
             }
         } // Create/update entry
-    let now = Local::now();
-    let date_str = now.format("%Y-%m-%d %H:%M:%S").to_string();
+        let now = Local::now();
+        let date_str = now.format("%Y-%m-%d %H:%M:%S").to_string();
 
         // Use network name in the entry key format or default to current network if not specified
         let network_name = network.unwrap_or("default");
@@ -95,57 +143,26 @@ pub fn set_key(
 
 /// Get a key for a nickname - simplified without legacy handling
 pub fn get_key(nickname: &str, network: Option<&str>) -> Result<Vec<u8>> {
-    let normalized_nick = normalize_nick(nickname);
-
-    // Get the network name
-    let network_name = match network {
-        Some(net) => net.to_string(),
-        None => match networks::get_network_for_nick(&normalized_nick) {
-            Ok(Some(net)) => net,
-            Ok(None) => "default".to_string(),
-            Err(_) => "default".to_string(),
-        },
-    };
-
-    // Create the entry key to look for - format: nickname@network or #channel@network
-    let entry_key = if normalized_nick.starts_with('#') {
-        format!("{}@{}", normalized_nick, network_name)
-    } else {
-        format!("{}@{}", normalized_nick, network_name)
-    };
-
-    // Find the key
-    with_config(|config| {
-        if let Some(entry) = config.entries.get(&entry_key) {
-            if let Some(ref key_str) = entry.key {
-                return base64_decode(key_str).map_err(FishError::from);
-            }
-        }
-
-        Err(FishError::KeyNotFound(normalized_nick))
-    })
+    with_config(|config| get_key_internal(config, nickname, network))
 }
 
 /// Delete a key for a nickname
 pub fn delete_key(nickname: &str, network: Option<&str>) -> Result<()> {
     let normalized_nick = normalize_nick(nickname);
 
-    // Get network info
-    let network_name = match network {
-        Some(net) => net.to_string(),
-        None => match networks::get_network_for_nick(&normalized_nick) {
-            Ok(Some(net)) => net,
-            Ok(None) => "default".to_string(),
-            Err(_) => "default".to_string(),
-        },
-    };
-
-    // Remove the network mapping if no network was explicitly provided
-    if network.is_none() && networks::has_network(&normalized_nick)? {
-        networks::remove_network_for_nick(&normalized_nick)?;
-    }
+    // Determine if we should remove network mapping after deletion
+    let should_remove_network = network.is_none();
 
     with_config_mut(|config| {
+        // Get network info (using internal lock-free version)
+        let network_name = match network {
+            Some(net) => net.to_string(),
+            None => match networks::get_network_for_nick_internal(config, &normalized_nick) {
+                Some(net) => net,
+                None => "default".to_string(),
+            },
+        };
+
         // Try to remove the key in the new format
         let entry_key = if normalized_nick.starts_with('#') {
             format!("{}@{}", normalized_nick, network_name)
@@ -155,8 +172,14 @@ pub fn delete_key(nickname: &str, network: Option<&str>) -> Result<()> {
 
         log_debug!("Attempting to delete key with entry: {}", entry_key);
 
-        let entry_removed = config.entries.remove(&entry_key).is_some(); // Remove from keys map too if present
+        let entry_removed = config.entries.remove(&entry_key).is_some();
+        // Remove from keys map too if present
         let key_removed = config.keys.remove(&normalized_nick).is_some();
+
+        // Remove network mapping if no network was explicitly provided
+        if should_remove_network && networks::has_network_internal(config, &normalized_nick) {
+            config.nick_networks.remove(&normalized_nick);
+        }
 
         if entry_removed || key_removed {
             log_debug!("Successfully removed key for {}", normalized_nick);

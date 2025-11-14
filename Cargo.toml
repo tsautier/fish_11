@@ -1,3 +1,8 @@
 [workspace]
-members = ["fish_11_dll", "fish_11_cli", "fish_11_inject", "fuzz"]
+# Note: On Windows, you must manually exclude 'fuzz' from the workspace as libfuzzer is not supported
+# Use: cargo build --workspace --exclude fish_11-fuzz
+# On Unix (Linux/macOS), fuzzing works normally with all members
+members = ["fish_11_dll", "fish_11_cli", "fish_11_inject"]
+# Uncomment the line below on Unix systems to enable fuzzing:
+# members = ["fish_11_dll", "fish_11_cli", "fish_11_inject", "fuzz"]
 resolver = "2"
