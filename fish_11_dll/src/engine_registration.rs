@@ -38,7 +38,7 @@ unsafe extern "C" fn get_network_name_impl(socket: u32) -> *mut c_char {
 }
 
 // Callback for outgoing messages (encryption)
-unsafe extern "C" fn on_outgoing(_socket: u32, line: *const c_char, _len: usize) -> *mut c_char {
+unsafe extern "C" fn on_outgoing(socket: u32, line: *const c_char, _len: usize) -> *mut c_char {
     if line.is_null() {
         return ptr::null_mut();
     }
@@ -52,6 +52,13 @@ unsafe extern "C" fn on_outgoing(_socket: u32, line: *const c_char, _len: usize)
             return ptr::null_mut();
         }
     };
+
+    // CRITICAL: Update the global current network before processing
+    // This ensures encryption uses the correct network context
+    let network_name = get_network_name_from_inject(socket);
+    if let Some(ref net) = network_name {
+        crate::set_current_network(net);
+    }
 
     if let Some(encrypted) = attempt_encryption(c_str) {
         match CString::new(encrypted) {
@@ -81,7 +88,15 @@ unsafe extern "C" fn on_incoming(socket: u32, line: *const c_char, _len: usize) 
         }
     };
 
+    // CRITICAL: Update the global current network before processing
+    // This ensures that any DLL functions called (like set_key during key exchange)
+    // will use the correct network name for this socket
     let network_name = get_network_name_from_inject(socket);
+    if let Some(ref net) = network_name {
+        crate::set_current_network(net);
+        log_debug!("Engine: set current network to '{}' for socket {}", net, socket);
+    }
+
     if let Some(decrypted) = attempt_decryption(c_str, network_name.as_deref()) {
         match CString::new(decrypted) {
             Ok(s) => return s.into_raw(),
@@ -191,8 +206,11 @@ fn attempt_encryption(line: &str) -> Option<String> {
 
 // Function to attempt decryption
 fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
+    log_debug!("Engine: attempt_decryption called for line: {}, network: {:?}", line, network);
+    
     // Check if line contains FiSH encrypted data
     if !line.contains(":+FiSH ") {
+        log_debug!("Engine: line does not contain ':+FiSH ', skipping");
         return None;
     }
 
@@ -277,18 +295,22 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
     log_info!("Engine: successfully decrypted message from '{}'", sender);
 
     // Reconstruct the IRC line with decrypted plaintext
-    // Format: ":nick!user@host PRIVMSG target :decrypted_message\r\n"
+    // Format: ":nick!user@host COMMAND target :decrypted_message\r\n"
     // CRITICAL: IRC protocol requires \r\n at the end of each line!
-    let prefix_end = line.find(" PRIVMSG ").unwrap_or(0);
-    let target_start = prefix_end + 9; // Length of " PRIVMSG "
-    let target_end = line[target_start..].find(' ').map(|p| target_start + p).unwrap_or(line.len());
+    
+    // Find the start of the message part (":+FiSH ...")
+    let message_part_start = match line.find(" :+FiSH ") {
+        Some(pos) => pos,
+        None => {
+            log_error!("Engine: could not find message part ' :+FiSH ' in line");
+            return None;
+        }
+    };
 
-    let reconstructed = format!(
-        "{} PRIVMSG {} :{}\r\n",
-        &line[..prefix_end],
-        &line[target_start..target_end],
-        decrypted
-    );
+    // The part of the line before the message is the full prefix, command, and target
+    let prefix_and_command = &line[..message_part_start];
+
+    let reconstructed = format!("{} :{}\r\n", prefix_and_command, decrypted);
 
     Some(reconstructed)
 }

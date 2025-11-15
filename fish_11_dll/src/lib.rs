@@ -53,3 +53,21 @@ pub const FISH_11_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Complete version string with all information
 pub const FISH_MAIN_VERSION: &str = env!("FISH_MAIN_VERSION");
+
+/// Global storage for current IRC network name
+/// Updated by fish_inject when it detects the network from IRC "005" messages
+use parking_lot::RwLock;
+use once_cell::sync::Lazy;
+
+pub static CURRENT_NETWORK: Lazy<RwLock<Option<String>>> = Lazy::new(|| RwLock::new(None));
+
+/// Set the current IRC network name (called by fish_inject or scripts)
+pub fn set_current_network(network: impl Into<String>) {
+    let mut current = CURRENT_NETWORK.write();
+    *current = Some(network.into());
+}
+
+/// Get the current IRC network name
+pub fn get_current_network() -> Option<String> {
+    CURRENT_NETWORK.read().clone()
+}

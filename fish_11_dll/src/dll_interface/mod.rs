@@ -15,6 +15,7 @@ mod fish11_filelistkeysitem;
 mod fish11_genkey;
 mod fish11_getconfigpath;
 mod fish11_help;
+mod fish11_setnetwork;
 mod key_management;
 mod utility;
 
