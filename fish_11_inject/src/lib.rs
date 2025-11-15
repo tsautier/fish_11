@@ -38,6 +38,7 @@ use log::{error, info};
 use socket_info::SocketInfo;
 use windows::Win32::Foundation::HMODULE;
 use windows::Win32::Networking::WinSock::SOCKET;
+use windows::Win32::System::Threading::GetCurrentThreadId;
 
 use crate::helpers_inject::{cleanup_hooks, init_logger};
 
@@ -233,6 +234,30 @@ pub unsafe extern "system" fn DllMain(
             #[cfg(debug_assertions)]
             info!("=== DllMain: DLL_PROCESS_DETACH completed ===");
 
+            1
+        }
+        2 => {
+            // DLL_THREAD_ATTACH
+            #[cfg(debug_assertions)]
+            {
+                let thread_id = GetCurrentThreadId();
+                info!(
+                    "DllMain: DLL_THREAD_ATTACH - a new thread is being created (Thread ID: {}).",
+                    thread_id
+                );
+            }
+            1
+        }
+        3 => {
+            // DLL_THREAD_DETACH
+            #[cfg(debug_assertions)]
+            {
+                let thread_id = GetCurrentThreadId();
+                info!(
+                    "DllMain: DLL_THREAD_DETACH - a thread is exiting cleanly (Thread ID: {}).",
+                    thread_id
+                );
+            }
             1
         }
         _ => {
