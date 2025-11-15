@@ -1,5 +1,4 @@
 //! Entry operations for configuration management
-
 use chrono::Local;
 
 use crate::config::config_access::{with_config, with_config_mut};

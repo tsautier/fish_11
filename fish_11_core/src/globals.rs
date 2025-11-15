@@ -39,3 +39,6 @@ pub static NICK_VALIDATOR: Lazy<Regex> = Lazy::new(|| {
 // Mutex for accessing/modifying the maximum buffer size
 // This value can be changed at runtime based on mIRC buffer settings
 pub static MIRC_BUFFER_SIZE: Mutex<usize> = Mutex::new(DEFAULT_MIRC_BUFFER_SIZE);
+
+// Maximum size of a message that can be encrypted/decrypted
+pub const MAX_MESSAGE_SIZE: usize = 4096;

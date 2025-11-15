@@ -3,10 +3,8 @@ use std::os::raw::c_int;
 
 use crate::config;
 use crate::dll_function_identifier;
-use crate::dll_interface::CStr;
-use crate::dll_interface::ptr;
-use crate::platform_types::BOOL;
-use crate::platform_types::HWND;
+use crate::dll_interface::{CStr, ptr};
+use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 
 dll_function_identifier!(FiSH11_GetConfigPath, _data, {

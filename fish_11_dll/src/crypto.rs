@@ -12,9 +12,12 @@ use std::io::Write;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicU64;
 
+use crate::error::{FishError, Result};
+use crate::utils::{base64_decode, base64_encode, generate_random_bytes};
 use chacha20poly1305::aead::{Aead, KeyInit, OsRng, Payload};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use chrono::{DateTime, Duration, Utc};
+use fish_11_core::globals::MAX_MESSAGE_SIZE;
 use hkdf::Hkdf;
 use log::{debug, warn};
 use lru_time_cache::LruCache;
@@ -24,11 +27,8 @@ use subtle::ConstantTimeEq;
 use x25519_dalek::{PublicKey, StaticSecret};
 use zeroize::Zeroize;
 
-use crate::error::{FishError, Result};
-use crate::utils::{base64_decode, base64_encode, generate_random_bytes};
-
 // constants
-pub const MAX_MESSAGE_SIZE: usize = 4096;
+
 const MAX_CIPHERTEXT_SIZE: usize = MAX_MESSAGE_SIZE + 16 + 12; // message + auth tag + nonce
 const NONCE_SIZE_BYTES: usize = 12; // ChaCha20-Poly1305 standard nonce size (96 bits)
 

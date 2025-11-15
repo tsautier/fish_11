@@ -16,6 +16,8 @@ use crate::dll_interface::{MIRC_COMMAND, MIRC_HALT};
 // Re-export for convenience
 pub use crate::error::FishError;
 
+use fish_11_core::globals::MAX_MESSAGE_SIZE;
+
 /// Unified error type for all DLL operations
 ///
 /// This enum consolidates all possible error conditions across the DLL,
@@ -312,9 +314,11 @@ impl From<FishError> for DllError {
                 reason: format!("invalid length: {} bytes (expected 32)", len),
             },
             FishError::AuthenticationFailed => DllError::AuthenticationFailed,
-            FishError::NonceReuse => DllError::ReplayAttackDetected { channel: "unknown".to_string() },
+            FishError::NonceReuse => {
+                DllError::ReplayAttackDetected { channel: "unknown".to_string() }
+            }
             FishError::OversizedMessage => {
-                DllError::MessageTooLarge { size: 0, limit: crate::crypto::MAX_MESSAGE_SIZE }
+                DllError::MessageTooLarge { size: 0, limit: MAX_MESSAGE_SIZE }
             }
             FishError::InvalidCiphertext => DllError::DecryptionFailed {
                 context: "ciphertext validation".to_string(),
