@@ -9,7 +9,7 @@ use secrecy::ExposeSecret;
 use subtle::ConstantTimeEq;
 
 use crate::config::{
-    CONFIG, get_key_default, get_keypair, save_config, set_key_default, store_keypair,
+    CONFIG, get_key, get_keypair, save_config, set_key, store_keypair,
 };
 use crate::crypto::{KeyPair, format_public_key, generate_keypair};
 use crate::dll_interface::KEY_EXCHANGE_TIMEOUT_SECONDS;
@@ -169,7 +169,7 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
 /// Returns (key_was_generated: bool)
 fn ensure_key_exists(nickname: &str) -> DllResult<bool> {
     let lookup_start = Instant::now();
-    let existing_key = get_key_default(nickname);
+    let existing_key = get_key(nickname, None);
     log_debug!("get_key_default lookup took {:?}", lookup_start.elapsed());
 
     match existing_key {
@@ -201,7 +201,7 @@ fn ensure_key_exists(nickname: &str) -> DllResult<bool> {
             log_debug!("Storing key in config...");
 
             // Store the key with overwrite enabled (in-memory only, no disk I/O yet)
-            set_key_default(nickname, &key_bytes, true)?;
+            set_key(nickname, &key_bytes, None, true)?;
 
             log_debug!("set_key_default took {:?}", store_start.elapsed());
 

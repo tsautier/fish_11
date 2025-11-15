@@ -207,7 +207,7 @@ fn attempt_encryption(line: &str) -> Option<String> {
 // Function to attempt decryption
 fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
     log_debug!("Engine: attempt_decryption called for line: {}, network: {:?}", line, network);
-    
+
     // Check if line contains FiSH encrypted data
     if !line.contains(":+FiSH ") {
         log_debug!("Engine: line does not contain ':+FiSH ', skipping");
@@ -297,7 +297,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
     // Reconstruct the IRC line with decrypted plaintext
     // Format: ":nick!user@host COMMAND target :decrypted_message\r\n"
     // CRITICAL: IRC protocol requires \r\n at the end of each line!
-    
+
     // Find the start of the message part (":+FiSH ...")
     let message_part_start = match line.find(" :+FiSH ") {
         Some(pos) => pos,
