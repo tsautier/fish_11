@@ -1,10 +1,10 @@
-use once_cell::sync::Lazy;
-use regex::Regex;
+//use once_cell::sync::Lazy;
+//use regex::Regex;
 use std::ffi::{CStr, CString, c_char};
-use std::os::raw::c_int;
+//use std::os::raw::c_int;
 use std::ptr;
-use std::sync::Mutex;
-use std::time::Duration;
+//use std::sync::Mutex;
+//use std::time::Duration;
 
 mod fish11_decryptmsg;
 mod fish11_encryptmsg;
@@ -26,43 +26,14 @@ pub mod function_template;
 pub mod ini_types;
 
 pub(crate) mod core;
-pub(crate) const MIRC_HALT: c_int = 0;
-#[allow(dead_code)]
-pub(crate) const MIRC_CONTINUE: c_int = 1;
-pub(crate) const MIRC_COMMAND: c_int = 2;
-pub(crate) const MIRC_IDENTIFIER: c_int = 3;
-#[allow(dead_code)]
-pub(crate) const MIRC_ERROR: c_int = 4;
 
-// Default maximum bytes that can be returned to mIRC
-// Default maximum bytes that can be returned to mIRC. We still cap
-// the runtime-reported buffer size to a safe maximum below.
-pub(crate) const DEFAULT_MIRC_BUFFER_SIZE: usize = 4096;
-// Maximum buffer size we will ever report to callers (including content, we'll
-// subtract one for the null terminator in get_buffer_size()). This prevents
-// accidentally writing too much to caller buffers; mIRC historically uses 900.
-pub(crate) const MAX_MIRC_BUFFER_SIZE: usize = 900;
-
-/// Timeout duration for key exchange operations in seconds
-pub const KEY_EXCHANGE_TIMEOUT_SECONDS: u64 = 10;
-
-// Typical buffer size for mIRC, used for initial allocation
-pub(crate) const MIRC_TYPICAL_BUFFER_SIZE: usize = 20480;
-
-pub const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const CURRENT_YEAR: &str = "2025";
-
-pub const FUNCTION_TIMEOUT_SECONDS: Duration = Duration::from_secs(5);
-
-pub static NICK_VALIDATOR: Lazy<Regex> = Lazy::new(|| {
-    // RFC 1459 compliant nickname validation
-    Regex::new(r"^[a-zA-Z\[\]\\`_^{|}][a-zA-Z0-9\[\]\\`_^{|}-]{0,15}$")
-        .expect("Hardcoded RFC 1459 nickname regex should always be valid")
-});
-
-// Mutex for accessing/modifying the maximum buffer size
-// This value can be changed at runtime based on mIRC buffer settings
-pub(crate) static MIRC_BUFFER_SIZE: Mutex<usize> = Mutex::new(DEFAULT_MIRC_BUFFER_SIZE);
+// Re-export fish_11_core globals for use within fish_11_dll
+pub use fish_11_core::globals::{
+    CRATE_VERSION, CURRENT_YEAR, DEFAULT_MIRC_BUFFER_SIZE, FUNCTION_TIMEOUT_SECONDS,
+    KEY_EXCHANGE_TIMEOUT_SECONDS, MAX_MIRC_BUFFER_SIZE, MIRC_BUFFER_SIZE, MIRC_COMMAND,
+    MIRC_CONTINUE, MIRC_ERROR, MIRC_HALT, MIRC_IDENTIFIER, MIRC_TYPICAL_BUFFER_SIZE,
+    NICK_VALIDATOR,
+};
 
 /// Helper function to safely read string input from mIRC
 pub(crate) fn read_input(data: *mut c_char) -> Result<String, &'static str> {

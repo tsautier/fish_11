@@ -3,7 +3,6 @@
 //! This module provides buffer management functions that are independent of
 //! platform-specific interfaces. The actual buffer I/O will be handled by
 //! wrapper crates (fish_11_dll, fish_11_lib).
-
 use std::ffi::{CStr, CString, c_char};
 use std::ptr;
 
@@ -131,7 +130,7 @@ pub fn create_echo_command(message: &str, style: EchoStyle) -> String {
             let minutes = (secs % 3600) / 60;
             let seconds = secs % 60;
             format!("[{:02}:{:02}:{:02}] {}", hours, minutes, seconds, message)
-        },
+        }
         EchoStyle::Error => format!("ERROR: {}", message),
     }
 }
@@ -222,8 +221,7 @@ pub unsafe fn write_error_to_buffer(
     let error_cstring = create_error_message(&formatted_msg, "Internal error occurred");
     if let Err(_) = write_cstring_to_buffer(data, buffer_size, &error_cstring) {
         // Last resort: write minimal error message
-        let minimal_msg =
-            CString::new("Error").expect("Minimal error string should be valid");
+        let minimal_msg = CString::new("Error").expect("Minimal error string should be valid");
         let _ = write_cstring_to_buffer(data, buffer_size, &minimal_msg);
     }
 }

@@ -39,6 +39,9 @@ libc = "0.2.177"
 parking_lot = "0.12"
 thiserror = "2.0"
 
+# Shared core library
+fish_11_core = { path = "../fish_11_core" }
+
 # Platform-specific dependencies
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["windef", "winuser", "libloaderapi"] }

@@ -24,10 +24,3 @@ Currently, the crate contains the following modules:
 ## Usage
 
 This crate is not intended for direct use. Instead, it is a dependency for other crates within the workspace.
-
-Example `Cargo.toml` dependency:
-
-```toml
-[dependencies]
-fish_11_core = { path = "../fish_11_core" }
-```
