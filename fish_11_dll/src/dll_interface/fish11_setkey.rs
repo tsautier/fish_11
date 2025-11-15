@@ -21,8 +21,12 @@ dll_function_identifier!(FiSH11_SetKey, data, {
     }
 
     let network = parts[0];
-    let nickname = normalize_nick(parts[1]);
+    let target_raw = parts[1];
     let base64_key = parts[2].trim();
+
+    // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan, etc.)
+    let normalized_target = crate::utils::normalize_target(target_raw);
+    let nickname = normalize_nick(normalized_target);
 
     if network.is_empty() {
         return Err(DllError::MissingParameter("network".to_string()));
@@ -34,7 +38,12 @@ dll_function_identifier!(FiSH11_SetKey, data, {
         return Err(DllError::MissingParameter("base64_key".to_string()));
     }
 
-    log_debug!("Setting key for nickname: {} on network: {}", nickname, network);
+    log_debug!(
+        "Setting key for nickname/channel: {} on network: {} (original: {})",
+        nickname,
+        network,
+        target_raw
+    );
 
     // 2. Decode the base64 key.
     let key_bytes = base64::engine::general_purpose::STANDARD.decode(base64_key).map_err(|e| {

@@ -8,9 +8,7 @@ use rand::rngs::OsRng;
 use secrecy::ExposeSecret;
 use subtle::ConstantTimeEq;
 
-use crate::config::{
-    CONFIG, get_key, get_keypair, save_config, set_key, store_keypair,
-};
+use crate::config::{CONFIG, get_key, get_keypair, save_config, set_key, store_keypair};
 use crate::crypto::{KeyPair, format_public_key, generate_keypair};
 use crate::dll_interface::KEY_EXCHANGE_TIMEOUT_SECONDS;
 use crate::platform_types::{BOOL, HWND};
@@ -30,14 +28,21 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     // Parse and validate input
     let parse_start = Instant::now();
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
-    let nickname = normalize_nick(input.trim());
+    let input_trimmed = input.trim();
+
+    // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan, etc.)
+    let normalized_input = crate::utils::normalize_target(input_trimmed);
+    let nickname = normalize_nick(normalized_input);
     log_debug!("Parse input took {:?}", parse_start.elapsed());
 
     if nickname.is_empty() {
         return Err(DllError::MissingParameter("nickname".to_string()));
     }
 
-    info!("Key exchange initiated for nickname: {}", nickname);
+    info!(
+        "Key exchange initiated for nickname/channel: {} (original: {})",
+        nickname, input_trimmed
+    );
 
     // Timeout check 1
     check_timeout(start_time, timeout, "before key check")?;

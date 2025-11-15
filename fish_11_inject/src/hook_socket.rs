@@ -1,6 +1,26 @@
 //! This module contains the hooks for Winsock functions
 //! It includes the hooks for recv, send, connect, and closesocket
 
+/* list of stuff we possibly need to decrypt:
+        :nick!ident@host PRIVMSG #chan :+FISH 2T5zD0mPgMn
+        :nick!ident@host PRIVMSG #chan :\x01ACTION +FISH 2T5zD0mPgMn\x01
+        :nick!ident@host PRIVMSG ownNick :+FISH 2T5zD0mPgMn
+        :nick!ident@host PRIVMSG ownNick :\x01ACTION +FISH 2T5zD0mPgMn\x01
+        :nick!ident@host NOTICE ownNick :+FISH 2T5zD0mPgMn
+        :nick!ident@host NOTICE #chan :+FISH 2T5zD0mPgMn
+        TODO: support encrypting outbound notices to the next 5 targets @#chan +#chan %#chan &#chan ~#chan
+        :nick!ident@host NOTICE @#chan :+FISH 2T5zD0mPgMn
+        :nick!ident@host NOTICE ~#chan :+FISH 2T5zD0mPgMn
+        :nick!ident@host NOTICE %#chan :+FISH 2T5zD0mPgMn
+        :nick!ident@host NOTICE +#chan :+FISH 2T5zD0mPgMn
+          if '&' is within STATUSMSG=~&@%+ then &#chan is a group target not the name of a server-local channel
+        :nick!ident@host NOTICE &#chan :+FISH 2T5zD0mPgMn
+        (topic) :irc.tld 332 nick #chan :+FISH hqnSD1kaIaE00uei/.3LjAO1Den3t/iMNsc1
+        :nick!ident@host TOPIC #chan :+FISH JRFEAKWS
+        (topic /list) :irc.tld 322 nick #chan 2 :[+snt] +FISH BLAH
+        @aaa=bbb;ccc;example.com/ddd=eee :nick!ident@host.com PRIVMSG me :Hello
+*/
+
 use std::ffi::c_int;
 use std::sync::{Arc, Mutex as StdMutex};
 
@@ -226,7 +246,7 @@ pub unsafe extern "system" fn hooked_send(
             }
 
             // Check for encrypted message markers
-            if text.contains("+OK ") || text.contains("+FiSH ") || text.contains("mcps ") {
+            if text.contains("+FISH ") || text.contains("+FiSH ") || text.contains("mcps ") {
                 debug!("[SEND DEBUG] socket {}: detected FiSH encrypted message", s);
             }
         } else {
@@ -317,7 +337,7 @@ pub unsafe extern "system" fn hooked_send(
         let original = match hook_guard.as_ref() {
             Some(hook) => hook,
             None => {
-                error!("Original send function not available!");
+                error!("Original send function not available !");
                 return -1;
             }
         };
@@ -352,8 +372,10 @@ pub unsafe extern "system" fn hooked_connect(
         socket_info.set_state(SocketState::Connected);
 
         // Check if this is likely to be a TLS connection (e.g., port 6697)
-        // You could add logic here to determine if the connection is likely SSL/TLS
-        // For example by checking the port number from the SOCKADDR structure
+        //
+        // TODO : add logic here to determine if the connection is likely SSL/TLS
+        //
+        // EG. : by checking the port number from the SOCKADDR structure
     } else if result == SOCKET_ERROR {
         // Connection failed
         let error = winapi::um::winsock2::WSAGetLastError();
@@ -444,7 +466,7 @@ pub unsafe extern "system" fn hooked_closesocket(s: SOCKET) -> c_int {
         let original = match hook_guard.as_ref() {
             Some(hook) => hook,
             None => {
-                error!("Original closesocket function not available !");
+                error!("Original closesocket() function not available !");
                 return -1;
             }
         };

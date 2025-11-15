@@ -10,7 +10,11 @@ dll_function_identifier!(FiSH11_GenKey, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
 
     let parts: Vec<&str> = input.splitn(2, ' ').collect();
-    let nickname = normalize_nick(parts.get(0).unwrap_or(&"").trim());
+    let target_raw = parts.get(0).unwrap_or(&"").trim();
+
+    // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan, etc.)
+    let normalized_target = crate::utils::normalize_target(target_raw);
+    let nickname = normalize_nick(normalized_target);
 
     if nickname.is_empty() {
         return Err(DllError::MissingParameter("nickname".to_string()));
@@ -18,7 +22,12 @@ dll_function_identifier!(FiSH11_GenKey, data, {
 
     let network = parts.get(1).map(|s| s.trim());
 
-    log_debug!("Generating key for nickname: {} (network: {:?})", nickname, network);
+    log_debug!(
+        "Generating key for nickname/channel: {} (network: {:?}, original: {})",
+        nickname,
+        network,
+        target_raw
+    );
 
     // 1. Generate a cryptographically secure random key.
     let mut key = [0u8; 32];

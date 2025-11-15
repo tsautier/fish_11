@@ -43,7 +43,8 @@ unsafe extern "C" fn on_outgoing(socket: u32, line: *const c_char, _len: usize) 
         return ptr::null_mut();
     }
 
-    // CRITICAL: Use CStr::from_ptr (borrow) NOT CString::from_raw (take ownership)
+    // CRITICAL: use CStr::from_ptr (borrow) NOT CString::from_raw (take ownership)
+    //
     // The caller (inject DLL) still owns this pointer!
     let c_str = match std::ffi::CStr::from_ptr(line).to_str() {
         Ok(s) => s,
@@ -53,7 +54,8 @@ unsafe extern "C" fn on_outgoing(socket: u32, line: *const c_char, _len: usize) 
         }
     };
 
-    // CRITICAL: Update the global current network before processing
+    // CRITICAL: update the global current network before processing
+    //
     // This ensures encryption uses the correct network context
     let network_name = get_network_name_from_inject(socket);
     if let Some(ref net) = network_name {
@@ -78,7 +80,8 @@ unsafe extern "C" fn on_incoming(socket: u32, line: *const c_char, _len: usize) 
         return ptr::null_mut();
     }
 
-    // CRITICAL: Use CStr::from_ptr (borrow) NOT CString::from_raw (take ownership)
+    // CRITICAL: use CStr::from_ptr (borrow) NOT CString::from_raw (take ownership)
+    //
     // The caller (inject DLL) still owns this pointer!
     let c_str = match std::ffi::CStr::from_ptr(line).to_str() {
         Ok(s) => s,
@@ -88,7 +91,8 @@ unsafe extern "C" fn on_incoming(socket: u32, line: *const c_char, _len: usize) 
         }
     };
 
-    // CRITICAL: Update the global current network before processing
+    // CRITICAL: update the global current network before processing
+    //
     // This ensures that any DLL functions called (like set_key during key exchange)
     // will use the correct network name for this socket
     let network_name = get_network_name_from_inject(socket);
@@ -110,7 +114,10 @@ unsafe extern "C" fn on_incoming(socket: u32, line: *const c_char, _len: usize) 
 }
 
 // Placeholder for socket close event
-unsafe extern "C" fn on_close(_socket: u32) {}
+unsafe extern "C" fn on_close(_socket: u32) {
+    // No special handling needed on socket close for now
+    // TODO : Implement any necessary cleanup if needed in the future
+}
 
 // Function to free memory allocated for returned strings
 unsafe extern "C" fn free_string(s: *mut c_char) {
@@ -214,7 +221,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
         return None;
     }
 
-    // CRITICAL: Do NOT decrypt key exchange messages!
+    // CRITICAL: do NOT decrypt key exchange messages !#@
     // X25519_INIT and X25519_FINISH must pass through unchanged so mIRC can handle them
     if line.contains("X25519_INIT")
         || line.contains("X25519_FINISH")
@@ -239,7 +246,10 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
 
     // Extract target (channel or nickname)
     // Format: ":nick!user@host PRIVMSG target :message"
-    let target = parts.get(2).unwrap_or(&"");
+    let target_raw = parts.get(2).unwrap_or(&"");
+
+    // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan..)
+    let target = crate::utils::normalize_target(target_raw);
 
     // Find the encrypted data after ":+FiSH "
     let fish_marker = ":+FiSH ";
@@ -253,8 +263,8 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
     let encrypted_data = line[fish_start..].trim();
 
     // Determine which identifier to use for key lookup
-    // For channels (#, &), use the channel name
-    // For private messages, use the sender's nickname
+    // For channels (#, &) : we use the channel name and it's already normalized.
+    // For private messages :  we use the sender's nickname
     let key_identifier =
         if target.starts_with('#') || target.starts_with('&') { target } else { sender };
 
