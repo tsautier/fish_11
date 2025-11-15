@@ -15,6 +15,7 @@ mod fish11_filelistkeysitem;
 mod fish11_genkey;
 mod fish11_getconfigpath;
 mod fish11_help;
+mod fish11_setnetwork;
 mod key_management;
 mod utility;
 
@@ -34,38 +35,6 @@ pub use fish_11_core::globals::{
     MIRC_CONTINUE, MIRC_ERROR, MIRC_HALT, MIRC_IDENTIFIER, MIRC_TYPICAL_BUFFER_SIZE,
     NICK_VALIDATOR,
 };
-
-/// Helper function to safely read string input from mIRC
-pub(crate) fn read_input(data: *mut c_char) -> Result<String, &'static str> {
-    if data.is_null() {
-        return Err("Data buffer pointer is null");
-    }
-
-    unsafe {
-        match CStr::from_ptr(data).to_str() {
-            Ok(s) => Ok(s.to_owned()),
-            Err(_) => Err("Invalid ANSI input"),
-        }
-    }
-}
-
-/// Helper function to safely write string output to mIRC
-pub(crate) fn write_output(data: *mut c_char, output: &str, buffer_size: usize) {
-    let c_string = CString::new(output).unwrap_or_else(|_| {
-        CString::new("Error").expect("Failed to create fallback error message")
-    });
-
-    unsafe {
-        // Clear buffer first
-        ptr::write_bytes(data as *mut u8, 0, buffer_size);
-
-        // Copy result with null terminator, ensuring we don't exceed buffer
-        let bytes = c_string.as_bytes_with_nul();
-        let copy_len = bytes.len().min(buffer_size - 1);
-        ptr::copy_nonoverlapping(bytes.as_ptr(), data as *mut u8, copy_len);
-        *data.add(copy_len) = 0; // Ensure null termination
-    }
-}
 
 /// Returns the maximum amount of data that can be written into the output buffer.
 /// This implementation includes fallback to global buffer size if LOAD_INFO is not available.

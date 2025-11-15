@@ -8,9 +8,29 @@ use crate::buffer_utils;
 use crate::config;
 use crate::crypto;
 use crate::dll_function_identifier;
+use crate::log_debug;
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
-use crate::log_debug;
+
+/* list of stuff we possibly need to decrypt:
+        :nick!ident@host PRIVMSG #chan :+FISH 2T5zD0mPgMn
+        :nick!ident@host PRIVMSG #chan :\x01ACTION +FISH 2T5zD0mPgMn\x01
+        :nick!ident@host PRIVMSG ownNick :+FISH 2T5zD0mPgMn
+        :nick!ident@host PRIVMSG ownNick :\x01ACTION +FISH 2T5zD0mPgMn\x01
+        :nick!ident@host NOTICE ownNick :+FISH 2T5zD0mPgMn
+        :nick!ident@host NOTICE #chan :+FISH 2T5zD0mPgMn
+        TODO: support encrypting outbound notices to the next 5 targets @#chan +#chan %#chan &#chan ~#chan
+        :nick!ident@host NOTICE @#chan :+FISH 2T5zD0mPgMn
+        :nick!ident@host NOTICE ~#chan :+FISH 2T5zD0mPgMn
+        :nick!ident@host NOTICE %#chan :+FISH 2T5zD0mPgMn
+        :nick!ident@host NOTICE +#chan :+FISH 2T5zD0mPgMn
+          if '&' is within STATUSMSG=~&@%+ then &#chan is a group target not the name of a server-local channel
+        :nick!ident@host NOTICE &#chan :+FISH 2T5zD0mPgMn
+        (topic) :irc.tld 332 nick #chan :+FISH hqnSD1kaIaE00uei/.3LjAO1Den3t/iMNsc1
+        :nick!ident@host TOPIC #chan :+FISH JRFEAKWS
+        (topic /list) :irc.tld 322 nick #chan 2 :[+snt] +FISH BLAH
+        @aaa=bbb;ccc;example.com/ddd=eee :nick!ident@host.com PRIVMSG me :Hello
+*/
 
 dll_function_identifier!(FiSH11_DecryptMsg, data, {
     // 1. Parse input: <target> <encrypted_message>
@@ -24,8 +44,11 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
         });
     }
 
-    let target = parts[0];
+    let target_raw = parts[0];
     let mut encrypted_message = parts[1].trim();
+
+    // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan, etc.)
+    let target = crate::utils::normalize_target(target_raw);
 
     if target.is_empty() {
         return Err(DllError::MissingParameter("target".to_string()));
@@ -55,9 +78,7 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
 
         // 1. Anti-replay check (read-only)
         if config::check_nonce(target, &nonce)? {
-            return Err(DllError::ReplayAttackDetected {
-                channel: target.to_string(),
-            });
+            return Err(DllError::ReplayAttackDetected { channel: target.to_string() });
         }
 
         // 2. Attempt decryption with ratchet state
@@ -75,14 +96,16 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
             }
 
             // If current key fails, try previous keys for out-of-order messages
-            for old_key in state.previous_keys.iter().rev() { // Check newest first
-                if let Ok(plaintext) = crypto::decrypt_message(
-                    old_key,
-                    encrypted_message,
-                    Some(target.as_bytes()),
-                ) {
+            for old_key in state.previous_keys.iter().rev() {
+                // Check newest first
+                if let Ok(plaintext) =
+                    crypto::decrypt_message(old_key, encrypted_message, Some(target.as_bytes()))
+                {
                     // Success with a previous key. DO NOT advance the ratchet.
-                    log::warn!("Decrypted message for {} with a previous ratchet key (out-of-order message)", target);
+                    log::warn!(
+                        "Decrypted message for {} with a previous ratchet key (out-of-order message)",
+                        target
+                    );
                     return Ok(Some(plaintext)); // Return plaintext to outer scope
                 }
             }
@@ -107,13 +130,11 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
     let nickname = normalize_nick(target);
     log_debug!("Decrypting for nickname: {}", nickname);
 
-    let key_vec = config::get_key_default(&nickname)?;
-    let key: &[u8; 32] = key_vec.as_slice().try_into().map_err(|_|
-        DllError::InvalidInput {
-            param: "key".to_string(),
-            reason: format!("Key for {} must be exactly 32 bytes, got {}", nickname, key_vec.len()),
-        }
-    )?;
+    let key_vec = config::get_key(&nickname, None)?;
+    let key: &[u8; 32] = key_vec.as_slice().try_into().map_err(|_| DllError::InvalidInput {
+        param: "key".to_string(),
+        reason: format!("Key for {} must be exactly 32 bytes, got {}", nickname, key_vec.len()),
+    })?;
 
     log_debug!("Successfully retrieved decryption key");
 

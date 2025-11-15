@@ -47,6 +47,17 @@ fn get_key_internal(config: &FishConfig, nickname: &str, network: Option<&str>) 
         }
     }
 
+    // Fallback: if not found with specific network, try with @default
+    if network_name != "default" {
+        let default_entry_key = format!("{}@default", normalized_nick);
+        if let Some(entry) = config.entries.get(&default_entry_key) {
+            if let Some(ref key_str) = entry.key {
+                log_debug!("Key found with fallback to @default for {}", normalized_nick);
+                return base64_decode(key_str).map_err(FishError::from);
+            }
+        }
+    }
+
     Err(FishError::KeyNotFound(normalized_nick))
 }
 
@@ -110,8 +121,17 @@ pub fn set_key(
         let now = Local::now();
         let date_str = now.format("%Y-%m-%d %H:%M:%S").to_string();
 
-        // Use network name in the entry key format or default to current network if not specified
-        let network_name = network.unwrap_or("default");
+        // Use network name in the entry key format
+        // Priority: explicitly provided > globally set > existing mapping > "default"
+        let network_name = match network {
+            Some(net) => net.to_string(),
+            None => {
+                // Try to use the global current network
+                crate::get_current_network()
+                    .or_else(|| networks::get_network_for_nick_internal(config, &normalized_nick))
+                    .unwrap_or_else(|| "default".to_string())
+            }
+        };
 
         // Determine if this is a channel or user based on nickname starting with '#'
         let entry_key = if normalized_nick.starts_with('#') {
@@ -133,10 +153,16 @@ pub fn set_key(
         Ok(())
     })?;
 
-    // Update network mapping if provided (using our new networks module)
-    if let Some(net) = network {
-        networks::set_network_for_nick(&normalized_nick, net)?;
-    }
+    // Determine which network to use for the mapping
+    // Priority: explicitly provided > current global network > default
+    let mapping_network = match network {
+        Some(net) => net.to_string(),
+        None => crate::get_current_network().unwrap_or_else(|| "default".to_string()),
+    };
+
+    // Update network mapping with the network that was actually used
+    // This ensures the mapping is always kept in sync with the entry format
+    networks::set_network_for_nick(&normalized_nick, &mapping_network)?;
 
     Ok(())
 }

@@ -292,67 +292,29 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
     log_warn!("load_config: [Startup] processed in {:?}", startup_start.elapsed());
 
     let entries_start = std::time::Instant::now();
-    // Load entries from section-based format [nickname@network] and [chan_channel@network] sections
-    for section_name in ini.sections() {
-        // Skip the standard configuration sections (case-insensitive comparison)
-        let section_lower = section_name.to_lowercase();
-        if section_lower == "keys"
-            || section_lower == "keypair"
-            || section_lower == "nicknetworks"
-            || section_lower == "fish11"
-            || section_lower == "startup"
-            || section_name.starts_with("Entry.")
-        {
-            continue;
-        }
 
-        // Check if this is a valid entry section (contains @ indicating network format)
-        if section_name.contains('@') {
-            #[cfg(debug_assertions)]
-            println!("DEBUG:   -> processing entry section: '{}'", section_name);
+    // Load from [Keys] and [Dates] sections into config.entries
+    // This new format is robust against special characters in nicknames.
+    let keys_section_name = sections_lower.get("keys").cloned();
+    let dates_section_name = sections_lower.get("dates").cloned();
 
-            // Clean section name: remove any brackets (should not be present, but defensive)
-            if section_name.starts_with('[') || section_name.ends_with(']') {
-                #[cfg(debug_assertions)]
-                eprintln!(
-                    "WARNING: Section name '{}' contains brackets. This may indicate malformed data.",
-                    section_name
-                );
-            }
-            let clean_section = section_name.trim_start_matches('[').trim_end_matches(']');
-
-            // Transform chan_ prefix back to # for channels
-            let entry_key = if clean_section.starts_with("chan_") {
-                clean_section.replacen("chan_", "#", 1)
+    if let Some(keys_section) = keys_section_name {
+        if let Some(keys_map) = ini.get_map_ref().get(&keys_section) {
+            // Get dates map if it exists, for efficient lookup
+            let dates_map = if let Some(dates_section) = &dates_section_name {
+                ini.get_map_ref().get(dates_section).cloned().unwrap_or_default()
             } else {
-                clean_section.to_string()
+                Default::default()
             };
 
-            let mut entry = EntryData::default();
-
-            if let Some(key_value) = ini.get(&section_name, "key") {
-                #[cfg(debug_assertions)]
-                println!("DEBUG:     found key: '{}'", key_value);
-                entry.key = Some(key_value.to_string());
-            } else {
-                #[cfg(debug_assertions)]
-                println!("DEBUG:     no key found for section '{}'", section_name);
+            for (entry_key, key_val_opt) in keys_map.iter() {
+                if let Some(key_val) = key_val_opt {
+                    // Find the corresponding date using the case-sensitive key
+                    let date_val = dates_map.get(entry_key).and_then(|v| v.clone());
+                    let entry_data = EntryData { key: Some(key_val.clone()), date: date_val };
+                    config.entries.insert(entry_key.clone(), entry_data);
+                }
             }
-
-            if let Some(date_value) = ini.get(&section_name, "date") {
-                #[cfg(debug_assertions)]
-                println!("DEBUG:     found date: '{}'", date_value);
-                entry.date = Some(date_value.to_string());
-            } else {
-                #[cfg(debug_assertions)]
-                println!("DEBUG:     no date found for section '{}'", section_name);
-            }
-            config.entries.insert(entry_key.clone(), entry);
-            #[cfg(debug_assertions)]
-            println!("DEBUG:     inserted entry for: '{}'", entry_key);
-        } else {
-            #[cfg(debug_assertions)]
-            println!("DEBUG:   -> skipping non-entry section (no @): '{}'", section_name);
         }
     }
     log_warn!(
@@ -392,12 +354,6 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
 
     let mut ini = Ini::new();
 
-    // Save [Keys] section
-    let keys_section = "Keys";
-    for (k, v) in &config.keys {
-        ini.set(keys_section, k, Some(v.clone()));
-    }
-
     // Save [KeyPair] section
     if let Some(private) = &config.our_private_key {
         ini.set("KeyPair", "private", Some(private.to_string()));
@@ -427,26 +383,19 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
         ini.set("Startup", "date", Some(date.to_string()));
     }
 
-    // OPTIMISATION: Save entry sections with minimal allocations
+    // Save entries from config.entries to [Keys] and [Dates] sections
     let entries_start = std::time::Instant::now();
+    let keys_section = "Keys";
+    let dates_section = "Dates";
 
-    for (key, entry) in &config.entries {
-        // Clean up the key: remove any existing brackets that might have been accidentally included
-        let clean_key = key.trim_start_matches('[').trim_end_matches(']');
-
-        // Transform keys that start with # to use chan_ prefix for INI compatibility
-        // Use Cow to avoid unnecessary allocations when no transformation is needed
-        let section_name: std::borrow::Cow<str> = if clean_key.starts_with('#') {
-            std::borrow::Cow::Owned(clean_key.replacen('#', "chan_", 1))
-        } else {
-            std::borrow::Cow::Borrowed(clean_key)
-        };
-
-        if let Some(key_val) = &entry.key {
-            ini.set(section_name.as_ref(), "key", Some(key_val.clone()));
+    for (entry_key, entry_data) in &config.entries {
+        // The entry_key is already in "name@network" format.
+        // It is now a key in a section, so special characters are not a problem.
+        if let Some(key_val) = &entry_data.key {
+            ini.set(keys_section, entry_key, Some(key_val.clone()));
         }
-        if let Some(date) = &entry.date {
-            ini.set(section_name.as_ref(), "date", Some(date.clone()));
+        if let Some(date_val) = &entry_data.date {
+            ini.set(dates_section, entry_key, Some(date_val.clone()));
         }
     }
 

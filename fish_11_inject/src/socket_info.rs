@@ -248,6 +248,7 @@ pub struct SocketStats {
 pub struct SocketInfo {
     pub socket: u32,
     pub engines: Arc<InjectEngines>,
+    pub network_name: RwLock<Option<String>>,
 
     // State tracking
     pub state: RwLock<SocketState>,
@@ -267,6 +268,7 @@ impl SocketInfo {
         SocketInfo {
             socket,
             engines,
+            network_name: RwLock::new(None),
             state: RwLock::new(SocketState::Initializing),
             flags: RwLock::new(SocketFlags {
                 is_ssl: false,

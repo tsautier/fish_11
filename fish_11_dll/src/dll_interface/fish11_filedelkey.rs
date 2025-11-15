@@ -13,12 +13,20 @@ use crate::utils::normalize_nick;
 dll_function_identifier!(FiSH11_FileDelKey, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
 
-    let nickname = normalize_nick(input.trim());
+    let input_trimmed = input.trim();
+
+    // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan, etc.)
+    let normalized_input = crate::utils::normalize_target(input_trimmed);
+    let nickname = normalize_nick(normalized_input);
     if nickname.is_empty() {
         return Err(DllError::MissingParameter("nickname".to_string()));
     }
 
-    log::info!("Key deletion requested for nickname: {}", nickname);
+    log::info!(
+        "Key deletion requested for nickname/channel: {} (original: {})",
+        nickname,
+        input_trimmed
+    );
 
     // The `?` operator handles any errors during deletion.
     config::delete_key_default(&nickname)?;
@@ -75,7 +83,7 @@ mod tests {
         // Create a test key for "bob" first
         let test_key = [1u8; 32];
         config::set_key_default("bob", &test_key, true).unwrap();
-        
+
         let (code, msg) = call_delkey("bob", 256);
         assert_eq!(code, crate::dll_interface::MIRC_IDENTIFIER);
         // Structured check: message should mention bob
@@ -100,10 +108,10 @@ mod tests {
 
     #[test]
     fn test_delkey_buffer_too_small() {
-        // Create a test key for "alice" first  
+        // Create a test key for "alice" first
         let test_key = [1u8; 32];
         config::set_key_default("alice", &test_key, true).unwrap();
-        
+
         let (code, msg) = call_delkey("alice", 8);
         assert_eq!(code, crate::dll_interface::MIRC_IDENTIFIER);
         // Structured check: message is truncated

@@ -2,14 +2,14 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
-use crate::platform_types::{BOOL, HWND};
 use crate::buffer_utils;
 use crate::config;
 use crate::crypto;
 use crate::dll_function_identifier;
+use crate::log_debug;
+use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
-use crate::log_debug;
 
 /// Encrypts a message for a specific nickname or channel.
 /// This function handles the complete encryption workflow, including:
@@ -29,8 +29,11 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
         });
     }
 
-    let target = parts[0];
+    let target_raw = parts[0];
     let message = parts[1];
+
+    // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan, etc.)
+    let target = crate::utils::normalize_target(target_raw);
 
     if target.is_empty() {
         return Err(DllError::MissingParameter("target".to_string()));

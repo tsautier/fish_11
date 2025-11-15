@@ -10,6 +10,9 @@ use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
 use crate::crypto::{decrypt_message, encrypt_message};
 use crate::{log_debug, log_error, log_info, log_warn};
 
+type GetNetworkNameFn = unsafe extern "C" fn(u32) -> *mut c_char;
+static mut GET_NETWORK_NAME_FN: Option<GetNetworkNameFn> = None;
+
 // C-style struct for engine registration
 #[repr(C)]
 pub struct FishInjectEngine {
@@ -20,18 +23,28 @@ pub struct FishInjectEngine {
     pub on_incoming_irc_line: unsafe extern "C" fn(u32, *const c_char, usize) -> *mut c_char,
     pub on_socket_closed: unsafe extern "C" fn(u32),
     pub free_string: unsafe extern "C" fn(*mut c_char),
+    pub get_network_name: unsafe extern "C" fn(u32) -> *mut c_char,
 }
 
 // SAFETY: FishInjectEngine contains raw pointers but is used for FFI with static data
 unsafe impl Sync for FishInjectEngine {}
 
+// Real implementation for get_network_name (calls fish_inject's GetNetworkName)
+unsafe extern "C" fn get_network_name_impl(socket: u32) -> *mut c_char {
+    if let Some(get_network_name_fn) = GET_NETWORK_NAME_FN {
+        return get_network_name_fn(socket);
+    }
+    ptr::null_mut()
+}
+
 // Callback for outgoing messages (encryption)
-unsafe extern "C" fn on_outgoing(_socket: u32, line: *const c_char, _len: usize) -> *mut c_char {
+unsafe extern "C" fn on_outgoing(socket: u32, line: *const c_char, _len: usize) -> *mut c_char {
     if line.is_null() {
         return ptr::null_mut();
     }
 
-    // CRITICAL: Use CStr::from_ptr (borrow) NOT CString::from_raw (take ownership)
+    // CRITICAL: use CStr::from_ptr (borrow) NOT CString::from_raw (take ownership)
+    //
     // The caller (inject DLL) still owns this pointer!
     let c_str = match std::ffi::CStr::from_ptr(line).to_str() {
         Ok(s) => s,
@@ -40,6 +53,14 @@ unsafe extern "C" fn on_outgoing(_socket: u32, line: *const c_char, _len: usize)
             return ptr::null_mut();
         }
     };
+
+    // CRITICAL: update the global current network before processing
+    //
+    // This ensures encryption uses the correct network context
+    let network_name = get_network_name_from_inject(socket);
+    if let Some(ref net) = network_name {
+        crate::set_current_network(net);
+    }
 
     if let Some(encrypted) = attempt_encryption(c_str) {
         match CString::new(encrypted) {
@@ -54,12 +75,13 @@ unsafe extern "C" fn on_outgoing(_socket: u32, line: *const c_char, _len: usize)
 }
 
 // Callback for incoming messages (decryption)
-unsafe extern "C" fn on_incoming(_socket: u32, line: *const c_char, _len: usize) -> *mut c_char {
+unsafe extern "C" fn on_incoming(socket: u32, line: *const c_char, _len: usize) -> *mut c_char {
     if line.is_null() {
         return ptr::null_mut();
     }
 
-    // CRITICAL: Use CStr::from_ptr (borrow) NOT CString::from_raw (take ownership)
+    // CRITICAL: use CStr::from_ptr (borrow) NOT CString::from_raw (take ownership)
+    //
     // The caller (inject DLL) still owns this pointer!
     let c_str = match std::ffi::CStr::from_ptr(line).to_str() {
         Ok(s) => s,
@@ -69,7 +91,17 @@ unsafe extern "C" fn on_incoming(_socket: u32, line: *const c_char, _len: usize)
         }
     };
 
-    if let Some(decrypted) = attempt_decryption(c_str) {
+    // CRITICAL: update the global current network before processing
+    //
+    // This ensures that any DLL functions called (like set_key during key exchange)
+    // will use the correct network name for this socket
+    let network_name = get_network_name_from_inject(socket);
+    if let Some(ref net) = network_name {
+        crate::set_current_network(net);
+        log_debug!("Engine: set current network to '{}' for socket {}", net, socket);
+    }
+
+    if let Some(decrypted) = attempt_decryption(c_str, network_name.as_deref()) {
         match CString::new(decrypted) {
             Ok(s) => return s.into_raw(),
             Err(e) => {
@@ -82,7 +114,10 @@ unsafe extern "C" fn on_incoming(_socket: u32, line: *const c_char, _len: usize)
 }
 
 // Placeholder for socket close event
-unsafe extern "C" fn on_close(_socket: u32) {}
+unsafe extern "C" fn on_close(_socket: u32) {
+    // No special handling needed on socket close for now
+    // TODO : Implement any necessary cleanup if needed in the future
+}
 
 // Function to free memory allocated for returned strings
 unsafe extern "C" fn free_string(s: *mut c_char) {
@@ -101,6 +136,7 @@ pub static FISH_INJECT_ENGINE: FishInjectEngine = FishInjectEngine {
     on_incoming_irc_line: on_incoming,
     on_socket_closed: on_close,
     free_string,
+    get_network_name: get_network_name_impl,
 };
 
 // Function to attempt encryption
@@ -176,13 +212,16 @@ fn attempt_encryption(line: &str) -> Option<String> {
 }
 
 // Function to attempt decryption
-fn attempt_decryption(line: &str) -> Option<String> {
+fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
+    log_debug!("Engine: attempt_decryption called for line: {}, network: {:?}", line, network);
+
     // Check if line contains FiSH encrypted data
     if !line.contains(":+FiSH ") {
+        log_debug!("Engine: line does not contain ':+FiSH ', skipping");
         return None;
     }
 
-    // CRITICAL: Do NOT decrypt key exchange messages!
+    // CRITICAL: do NOT decrypt key exchange messages !#@
     // X25519_INIT and X25519_FINISH must pass through unchanged so mIRC can handle them
     if line.contains("X25519_INIT")
         || line.contains("X25519_FINISH")
@@ -207,7 +246,10 @@ fn attempt_decryption(line: &str) -> Option<String> {
 
     // Extract target (channel or nickname)
     // Format: ":nick!user@host PRIVMSG target :message"
-    let target = parts.get(2).unwrap_or(&"");
+    let target_raw = parts.get(2).unwrap_or(&"");
+
+    // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan..)
+    let target = crate::utils::normalize_target(target_raw);
 
     // Find the encrypted data after ":+FiSH "
     let fish_marker = ":+FiSH ";
@@ -221,8 +263,8 @@ fn attempt_decryption(line: &str) -> Option<String> {
     let encrypted_data = line[fish_start..].trim();
 
     // Determine which identifier to use for key lookup
-    // For channels (#, &), use the channel name
-    // For private messages, use the sender's nickname
+    // For channels (#, &) : we use the channel name and it's already normalized.
+    // For private messages :  we use the sender's nickname
     let key_identifier =
         if target.starts_with('#') || target.starts_with('&') { target } else { sender };
 
@@ -235,7 +277,7 @@ fn attempt_decryption(line: &str) -> Option<String> {
     );
 
     // Try to get the decryption key
-    let key = match crate::config::get_key_default(key_identifier) {
+    let key = match crate::config::get_key(key_identifier, network) {
         Ok(k) => k,
         Err(e) => {
             log_warn!("Engine: no key found for '{}': {}", key_identifier, e);
@@ -263,18 +305,22 @@ fn attempt_decryption(line: &str) -> Option<String> {
     log_info!("Engine: successfully decrypted message from '{}'", sender);
 
     // Reconstruct the IRC line with decrypted plaintext
-    // Format: ":nick!user@host PRIVMSG target :decrypted_message\r\n"
+    // Format: ":nick!user@host COMMAND target :decrypted_message\r\n"
     // CRITICAL: IRC protocol requires \r\n at the end of each line!
-    let prefix_end = line.find(" PRIVMSG ").unwrap_or(0);
-    let target_start = prefix_end + 9; // Length of " PRIVMSG "
-    let target_end = line[target_start..].find(' ').map(|p| target_start + p).unwrap_or(line.len());
 
-    let reconstructed = format!(
-        "{} PRIVMSG {} :{}\r\n",
-        &line[..prefix_end],
-        &line[target_start..target_end],
-        decrypted
-    );
+    // Find the start of the message part (":+FiSH ...")
+    let message_part_start = match line.find(" :+FiSH ") {
+        Some(pos) => pos,
+        None => {
+            log_error!("Engine: could not find message part ' :+FiSH ' in line");
+            return None;
+        }
+    };
+
+    // The part of the line before the message is the full prefix, command, and target
+    let prefix_and_command = &line[..message_part_start];
+
+    let reconstructed = format!("{} :{}\r\n", prefix_and_command, decrypted);
 
     Some(reconstructed)
 }
@@ -290,6 +336,16 @@ pub fn register_engine() {
         if h_module.is_null() {
             log_warn!("fish_11_inject.dll not found in process. Engine not registered.");
             return;
+        }
+
+        let get_network_name_fn_name = CString::new("GetNetworkName").unwrap();
+        let get_network_name_fn: FARPROC =
+            GetProcAddress(h_module, get_network_name_fn_name.as_ptr());
+
+        if get_network_name_fn.is_null() {
+            log_error!("GetNetworkName function not found in fish_11_inject.dll.");
+        } else {
+            GET_NETWORK_NAME_FN = Some(std::mem::transmute(get_network_name_fn));
         }
 
         let register_fn_name = CString::new("RegisterEngine").unwrap();
@@ -309,4 +365,19 @@ pub fn register_engine() {
             log_error!("Failed to register FiSH_11 engine. Error code : {}", result);
         }
     }
+}
+
+pub fn get_network_name_from_inject(socket_id: u32) -> Option<String> {
+    unsafe {
+        if let Some(get_network_name_fn) = GET_NETWORK_NAME_FN {
+            let c_char_ptr = get_network_name_fn(socket_id);
+            if !c_char_ptr.is_null() {
+                let c_string = CString::from_raw(c_char_ptr);
+                if let Ok(rust_string) = c_string.into_string() {
+                    return Some(rust_string);
+                }
+            }
+        }
+    }
+    None
 }

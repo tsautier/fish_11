@@ -7,19 +7,29 @@ use crate::platform_types::HWND;
 use crate::buffer_utils;
 use crate::config;
 use crate::dll_function_identifier;
+use crate::log_debug;
 use crate::unified_error::DllError;
 use crate::utils::{base64_encode, normalize_nick};
-use crate::log_debug;
 
 dll_function_identifier!(FiSH11_FileGetKey, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
 
-    let nickname = normalize_nick(input.trim());
+    let input_trimmed = input.trim();
+
+    // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan, etc.)
+    let normalized_input = crate::utils::normalize_target(input_trimmed);
+
+    // Then lowercase for case-insensitive lookup
+    let nickname = normalize_nick(normalized_input);
     if nickname.is_empty() {
         return Err(DllError::MissingParameter("nickname".to_string()));
     }
 
-    log_debug!("Retrieving key for nickname: {}", nickname);
+    log_debug!(
+        "Retrieving key for nickname/channel: {} (original input: {})",
+        nickname,
+        input_trimmed
+    );
 
     // The `?` operator will automatically convert the error from `config::get_key_default`
     // into our `DllError` type, thanks to the `From<FishError>` implementation.
@@ -45,7 +55,11 @@ mod tests {
             let bytes = input.as_bytes();
             let copy_len = std::cmp::min(bytes.len(), buffer.len());
             unsafe {
-                std::ptr::copy_nonoverlapping(bytes.as_ptr(), buffer.as_mut_ptr() as *mut u8, copy_len);
+                std::ptr::copy_nonoverlapping(
+                    bytes.as_ptr(),
+                    buffer.as_mut_ptr() as *mut u8,
+                    copy_len,
+                );
             }
         }
 

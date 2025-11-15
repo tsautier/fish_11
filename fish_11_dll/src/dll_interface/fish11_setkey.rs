@@ -9,20 +9,28 @@ use crate::utils::normalize_nick;
 use crate::{buffer_utils, config, dll_function_identifier, log_debug};
 
 dll_function_identifier!(FiSH11_SetKey, data, {
-    // 1. Parse input: <nickname> <base64_key>
+    // 1. Parse input: <network> <nickname> <base64_key>
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
-    let parts: Vec<&str> = input.splitn(2, ' ').collect();
+    let parts: Vec<&str> = input.splitn(3, ' ').collect();
 
-    if parts.len() < 2 {
+    if parts.len() < 3 {
         return Err(DllError::InvalidInput {
             param: "input".to_string(),
-            reason: "expected format: <nickname> <base64_key>".to_string(),
+            reason: "expected format: <network> <nickname> <base64_key>".to_string(),
         });
     }
 
-    let nickname = normalize_nick(parts[0]);
-    let base64_key = parts[1].trim();
+    let network = parts[0];
+    let target_raw = parts[1];
+    let base64_key = parts[2].trim();
 
+    // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan, etc.)
+    let normalized_target = crate::utils::normalize_target(target_raw);
+    let nickname = normalize_nick(normalized_target);
+
+    if network.is_empty() {
+        return Err(DllError::MissingParameter("network".to_string()));
+    }
     if nickname.is_empty() {
         return Err(DllError::MissingParameter("nickname".to_string()));
     }
@@ -30,7 +38,12 @@ dll_function_identifier!(FiSH11_SetKey, data, {
         return Err(DllError::MissingParameter("base64_key".to_string()));
     }
 
-    log_debug!("Setting key for nickname: {}", nickname);
+    log_debug!(
+        "Setting key for nickname/channel: {} on network: {} (original: {})",
+        nickname,
+        network,
+        target_raw
+    );
 
     // 2. Decode the base64 key.
     let key_bytes = base64::engine::general_purpose::STANDARD.decode(base64_key).map_err(|e| {
@@ -51,9 +64,9 @@ dll_function_identifier!(FiSH11_SetKey, data, {
     log_debug!("Key decoded successfully, storing...");
 
     // 4. Store the key, allowing overwrite.
-    config::set_key(&nickname, &key, None, true)?;
+    config::set_key(&nickname, &key, Some(network), true)?;
 
-    log::info!("Successfully set key for {}", nickname);
+    log::info!("Successfully set key for {} on network {}", nickname, network);
 
     // Return a truthy identifier value so mIRC treats this as success (no /echo)
     Ok("1".to_string())

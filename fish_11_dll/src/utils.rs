@@ -39,6 +39,40 @@ pub fn normalize_nick(nick: &str) -> String {
     nick.trim().to_lowercase()
 }
 
+/// Normalize a channel or target name by stripping STATUSMSG prefixes.
+///
+/// IRC STATUSMSG allows sending to specific user classes in a channel using prefixes:
+/// - `@#channel` - ops only
+/// - `+#channel` - voiced users
+/// - `%#channel` - half-ops
+/// - `~#channel` - owners
+/// - `&#channel` - could be server-local channel OR group target (depends on STATUSMSG)
+///
+/// This function strips any leading status prefix to get the actual channel name.
+/// For non-channel targets (private messages), returns the input unchanged.
+///
+/// Examples:
+/// - `@#fish_11` → `#fish_11`
+/// - `+#test` → `#test`
+/// - `#channel` → `#channel`
+/// - `bob` → `bob`
+pub fn normalize_target(target: &str) -> &str {
+    let trimmed = target.trim();
+
+    // Check if it has a status prefix followed by a channel marker
+    if trimmed.len() > 1 {
+        let first_char = trimmed.chars().nth(0).unwrap();
+        let second_char = trimmed.chars().nth(1).unwrap();
+
+        // If first char is a status prefix and second char is a channel marker, strip prefix
+        if matches!(first_char, '@' | '+' | '%' | '~' | '&') && matches!(second_char, '#' | '&') {
+            return &trimmed[1..];
+        }
+    }
+
+    trimmed
+}
+
 /// Basic nickname validation (no null bytes or non-ASCII chars)
 fn validate_nick_basic(nick: &str) -> Result<(), crate::error::FishError> {
     // Check for null bytes
@@ -64,9 +98,8 @@ pub fn validate_nickname(
     log_debug!("FiSH11_ExchangeKey[{}]: validating nickname: '{}'", trace_id, nickname); // Check if nickname is empty
     if nickname.is_empty() {
         log_warn!("FiSH11_ExchangeKey[{}]: empty nickname provided", trace_id);
-        let error_msg =
-            CString::new("Usage: /dll fish_11.dll FiSH11_ExchangeKey <nickname>")
-                .expect("Static usage string contains no null bytes");
+        let error_msg = CString::new("Usage: /dll fish_11.dll FiSH11_ExchangeKey <nickname>")
+            .expect("Static usage string contains no null bytes");
         unsafe {
             let _ = buffer_utils::write_cstring_to_buffer(data, buffer_size, &error_msg);
         }
