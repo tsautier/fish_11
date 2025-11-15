@@ -31,6 +31,11 @@ pub struct FishInjectEngine {
     // Callback for the Inject DLL to free strings returned by the engine
     // Args: string_ptr (*mut i8)
     pub free_string: unsafe extern "C" fn(*mut i8),
+
+    // Callback for the Inject DLL to get the network name for a socket
+    // Args: socket_id (u32)
+    // Returns: *mut i8 (new UTF-8 string, must be freed via free_string) or NULL if not found
+    pub get_network_name: unsafe extern "C" fn(u32) -> *mut i8,
 }
 
 // Rust wrapper for safe handling of engine callbacks and data
@@ -45,6 +50,7 @@ pub struct SafeEngine {
     on_incoming_irc_line_ptr: unsafe extern "C" fn(u32, *const i8, usize) -> *mut i8,
     on_socket_closed_ptr: unsafe extern "C" fn(u32),
     free_string_ptr: unsafe extern "C" fn(*mut i8),
+    get_network_name_ptr: unsafe extern "C" fn(u32) -> *mut i8,
 }
 
 // Allow sending across threads if InjectEngines is shared via Arc/Mutex/RwLock
@@ -90,6 +96,7 @@ impl SafeEngine {
             on_incoming_irc_line_ptr: engine_ref.on_incoming_irc_line,
             on_socket_closed_ptr: engine_ref.on_socket_closed,
             free_string_ptr: engine_ref.free_string,
+            get_network_name_ptr: engine_ref.get_network_name,
         })
     }
 
@@ -167,6 +174,24 @@ impl SafeEngine {
 
         if let Err(e) = result {
             error!("Engine '{}' panicked in on_socket_closed() : {:?}", self.engine_name, e);
+        }
+    }
+
+    /// Wrapper for getting network name
+    pub fn get_network_name(&self, socket: u32) -> Option<String> {
+        let returned_ptr = unsafe { (self.get_network_name_ptr)(socket) };
+
+        if !returned_ptr.is_null() {
+            let c_str = unsafe { CStr::from_ptr(returned_ptr) };
+            let network_name = c_str.to_string_lossy().into_owned();
+
+            unsafe {
+                (self.free_string_ptr)(returned_ptr);
+            }
+
+            Some(network_name)
+        } else {
+            None
         }
     }
 }
@@ -409,4 +434,19 @@ pub extern "C" fn UnregisterEngine(engine: *const FishInjectEngine) -> i32 {
         error!("UnregisterEngine() called but ENGINES global is not initialized !");
         -1 // Critical error
     }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn GetNetworkName(socket_id: u32) -> *mut std::ffi::c_char {
+    use crate::ACTIVE_SOCKETS;
+    let sockets = ACTIVE_SOCKETS.lock().unwrap();
+    if let Some(socket_info) = sockets.get(&socket_id) {
+        let network_name_guard = socket_info.network_name.read();
+        if let Some(network_name) = &*network_name_guard {
+            if let Ok(c_string) = CString::new(network_name.clone()) {
+                return c_string.into_raw();
+            }
+        }
+    }
+    std::ptr::null_mut()
 }

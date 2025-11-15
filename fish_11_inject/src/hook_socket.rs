@@ -43,7 +43,6 @@ pub unsafe extern "system" fn hooked_recv(
 
     if socket_info.is_ssl() {
         // For SSL sockets, skip processing here; SSL_read will handle it.
-        // For SSL sockets, skip processing here; SSL_read will handle it.
         let binding = RECV_HOOK.lock().unwrap();
         let original = binding.as_ref().unwrap();
         return original.call(s, buf, len, flags);
@@ -73,6 +72,22 @@ pub unsafe extern "system" fn hooked_recv(
 
             // Try to parse as UTF-8 and log sanitized version
             if let Ok(text) = std::str::from_utf8(data_slice) {
+                // Check for network name in server greeting
+                if text.contains(" 005 ") {
+                    if let Some(network_part) =
+                        text.split_whitespace().find(|s| s.starts_with("NETWORK="))
+                    {
+                        let network_name = network_part.trim_start_matches("NETWORK=");
+                        let mut network_name_guard: parking_lot::lock_api::RwLockWriteGuard<
+                            '_,
+                            parking_lot::RawRwLock,
+                            Option<String>,
+                        > = socket_info.network_name.write();
+                        *network_name_guard = Some(network_name.to_string());
+                        info!("Socket {}: detected network name: {}", s, network_name);
+                    }
+                }
+
                 let sanitized: String = text
                     .chars()
                     .map(|c| {

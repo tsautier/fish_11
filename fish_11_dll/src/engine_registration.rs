@@ -10,6 +10,9 @@ use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
 use crate::crypto::{decrypt_message, encrypt_message};
 use crate::{log_debug, log_error, log_info, log_warn};
 
+type GetNetworkNameFn = unsafe extern "C" fn(u32) -> *mut c_char;
+static mut GET_NETWORK_NAME_FN: Option<GetNetworkNameFn> = None;
+
 // C-style struct for engine registration
 #[repr(C)]
 pub struct FishInjectEngine {
@@ -20,10 +23,19 @@ pub struct FishInjectEngine {
     pub on_incoming_irc_line: unsafe extern "C" fn(u32, *const c_char, usize) -> *mut c_char,
     pub on_socket_closed: unsafe extern "C" fn(u32),
     pub free_string: unsafe extern "C" fn(*mut c_char),
+    pub get_network_name: unsafe extern "C" fn(u32) -> *mut c_char,
 }
 
 // SAFETY: FishInjectEngine contains raw pointers but is used for FFI with static data
 unsafe impl Sync for FishInjectEngine {}
+
+// Real implementation for get_network_name (calls fish_inject's GetNetworkName)
+unsafe extern "C" fn get_network_name_impl(socket: u32) -> *mut c_char {
+    if let Some(get_network_name_fn) = GET_NETWORK_NAME_FN {
+        return get_network_name_fn(socket);
+    }
+    ptr::null_mut()
+}
 
 // Callback for outgoing messages (encryption)
 unsafe extern "C" fn on_outgoing(_socket: u32, line: *const c_char, _len: usize) -> *mut c_char {
@@ -54,7 +66,7 @@ unsafe extern "C" fn on_outgoing(_socket: u32, line: *const c_char, _len: usize)
 }
 
 // Callback for incoming messages (decryption)
-unsafe extern "C" fn on_incoming(_socket: u32, line: *const c_char, _len: usize) -> *mut c_char {
+unsafe extern "C" fn on_incoming(socket: u32, line: *const c_char, _len: usize) -> *mut c_char {
     if line.is_null() {
         return ptr::null_mut();
     }
@@ -69,7 +81,8 @@ unsafe extern "C" fn on_incoming(_socket: u32, line: *const c_char, _len: usize)
         }
     };
 
-    if let Some(decrypted) = attempt_decryption(c_str) {
+    let network_name = get_network_name_from_inject(socket);
+    if let Some(decrypted) = attempt_decryption(c_str, network_name.as_deref()) {
         match CString::new(decrypted) {
             Ok(s) => return s.into_raw(),
             Err(e) => {
@@ -101,6 +114,7 @@ pub static FISH_INJECT_ENGINE: FishInjectEngine = FishInjectEngine {
     on_incoming_irc_line: on_incoming,
     on_socket_closed: on_close,
     free_string,
+    get_network_name: get_network_name_impl,
 };
 
 // Function to attempt encryption
@@ -176,7 +190,7 @@ fn attempt_encryption(line: &str) -> Option<String> {
 }
 
 // Function to attempt decryption
-fn attempt_decryption(line: &str) -> Option<String> {
+fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
     // Check if line contains FiSH encrypted data
     if !line.contains(":+FiSH ") {
         return None;
@@ -235,7 +249,7 @@ fn attempt_decryption(line: &str) -> Option<String> {
     );
 
     // Try to get the decryption key
-    let key = match crate::config::get_key_default(key_identifier) {
+    let key = match crate::config::get_key(key_identifier, network) {
         Ok(k) => k,
         Err(e) => {
             log_warn!("Engine: no key found for '{}': {}", key_identifier, e);
@@ -292,6 +306,16 @@ pub fn register_engine() {
             return;
         }
 
+        let get_network_name_fn_name = CString::new("GetNetworkName").unwrap();
+        let get_network_name_fn: FARPROC =
+            GetProcAddress(h_module, get_network_name_fn_name.as_ptr());
+
+        if get_network_name_fn.is_null() {
+            log_error!("GetNetworkName function not found in fish_11_inject.dll.");
+        } else {
+            GET_NETWORK_NAME_FN = Some(std::mem::transmute(get_network_name_fn));
+        }
+
         let register_fn_name = CString::new("RegisterEngine").unwrap();
         let register_fn: FARPROC = GetProcAddress(h_module, register_fn_name.as_ptr());
 
@@ -309,4 +333,19 @@ pub fn register_engine() {
             log_error!("Failed to register FiSH_11 engine. Error code : {}", result);
         }
     }
+}
+
+pub fn get_network_name_from_inject(socket_id: u32) -> Option<String> {
+    unsafe {
+        if let Some(get_network_name_fn) = GET_NETWORK_NAME_FN {
+            let c_char_ptr = get_network_name_fn(socket_id);
+            if !c_char_ptr.is_null() {
+                let c_string = CString::from_raw(c_char_ptr);
+                if let Ok(rust_string) = c_string.into_string() {
+                    return Some(rust_string);
+                }
+            }
+        }
+    }
+    None
 }

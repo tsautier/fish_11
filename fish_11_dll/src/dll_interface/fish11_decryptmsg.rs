@@ -107,7 +107,7 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
     let nickname = normalize_nick(target);
     log_debug!("Decrypting for nickname: {}", nickname);
 
-    let key_vec = config::get_key_default(&nickname)?;
+    let key_vec = config::get_key(&nickname, None)?;
     let key: &[u8; 32] = key_vec.as_slice().try_into().map_err(|_|
         DllError::InvalidInput {
             param: "key".to_string(),
