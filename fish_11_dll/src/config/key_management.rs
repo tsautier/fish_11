@@ -20,6 +20,41 @@ use crate::log_info;
 // nested lock acquisition which causes deadlocks.
 // ============================================================================
 
+/// Resolves the network name for a nickname with priority fallback.
+/// Priority: explicitly provided > globally set > existing mapping for nick > "default"
+fn resolve_network_name(
+    config: &FishConfig,
+    network: Option<&str>,
+    normalized_nick: &str,
+    check_existing_mapping: bool,
+) -> String {
+    match network {
+        Some(net) => net.to_string(),
+        None => {
+            // Try to use the global current network first
+            crate::get_current_network()
+                .or_else(|| {
+                    // If checking existing mapping is enabled, try to get network for nick
+                    if check_existing_mapping {
+                        networks::get_network_for_nick_internal(config, normalized_nick)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| "default".to_string())
+        }
+    }
+}
+
+/// Resolves the network name without checking existing mapping (lock-free version).
+/// Priority: explicitly provided > current global network > "default"
+fn resolve_network_name_simple(network: Option<&str>) -> String {
+    match network {
+        Some(net) => net.to_string(),
+        None => crate::get_current_network().unwrap_or_else(|| "default".to_string()),
+    }
+}
+
 /// Internal: get a key from config without acquiring locks
 fn get_key_internal(config: &FishConfig, nickname: &str, network: Option<&str>) -> Result<Vec<u8>> {
     let normalized_nick = normalize_nick(nickname);
@@ -123,15 +158,7 @@ pub fn set_key(
 
         // Use network name in the entry key format
         // Priority: explicitly provided > globally set > existing mapping > "default"
-        let network_name = match network {
-            Some(net) => net.to_string(),
-            None => {
-                // Try to use the global current network
-                crate::get_current_network()
-                    .or_else(|| networks::get_network_for_nick_internal(config, &normalized_nick))
-                    .unwrap_or_else(|| "default".to_string())
-            }
-        };
+        let network_name = resolve_network_name(config, network, &normalized_nick, true);
 
         // Determine if this is a channel or user based on nickname starting with '#'
         let entry_key = if normalized_nick.starts_with('#') {
@@ -155,10 +182,7 @@ pub fn set_key(
 
     // Determine which network to use for the mapping
     // Priority: explicitly provided > current global network > default
-    let mapping_network = match network {
-        Some(net) => net.to_string(),
-        None => crate::get_current_network().unwrap_or_else(|| "default".to_string()),
-    };
+    let mapping_network = resolve_network_name_simple(network);
 
     // Update network mapping with the network that was actually used
     // This ensures the mapping is always kept in sync with the entry format
