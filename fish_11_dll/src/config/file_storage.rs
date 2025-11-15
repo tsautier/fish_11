@@ -189,7 +189,7 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
     let sections_lower: std::collections::HashMap<String, String> =
         ini.sections().iter().map(|s| (s.to_lowercase(), s.clone())).collect();
 
-    log_warn!("load_config: section cache built in {:?}", cache_start.elapsed());
+    log_debug!("load_config: section cache built in {:?}", cache_start.elapsed());
     log_trace!("load_config: processing [Keys] section...");
 
     let keys_start = std::time::Instant::now();
