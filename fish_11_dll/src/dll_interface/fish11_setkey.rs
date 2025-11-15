@@ -9,14 +9,14 @@ use crate::utils::normalize_nick;
 use crate::{buffer_utils, config, dll_function_identifier, log_debug};
 
 dll_function_identifier!(FiSH11_SetKey, data, {
-    // 1. Parse input: <network> <nickname> <base64_key>
+    // 1. Parse input: <network> <target> <base64_key> where target is nickname or channel
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
     let parts: Vec<&str> = input.splitn(3, ' ').collect();
 
     if parts.len() < 3 {
         return Err(DllError::InvalidInput {
             param: "input".to_string(),
-            reason: "expected format: <network> <nickname> <base64_key>".to_string(),
+            reason: "expected format: <network> <target> <base64_key> (target = nickname or channel)".to_string(),
         });
     }
 
