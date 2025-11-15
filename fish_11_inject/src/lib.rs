@@ -152,29 +152,29 @@ pub unsafe extern "system" fn DllMain(
                     }
                 }
                 Err(e) => {
-                    error!("DllMain: Failed to lock ENGINES to initialize: {}", e);
+                    error!("DllMain: failed to lock ENGINES to initialize: {}", e);
                 }
             }
 
             // Store module handle
             #[cfg(debug_assertions)]
-            info!("DllMain: Acquiring DLL_HANDLE_PTR lock...");
+            info!("DllMain: acquiring DLL_HANDLE_PTR lock...");
 
             match DLL_HANDLE_PTR.lock() {
                 Ok(mut handle) => {
                     *handle = Some(SendHMODULE(h_module));
                     #[cfg(debug_assertions)]
-                    info!("DllMain: Module handle stored successfully");
+                    info!("DllMain: module handle stored successfully");
                 }
                 Err(e) => {
                     #[cfg(debug_assertions)]
-                    error!("DllMain: Failed to lock DLL_HANDLE_PTR: {}", e);
+                    error!("DllMain: failed to lock DLL_HANDLE_PTR: {}", e);
                     return 0; // Return FALSE
                 }
             }
 
             #[cfg(debug_assertions)]
-            info!("DllMain: Initializing logger (if not already done)...");
+            info!("DllMain: initializing logger (if not already done)...");
 
             init_logger();
 
@@ -187,14 +187,14 @@ pub unsafe extern "system" fn DllMain(
             info!("The DLL is loaded successfully. Now it's time to h00k some calls baby !");
 
             #[cfg(debug_assertions)]
-            info!("DllMain: About to install SSL patches...");
+            info!("DllMain: and how about to install SSL patches ?");
 
             // NOTE: experimental SSL inline patching was previously called here.
             // It has been disabled due to instability and the code has been moved to /experimental/ssl_inline_patch.rs for reference.
             // The stable hooking mechanism in hook_ssl.rs is used instead.
 
             #[cfg(debug_assertions)]
-            info!("DllMain: Setting LOADED flag to true...");
+            info!("DllMain: setting LOADED flag to true...");
 
             // Mark as loaded
             LOADED.store(true, Ordering::SeqCst);
@@ -214,7 +214,7 @@ pub unsafe extern "system" fn DllMain(
                 info!("DllMain(): process is detaching. Cleaning up...");
 
                 #[cfg(debug_assertions)]
-                info!("DllMain: Uninstalling SSL patches...");
+                info!("DllMain: uninstalling SSL patches...");
 
                 // NOTE: uninstall for experimental SSL inline patching was previously called here.
                 // The code has been moved to /experimental/ssl_inline_patch.rs for reference.
