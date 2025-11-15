@@ -1,6 +1,7 @@
 use std::ffi::{CString, c_char};
 use std::sync::atomic::Ordering;
 
+use fish_11_core::buffer_utils::write_cstring_to_buffer;
 use log::{debug, error, info, warn};
 use winapi::shared::minwindef::BOOL;
 use windows::Win32::Foundation::{HMODULE, HWND};
@@ -53,7 +54,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
     );
 
     #[cfg(debug_assertions)]
-    info!("LoadDll: Acquiring MAX_MIRC_RETURN_BYTES lock...");
+    info!("LoadDll: acquiring MAX_MIRC_RETURN_BYTES lock...");
 
     // Store max return bytes (corrected type usage)
     let mut max_bytes_guard = match MAX_MIRC_RETURN_BYTES.lock() {
@@ -131,7 +132,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
         li.m_keep = 0; // Tell mIRC to unload us
 
         #[cfg(debug_assertions)]
-        error!("LoadDll: Returning MIRC_HALT due to hook installation failure");
+        error!("LoadDll: returning MIRC_HALT due to hook installation failure");
 
         return MIRC_HALT; // Indicate failure
     }
@@ -155,19 +156,16 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
 
         // Prepare version string as a command
         let version_cmd =
-            format!("*** FiSH_11 inject v{} loaded successfully. ***", FISH_11_VERSION);
+            format!("/echo -ts *** FiSH_11 inject v{} loaded successfully. ***", FISH_11_VERSION);
         if let Ok(c_cmd) = CString::new(version_cmd) {
-            // Check size (Corrected comparison)
             let current_max_len = *MAX_MIRC_RETURN_BYTES.lock().unwrap();
-
             if c_cmd.as_bytes_with_nul().len() <= current_max_len {
-                info!("Version info ready to be displayed via /fish11_version");
-                #[cfg(debug_assertions)]
-                info!(
-                    "LoadDll: Version command fits in buffer (len: {} <= max: {})",
-                    c_cmd.as_bytes_with_nul().len(),
-                    current_max_len
-                );
+                unsafe {
+                    write_cstring_to_buffer(li.m_filename, current_max_len, &c_cmd);
+                }
+                info!("Success message written to mIRC buffer: {}", c_cmd.to_str().unwrap());
+                li.m_keep = 1;
+                return MIRC_COMMAND;
             } else {
                 warn!("Version info command too long for mIRC buffer.");
                 #[cfg(debug_assertions)]
@@ -202,6 +200,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
 
 #[no_mangle]
 #[allow(non_snake_case)]
+
 pub extern "stdcall" fn UnloadDll(action: c_int) -> c_int {
     info!("UnloadDll() called with action: {}", action); // 0=Script unload, 1=mIRC exit, 2=DLL crash unload
 
@@ -318,9 +317,9 @@ pub extern "system" fn FiSH11_InjectVersion(
     _show: BOOL,
     _nopause: BOOL,
 ) -> c_int {
-    // Return raw version info for script to display (no /echo prefix)
+    // Return raw version info (script handles display formatting)
     let version_info = format!(
-        "*** FiSH injection v{}. Compiled on {} at {}. Written by [GuY], licensed under the GPL-v3. ***",
+        "FiSH injection v{}. Compiled on {} at {}. Written by [GuY], licensed under the GPL-v3.",
         FISH_11_VERSION, FISH_11_BUILD_DATE, FISH_11_BUILD_TIME
     );
 

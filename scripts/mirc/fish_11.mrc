@@ -53,8 +53,8 @@ alias fish11_startup {
   echo 4 -a DEBUG : MIRCDIR set to: $mircdir
   
   ; Get and display inject DLL version
-  var %inject_version
-  if ($dll(%Fish11InjectDllFile, FiSH11_InjectVersion, &%inject_version)) {
+  var %inject_version = $dll(%Fish11InjectDllFile, FiSH11_InjectVersion, $null)
+  if (%inject_version) {
     echo -ts *** %inject_version ***
   }
   else {
@@ -596,6 +596,10 @@ alias chankey { fish11_initchannel $1- }
 
 ; Use key from another channel/user
 alias fish11_usechankey {
+  if ($server == $null) {
+    echo $color(Mode text) -at *** FiSH_11: ERROR - not connected to a server.
+    return
+  }
   var %theKey = $dll(%Fish11DllFile, FiSH11_FileGetKey, $2)
   if (%theKey == $null) {
     echo $color(Mode text) -at *** FiSH_11: no valid key for $2 found
@@ -787,7 +791,7 @@ alias fish11_UpdateStatusIndicator {
     aline -p @FiSH_Status * $timestamp $+ %active is encrypted (Key: %colored_fp $+ )
     
     ; Show encryption in status bar with colored fingerprint
-     echo -at sbar 4 FiSH: 🔒 %active [Fingerprint: %colored_fp $+ ]
+     echo -at ** FiSH_11: 🔒 %active [Fingerprint: %colored_fp $+ ]
     
     ; Also create a command that lets users copy/display the fingerprint on demand
     set %fish11.lastfingerprint. $+ [ %active ] %colored_fp
@@ -795,7 +799,7 @@ alias fish11_UpdateStatusIndicator {
   else {
     if (!$window(@FiSH_Status)) { window -hn @FiSH_Status }
     aline -p @FiSH_Status * $timestamp $+ %active is not encrypted
-    echo -at sbar 4 FiSH: 🔓 %active [No encryption]
+    echo -at *** FiSH_11: 🔓 %active [No encryption]
     
     ; Clear any stored fingerprint
     unset %fish11.lastfingerprint. $+ [ %active ]
@@ -846,7 +850,7 @@ alias fish11_showfingerprint {
     set %fish11.lastfingerprint. $+ [ %target ] %colored_fp
   }
   else {
-    echo $color(Mode text) -at *** FiSH_11: No key found for %target
+    echo $color(Mode text) -at *** FiSH_11: no key found for %target
   }
 }
 
@@ -922,11 +926,11 @@ alias fish11_help {
   
   ; Add FCEP-1 help
   echo $color(Mode text) -at $chr(160)
-  echo $color(Mode text) -at *** FiSH_11 FCEP-1 (Channel Encryption) Commands:
+  echo $color(Mode text) -at *** FiSH_11 FCEP-1 (Channel Encryption v1) commands:
   echo $color(Mode text) -at *** /fish11_initchannel <#channel> <nick1> [nick2] ... - Initialize encrypted channel
   echo $color(Mode text) -at ***   Shorthand: /fcep or /chankey
   echo $color(Mode text) -at ***   Example: /fish11_initchannel #secret alice bob charlie
-  echo $color(Mode text) -at ***   Note: All members must have pre-shared keys with you first
+  echo $color(Mode text) -at ***   Note: all members must have pre-shared keys with you first
   echo $color(Mode text) -at $chr(160)
   echo $color(Mode text) -at *** FCEP-1 automatically decrypts incoming channel messages
   echo $color(Mode text) -at *** Channel names are case-insensitive (#Secret = #secret)
@@ -935,20 +939,12 @@ alias fish11_help {
 
 alias fish11_version {
   var %core_version = $dll(%Fish11DllFile, FiSH11_GetVersion, $null)
-  if (%core_version) {
-    echo -ts *** %core_version ***
-  } else {
-    echo -ts *** FiSH_11: Failed to get core DLL version ***
-  }
+  echo -ts *** %core_version ***
 }
 
 alias fish11_injection_version {
-  var %inject_version
-  if ($dll(%Fish11InjectDllFile, FiSH11_InjectVersion, &%inject_version)) {
-    echo -ts *** %inject_version ***
-  } else {
-    echo -ts *** FiSH_11: Failed to get inject DLL version ***
-  }
+  var %inject_version = $dll(%Fish11InjectDllFile, FiSH11_InjectVersion, $null)
+  echo -ts *** %inject_version ***
 }
 
 

@@ -361,7 +361,7 @@ pub unsafe extern "system" fn hooked_closesocket(s: SOCKET) -> c_int {
     info!("* hooked_closesocket() called for socket {}", s);
     let socket_id = s as u32;
 
-    // --- Notify engines about the closure
+    // Notify engines about the closure
     {
         let active_sockets = match ACTIVE_SOCKETS.lock() {
             Ok(guard) => guard,
@@ -463,7 +463,7 @@ pub fn get_or_create_socket(socket_id: u32, _is_ssl: bool) -> Arc<SocketInfo> {
 }
 
 /// Get the socket info for a given socket ID
-pub(crate) fn remove_socket(socket_id: u32) {
+pub(crate) fn _remove_socket(socket_id: u32) {
     let mut sockets = ACTIVE_SOCKETS.lock().unwrap();
     sockets.remove(&socket_id);
 
