@@ -156,16 +156,20 @@ on *:INPUT:*: {
     if (%mark_outgoing == [On]) {
       if (%mark_style == 1) {
         ; Suffix style
-        .echo $color(own text) $active <$me> %message 12$chr(183)
+        echo $color(own text) -t $active < $+ $me $+ > %message 12$chr(183)
       }
       else if (%mark_style == 2) {
         ; Prefix style
-        .echo $color(own text) $active 12$chr(183) <$me> %message
+        echo $color(own text) -t $active 12$chr(183) < $+ $me $+ > %message
       }
       else if (%mark_style == 3) {
         ; Colored brackets style
-        .echo $color(own text) $active 12[+]3 <$me> %message
+        echo $color(own text) -t $active 12[+]3 < $+ $me $+ > %message
       }
+    }
+    else {
+      ; Display message without encryption mark
+      echo $color(own text) -t $active < $+ $me $+ > %message
     }
     
     ; Send encrypted message based on command type

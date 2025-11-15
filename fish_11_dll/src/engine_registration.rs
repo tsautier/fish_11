@@ -8,10 +8,7 @@ use winapi::shared::minwindef::{FARPROC, HMODULE};
 use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
 
 use crate::crypto::{decrypt_message, encrypt_message};
-use crate::log_debug;
-use crate::log_error;
-use crate::log_info;
-use crate::log_warn;
+use crate::{log_debug, log_error, log_info, log_warn};
 
 // C-style struct for engine registration
 #[repr(C)]
@@ -208,6 +205,10 @@ fn attempt_decryption(line: &str) -> Option<String> {
     let sender_raw = parts[0].trim_start_matches(':');
     let sender = if let Some(pos) = sender_raw.find('!') { &sender_raw[..pos] } else { sender_raw };
 
+    // Extract target (channel or nickname)
+    // Format: ":nick!user@host PRIVMSG target :message"
+    let target = parts.get(2).unwrap_or(&"");
+
     // Find the encrypted data after ":+FiSH "
     let fish_marker = ":+FiSH ";
     let fish_start = match line.find(fish_marker) {
@@ -219,13 +220,25 @@ fn attempt_decryption(line: &str) -> Option<String> {
     };
     let encrypted_data = line[fish_start..].trim();
 
-    log_debug!("Engine: sender={}, encrypted_data_len={}", sender, encrypted_data.len());
+    // Determine which identifier to use for key lookup
+    // For channels (#, &), use the channel name
+    // For private messages, use the sender's nickname
+    let key_identifier =
+        if target.starts_with('#') || target.starts_with('&') { target } else { sender };
+
+    log_debug!(
+        "Engine: sender={}, target={}, key_identifier={}, encrypted_data_len={}",
+        sender,
+        target,
+        key_identifier,
+        encrypted_data.len()
+    );
 
     // Try to get the decryption key
-    let key = match crate::config::get_key_default(sender) {
+    let key = match crate::config::get_key_default(key_identifier) {
         Ok(k) => k,
         Err(e) => {
-            log_warn!("Engine: no key found for sender '{}': {}", sender, e);
+            log_warn!("Engine: no key found for '{}': {}", key_identifier, e);
             return None;
         }
     };
