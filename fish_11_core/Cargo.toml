@@ -1,0 +1,14 @@
+[package]
+name = "fish_11_core"
+version = "11.25.0"
+edition = "2021"
+authors = ["GuY"]
+description = "FiSH_11 - Core utilities (platform-independent)"
+license = "GPL-3.0-only"
+
+[lib]
+name = "fish_11_core"
+crate-type = ["lib"]
+
+[dependencies]
+# Core utilities - no platform-specific dependencies

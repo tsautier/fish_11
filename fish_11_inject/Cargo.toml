@@ -38,6 +38,9 @@ winapi = { version = "0.3.9", features = [
 sha2 = "0.10"
 chrono = "0.4"
 
+[dependencies.fish_11_core]
+path = "../fish_11_core"
+
 [build-dependencies]
 vergen = { version = "9.0.6", features = ["build", "cargo", "rustc", "si"] }
 

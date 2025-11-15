@@ -330,33 +330,6 @@ impl InjectEngines {
         modified
     }
 
-    /// Process an incoming line through all registered engines
-    pub fn on_incoming_irc_line(&self, socket: u32, line: &mut String) -> bool {
-        let mut modified = false;
-
-        // Run pre-processors first
-        let pre = self.pre_engines.read();
-
-        for engine in pre.iter() {
-            if engine.on_incoming_irc_line(socket, line) {
-                modified = true;
-            }
-        }
-        drop(pre);
-
-        // Run post-processors
-        let post = self.post_engines.read();
-
-        for engine in post.iter() {
-            if engine.on_incoming_irc_line(socket, line) {
-                modified = true;
-            }
-        }
-        drop(post);
-
-        modified
-    }
-
     /// Notify all engines that a socket has closed
     pub fn on_socket_closed(&self, socket: u32) {
         trace!("Notifying engines about closure of socket {}", socket);

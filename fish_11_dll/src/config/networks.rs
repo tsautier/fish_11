@@ -3,7 +3,29 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::config::config_access::{with_config, with_config_mut};
+use crate::config::models::FishConfig;
 use crate::error::Result;
+
+// ============================================================================
+// Internal lock-free helper functions
+// ============================================================================
+// These work with a provided &FishConfig reference and do NOT acquire locks
+// Exported as pub(crate) so key_management can use them without nested locks
+// ============================================================================
+
+/// Internal: Get the network associated with a nickname (lock-free)
+pub(crate) fn get_network_for_nick_internal(config: &FishConfig, nickname: &str) -> Option<String> {
+    config.nick_networks.get(nickname).cloned()
+}
+
+/// Internal: Check if a nickname has a network assigned (lock-free)
+pub(crate) fn has_network_internal(config: &FishConfig, nickname: &str) -> bool {
+    config.nick_networks.contains_key(nickname)
+}
+
+// ============================================================================
+// Public API functions - these acquire locks
+// ============================================================================
 
 /// Get the network associated with a nickname
 ///

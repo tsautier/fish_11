@@ -29,7 +29,7 @@ const OPENSSL_DLL_NAMES: &[&str] = &[
     // OpenSSL 1.0.x (legacy)
     "libeay32.dll",
     "ssleay32.dll",
-    // Custom builds
+    // Custom builds sometimes
     "ssl.dll",
     "openssl.dll",
     // Application-specific
