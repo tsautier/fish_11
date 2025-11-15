@@ -4,7 +4,7 @@ use std::ffi::{CStr, CString, c_char};
 use std::os::raw::c_int;
 use std::ptr;
 
-use crate::dll_interface::{MIRC_COMMAND, MIRC_IDENTIFIER, get_buffer_size};
+use crate::dll_interface::{MIRC_IDENTIFIER, get_buffer_size};
 
 /// Result type for buffer operations
 pub type BufferResult<T> = Result<T, BufferError>;
@@ -236,8 +236,7 @@ pub unsafe fn write_error_to_buffer(
     let error_cstring = create_error_message(&formatted_msg, "Internal error occurred");
     if let Err(_) = write_cstring_to_buffer(data, buffer_size, &error_cstring) {
         // Last resort: write minimal error message
-        let minimal_msg =
-            CString::new("Error").expect("Minimal error string should be valid");
+        let minimal_msg = CString::new("Error").expect("Minimal error string should be valid");
         let _ = write_cstring_to_buffer(data, buffer_size, &minimal_msg);
     }
 }

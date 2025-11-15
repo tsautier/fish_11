@@ -36,3 +36,4 @@ QWEN.md
 # Ignore exchange_tmp directories used by scripts for temporary exchange files
 **/exchange_tmp/
 **/exchange_tmp/**
+fish_11_dll/fish_11.ini
