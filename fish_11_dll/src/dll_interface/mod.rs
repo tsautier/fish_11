@@ -22,6 +22,7 @@ mod utility;
 pub mod dll_error;
 pub mod fish11_exchangekey;
 pub mod fish11_setkey;
+pub mod fish11_setkeyfromplaintext;
 pub mod fish11_setmircdir;
 pub mod function_template;
 pub mod ini_types;
