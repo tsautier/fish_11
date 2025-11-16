@@ -1,61 +1,16 @@
-//! Logging macros to eliminate redundant is_logger_initialized() checks
-// TODO : remove this file once all logging is converted to use these macros
-
+//
+// >> FiSH_11 logging_macros.rs
+// >> k3rn3l p4n1c l0gg1ng m0dul3
+// >>
+// >> nfo: this macro helps add functional context to log lines,
+// >> making it easier to trace operations like FFI calls.
+//
 #[macro_export]
-macro_rules! log_info {
-    ($($arg:tt)*) => {
-        if crate::logging::is_logger_initialized() {
-            log::info!($($arg)*);
-        }
+macro_rules! log_ctx {
+    ($ctx:expr, $level:ident, $($arg:tt)+) => {
+        // Pass the target explicitly to the log macro.
+        // The target is where the log appears to come from (the module path).
+        // Then, we prepend our custom context `[CTX:...]` to the actual message.
+        log::log!(target: module_path!(), log::Level::$level, "[CTX:{}] {}", $ctx, format!($($arg)+));
     };
-}
-
-#[cfg(debug_assertions)]
-#[macro_export]
-macro_rules! log_debug {
-    ($($arg:tt)*) => {
-        if crate::logging::is_logger_initialized() {
-            log::debug!($($arg)*);
-        }
-    };
-}
-
-#[cfg(not(debug_assertions))]
-#[macro_export]
-macro_rules! log_debug {
-    ($($arg:tt)*) => {};
-}
-
-#[macro_export]
-macro_rules! log_warn {
-    ($($arg:tt)*) => {
-        if crate::logging::is_logger_initialized() {
-            log::warn!($($arg)*);
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! log_error {
-    ($($arg:tt)*) => {
-        if crate::logging::is_logger_initialized() {
-            log::error!($($arg)*);
-        }
-    };
-}
-
-#[cfg(debug_assertions)]
-#[macro_export]
-macro_rules! log_trace {
-    ($($arg:tt)*) => {
-        if crate::logging::is_logger_initialized() {
-            log::trace!($($arg)*);
-        }
-    };
-}
-
-#[cfg(not(debug_assertions))]
-#[macro_export]
-macro_rules! log_trace {
-    ($($arg:tt)*) => {};
 }

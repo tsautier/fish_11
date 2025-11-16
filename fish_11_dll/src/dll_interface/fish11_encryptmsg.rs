@@ -6,7 +6,7 @@ use crate::buffer_utils;
 use crate::config;
 use crate::crypto;
 use crate::dll_function_identifier;
-use crate::log_debug;
+use crate::log_ctx;
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
@@ -23,6 +23,7 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
     let parts: Vec<&str> = input.splitn(2, ' ').collect();
 
     if parts.len() < 2 {
+        log_ctx!("FiSH11_EncryptMsg", error, "invalid input format, expected '<target> <message>'");
         return Err(DllError::InvalidInput {
             param: "input".to_string(),
             reason: "expected format: <target> <message>".to_string(),
@@ -44,7 +45,7 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
 
     // --- Channel Encryption Logic ---
     if target.starts_with('#') || target.starts_with('&') {
-        log_debug!("Encrypting for channel: {}", target);
+        log_ctx!("FiSH11_EncryptMsg", debug, "encrypting for channel: {}", target);
 
         // Atomically get the current key and advance the ratchet for the next message.
         let encrypted_base64 = config::with_ratchet_state_mut(target, |state| {
@@ -76,7 +77,7 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
         })?;
 
         let result = format!("+FiSH {}", encrypted_base64);
-        log::info!("Successfully encrypted ratchet message for {}", target);
+        log_ctx!("FiSH11_EncryptMsg", info, "successfully encrypted ratchet message for {}", target);
         return Ok(result);
     }
 
@@ -87,7 +88,7 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
         return Err(DllError::MissingParameter("nickname".to_string()));
     }
 
-    log_debug!("Encrypting for nickname: {}", nickname);
+    log_ctx!("FiSH11_EncryptMsg", debug, "encrypting for nickname: {}", nickname);
 
     // 2. Retrieve the encryption key for the target.
     let key_vec = config::get_key_default(&nickname)?;
@@ -96,7 +97,7 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
         reason: format!("Key for {} must be exactly 32 bytes, got {}", nickname, key_vec.len()),
     })?;
 
-    log_debug!("Successfully retrieved encryption key");
+    log_ctx!("FiSH11_EncryptMsg", trace, "successfully retrieved encryption key for {}", nickname);
 
     // 3. Encrypt the message using the retrieved key (no AD for private messages).
     let encrypted_base64 =
@@ -110,7 +111,7 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
     // 4. Format the result with the FiSH protocol prefix and return.
     let result = format!("+FiSH {}", encrypted_base64);
 
-    log::info!("Successfully encrypted message for {}", nickname);
+    log_ctx!("FiSH11_EncryptMsg", info, "successfully encrypted message for {}", nickname);
 
     Ok(result)
 });

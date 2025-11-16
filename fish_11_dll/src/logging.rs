@@ -1,229 +1,100 @@
 //! Logging module for FiSH_11
+//! >> l0gg1ng m0dul3 -- pr3p4r3 ur 4nuz
+//
 
-use log::{LevelFilter, SetLoggerError};
-use std::fs::OpenOptions;
+use log::{Level, LevelFilter, Log, Metadata, Record, SetLoggerError};
+use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, Once};
-use std::time::Duration;
+use std::sync::Once;
+use std::thread;
 
 // Ensure initialization happens only once
 static LOGGER_INIT: Once = Once::new();
-static mut LOGGER_INITIALIZED: bool = false;
 
-/// A simple logger that writes to both a file and the standard output
-pub struct FileLogger {
-    level: LevelFilter,
-    file: Arc<Mutex<std::fs::File>>,
-}
+/// The one and only logger for the DLL
+struct EliteLogger;
 
-impl FileLogger {
-    /// Create a new file logger with the given log level
-    pub fn new(level: LevelFilter, log_file: std::fs::File) -> Self {
-        FileLogger {
-            level,
-            file: Arc::new(Mutex::new(log_file)),
-        }
+impl Log for EliteLogger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        // We set the max level on the global logger, so this check is sufficient
+        metadata.level() <= log::max_level()
     }
 
-    // Helper method to handle writing to the log file with timeout
-    fn write_to_file(&self, log_message: &str) {
-        // Use a larger timeout for logging to prevent blocking issues
-        let lock_timeout = Duration::from_millis(2000); // Increased from 500ms to 2000ms
-        let start = std::time::Instant::now();
-
-        // Try to get the lock with timeout
-        while start.elapsed() < lock_timeout {
-            match self.file.try_lock() {
-                Ok(mut file) => {
-                    // Successfully got the lock, write the message
-                    if let Err(_e) = file.write_all(log_message.as_bytes()) {
-                        // Don't use eprintln in a DLL - it can cause issues
-                        // Just silently ignore errors
-                    } else if let Err(_e) = file.flush() {
-                        // Also ignore flush errors silently
-                    }
-                    return; // We're done, exit the loop
-                },
-                Err(_) => {
-                    // Give other threads a chance and then retry
-                    // Increase the sleep time to reduce CPU usage
-                    std::thread::yield_now();
-                    std::thread::sleep(Duration::from_millis(20)); 
-                }
-            }
+    fn log(&self, record: &Record) {
+        if !self.enabled(record.metadata()) {
+            return;
         }
 
-        // If we reached here, we failed to acquire the lock
-        // For DLL safety, we'll silently drop the message
-    }
-}
+        let log_message = format!(
+            "[{}] [{:<5}] [{}] [{:?}] {}\n",
+            chrono::Local::now().format("%H:%M:%S%.3f"), // timestamp
+            record.level(),                              // level (padded)
+            record.target(),                             // module path
+            thread::current().id(),                      // thread id
+            record.args()                                // the actual message
+        );
 
-impl log::Log for FileLogger {
-    fn enabled(&self, metadata: &log::Metadata) -> bool {
-        metadata.level() <= self.level
-    }
-
-    fn log(&self, record: &log::Record) {
-        if self.enabled(record.metadata()) {
-            let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
-            let log_message = format!(
-                "[{}] {} [{}:{}] {}\n",
-                timestamp,
-                record.level(),
-                record.file().unwrap_or("<unknown>"),
-                record.line().unwrap_or(0),
-                record.args()
-            );
-
-
-
-            self.write_to_file(&log_message);
-        }
+        // Send to the void, or in this case, a file
+        write_to_log_file(&log_message);
     }
 
     fn flush(&self) {
-        // Try to get the lock with a short timeout to avoid blocking
-        if let Ok(mut file) = self.file.try_lock() {
+        // The file is flushed after each write, so this is not strictly necessary,
+        // but we'll keep it for compliance.
+    }
+}
+
+static ELITE_LOGGER: EliteLogger = EliteLogger;
+
+/// Get the path to the log file.
+/// The log file will be named fish_11_dll_YYYY-MM-DD.log.
+pub fn get_log_file_path() -> io::Result<PathBuf> {
+    let log_filename = format!(
+        "fish_11_dll_{}.log",
+        chrono::Local::now().format("%Y-%m-%d")
+    );
+    // Safer to use a known writable location if possible, but for a DLL,
+    // current directory is often the most reliable place.
+    let current_dir = std::env::current_dir()?;
+    Ok(current_dir.join(log_filename))
+}
+
+/// Helper function to write to the log file.
+fn write_to_log_file(message: &str) {
+    if let Ok(log_path) = get_log_file_path() {
+        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(log_path) {
+            let _ = file.write_all(message.as_bytes());
             let _ = file.flush();
         }
     }
 }
 
-/// Get the path to the log file
-///
-/// Returns a path to the log file in a guaranteed writable location.
-/// The log file will be named fish_11_dll_YYYY-MM-DD.log where YYYY-MM-DD is the current date.
-pub fn get_log_file_path() -> io::Result<PathBuf> {
-    // Create log filename with date
-    let log_filename = format!(
-        "fish_11_dll_{}.log",
-        chrono::Local::now().format("%Y-%m-%d")
-    );
+/// Initialize the logger. This can only be called once.
+pub fn init_logger() -> Result<(), SetLoggerError> {
+    LOGGER_INIT.call_once(|| {
+        // Set the global logger
+        log::set_logger(&ELITE_LOGGER).expect("!!! critical: could not set logger");
+        // Set max level. We can make this configurable later.
+        log::set_max_level(LevelFilter::Trace);
 
-    // Always use the current directory for logs
-    match std::env::current_dir() {
-        Ok(current_dir) => Ok(current_dir.join(log_filename)),
-        Err(_) => {
-            // Last resort fallback to just the filename (which will go in the current directory)
-            Ok(PathBuf::from(log_filename))
+        // >> the sacred texts <<
+        let header = r#"
+//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=//
+//                                                                                     //
+//                   .::.  F i S H _ 1 1  -  l 0 g  i n i t i a l i z e d  .::.          //
+//           ..:                                                                 :..   //
+//      ..::.   w3lc0m3 t0 th3 m4tr1x, n30. r3l4x & 3nj0y th3 r1d3.              .::..   //
+//  ..::.                                                                         .::..//
+//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=//
+"#;
+        write_to_log_file(header);
+
+        log::log!(target: "fish_11_dll::logging", Level::Info, "FiSH_11 DLL version..: {}", crate::FISH_11_VERSION);
+        log::log!(target: "fish_11_dll::logging", Level::Info, "Build date...........: {}", crate::FISH_11_BUILD_DATE);
+        if let Ok(p) = get_log_file_path() {
+            log::log!(target: "fish_11_dll::logging", Level::Info, "l0g f1l3 l0c4t10n...: {}", p.display());
         }
-    }
-}
-
-/// Initialize the logger
-pub fn init_logger(level: LevelFilter) -> Result<(), SetLoggerError> {
-    // Use thread-safe initialization
-    unsafe {
-        let mut result = Ok(());
-
-        // If the runtime requests debug logging via env var, promote the level
-        // Force DEBUG level for troubleshooting
-        let effective_level = LevelFilter::Debug;
-
-        LOGGER_INIT.call_once(|| {
-            if LOGGER_INITIALIZED {
-                return;
-            }
-
-            match get_log_file_path() {
-                Ok(log_path) => {                        match OpenOptions::new().create(true).append(true).open(&log_path) {
-                        Ok(log_file) => {
-                            let logger = Box::new(FileLogger::new(effective_level, log_file));
-
-                            match log::set_boxed_logger(logger) {
-                                Ok(_) => {                                    log::set_max_level(level);                                    LOGGER_INITIALIZED = true;
-                                    // If effective level differs from requested, set max level accordingly
-                                    log::set_max_level(effective_level);
-                                    
-                                    // Log to file only, no console output
-                                    log::info!("*********** *********** FiSH_11 core DLL logger initialized *************** ***********");
-
-                                    // Log the initialization
-                                    log::info!(
-                                        "Logger initialized - writing to: {}",
-                                        log_path.display()
-                                    );
-                                    
-                                    // Log current working directory in the log file too
-                                    if let Ok(cwd) = std::env::current_dir() {
-                                        log::info!("Current working directory: {}", cwd.display());
-                                    }
-                                    log::info!("FiSH_11 DLL version: {}", crate::FISH_11_VERSION);
-                                    log::info!(
-                                        "Build date: {}, Build time: {}",
-                                        crate::FISH_11_BUILD_DATE,
-                                        crate::FISH_11_BUILD_TIME
-                                    );
-                                }                                Err(e) => {
-                                    // Don't output to console, just return error
-                                    result = Err(e);
-                                }
-                            }
-                        }                        Err(_) => {
-                            // Log to file only, initialization errors are handled silently
-                            // to avoid console output
-                        }
-                    }
-                }
-                Err(_) => {
-                    // Log to file only, initialization errors are handled silently
-                    // to avoid console output
-                }
-            }
-        });
-
-        result
-    }
-}
-
-/// Check if the logger has been initialized
-pub fn is_logger_initialized() -> bool {
-    unsafe { LOGGER_INITIALIZED }
-}
-
-/// Log a module initialization event
-pub fn log_module_init(module_name: &str, version: &str) {
-    if is_logger_initialized() {
-        log::info!("Module initialized: {} (version: {})", module_name, version);
-        log::debug!(
-            "Module initialization details - Build date: {}, Build time: {}",
-            crate::FISH_11_BUILD_DATE,
-            crate::FISH_11_BUILD_TIME
-        );
-    }
-}
-
-/// Log a module shutdown event
-pub fn log_module_shutdown(module_name: &str) {
-    if is_logger_initialized() {
-        log::info!("Module shutdown: {}", module_name);
-    }
-}
-
-/// Log a function entry with parameters
-pub fn log_function_entry<T: std::fmt::Debug>(function_name: &str, params: Option<T>) {
-    if is_logger_initialized() {
-        match params {
-            Some(p) => log::debug!("ENTER: {} - params: {:?}", function_name, p),
-            None => log::debug!("ENTER: {}", function_name),
-        }
-    }
-}
-
-/// Log a function exit with optional return value
-pub fn log_function_exit<T: std::fmt::Debug>(function_name: &str, return_value: Option<T>) {
-    if is_logger_initialized() {
-        match return_value {
-            Some(r) => log::debug!("EXIT: {} - returned: {:?}", function_name, r),
-            None => log::debug!("EXIT: {}", function_name),
-        }
-    }
-}
-
-/// Log a configuration update or reading
-pub fn log_config(context: &str, key: &str, value: &dyn std::fmt::Debug) {
-    if is_logger_initialized() {
-        log::debug!("CONFIG [{}]: {} = {:?}", context, key, value);
-    }
+    });
+    Ok(())
 }
