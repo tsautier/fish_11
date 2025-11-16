@@ -8,7 +8,10 @@ use std::{fmt, io};
 
 use log::{debug, info, trace, warn};
 use parking_lot::{Mutex, RwLock};
-use fish_11_core::globals::CMD_NOTICE;
+use fish_11_core::globals::{
+    CMD_NOTICE, CMD_PRIVMSG, ENCRYPTION_PREFIX_FISH, ENCRYPTION_PREFIX_MCPS,
+    ENCRYPTION_PREFIX_OK, KEY_EXCHANGE_INIT, KEY_EXCHANGE_PUBKEY,
+};
 
 use crate::engines::InjectEngines;
 
@@ -882,7 +885,6 @@ impl SocketInfo {
                     {
                         // Log details about each IRC line
 
-                        use fish_11_core::globals::CMD_PRIVMSG;
                         debug!(
                             "[PROCESS_LINES DEBUG] socket {}: processing IRC line ({} bytes): {:?}",
                             self.socket,
@@ -898,9 +900,9 @@ impl SocketInfo {
                             );
 
                             // Check for encrypted content markers
-                            if line.contains("+OK ")
-                                || line.contains("+FiSH ")
-                                || line.contains("mcps ")
+                            if line.contains(ENCRYPTION_PREFIX_OK)
+                                || line.contains(ENCRYPTION_PREFIX_FISH)
+                                || line.contains(ENCRYPTION_PREFIX_MCPS)
                             {
                                 debug!(
                                     "[PROCESS_LINES DEBUG] socket {}: detected encrypted FiSH message",
@@ -909,7 +911,7 @@ impl SocketInfo {
                             }
                         }
 
-                        if line.contains("X25519_INIT") || line.contains("FiSH11-PubKey:") {
+                        if line.contains(KEY_EXCHANGE_INIT) || line.contains(KEY_EXCHANGE_PUBKEY) {
                             debug!(
                                 "[PROCESS_LINES DEBUG] socket {}: detected FiSH key exchange",
                                 self.socket

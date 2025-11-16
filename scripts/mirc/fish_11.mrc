@@ -434,7 +434,7 @@ alias fish11_setkey {
     return
   }
   ; $1 = nickname (data), $2- = key (parms)
-  var %msg = $dll(%Fish11DllFile, FiSH11_SetKey, $network, $1, $2-)
+  var %msg = $dll(%Fish11DllFile, FiSH11_SetKey, $+($network, $chr(32), $1, $chr(32), $2-))
   if (%msg) {
     echo -a *** FiSH_11: key set for $1 on network $network
   }

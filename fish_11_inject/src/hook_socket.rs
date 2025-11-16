@@ -9,7 +9,10 @@ use retour::GenericDetour;
 use sha2::{Digest, Sha256};
 use winapi::shared::ws2def::SOCKADDR;
 use winapi::um::winsock2::{SOCKET, SOCKET_ERROR, WSAEINTR};
-use fish_11_core::globals::{CMD_PRIVMSG, CMD_JOIN, CMD_NOTICE};
+use fish_11_core::globals::{
+    CMD_JOIN, CMD_NOTICE, CMD_PRIVMSG, ENCRYPTION_PREFIX_FISH, ENCRYPTION_PREFIX_OK,
+    KEY_EXCHANGE_INIT, KEY_EXCHANGE_PUBKEY,
+};
 use crate::hook_ssl::{SOCKET_TO_SSL, SSL_TO_SOCKET};
 use crate::socket_info::SocketState;
 use crate::{ACTIVE_SOCKETS, DISCARDED_SOCKETS, ENGINES, InjectEngines, SocketInfo};
@@ -102,7 +105,7 @@ pub unsafe extern "system" fn hooked_recv(
                 }
 
                 // Check for FiSH key exchange markers
-                if text.contains("X25519_INIT") || text.contains("FiSH11-PubKey:") {
+                if text.contains(KEY_EXCHANGE_INIT) || text.contains(KEY_EXCHANGE_PUBKEY) {
                     debug!("[RECV DEBUG] socket {}: detected FiSH key exchange data", s);
                 }
             } else {

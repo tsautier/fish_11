@@ -43,9 +43,24 @@ pub static MIRC_BUFFER_SIZE: Mutex<usize> = Mutex::new(DEFAULT_MIRC_BUFFER_SIZE)
 // Maximum size of a message that can be encrypted/decrypted
 pub const MAX_MESSAGE_SIZE: usize = 4096;
 
+/// IRC Protocol Commands
 pub const CMD_PRIVMSG: &str = "PRIVMSG";
 pub const CMD_NOTICE: &str = "NOTICE";
 pub const CMD_JOIN: &str = "JOIN";
+pub const CMD_TOPIC: &str = "TOPIC";
 
+/// IRC Numeric Replies
 pub const RPL_WELCOME: &str = "001";
-pub const ENCRYPTION_PREFIX: &str = "+FiSH ";
+pub const RPL_TOPIC: &str = "332";
+pub const RPL_ISUPPORT: &str = "005";
+
+/// FiSH_11 Encryption Markers  
+pub const ENCRYPTION_PREFIX_FISH: &str = "+FiSH ";
+// FiSH_10 legacy
+pub const ENCRYPTION_PREFIX_OK: &str = "+OK ";
+// mircryption
+pub const ENCRYPTION_PREFIX_MCPS: &str = "mcps ";
+
+/// FiSH Key Exchange Markers
+pub const KEY_EXCHANGE_INIT: &str = "X25519_INIT";
+pub const KEY_EXCHANGE_PUBKEY: &str = "FiSH11-PubKey:";

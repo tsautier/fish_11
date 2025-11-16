@@ -39,16 +39,25 @@ dll_function_identifier!(FiSH11_SetKeyFromPlaintext, data, {
         return Err(DllError::MissingParameter("plaintext_key".to_string()));
     }
 
+    // Validate minimum key length for security
+    if plaintext_key.len() < 8 {
+        return Err(DllError::InvalidInput {
+            param: "plaintext_key".to_string(),
+            reason: "plaintext key must be at least 8 characters".to_string(),
+        });
+    }
+
     log_debug!(
-        "Setting key from plaintext for nickname/channel: {} on network: {}",
+        "Setting key from plaintext for nickname/channel: {} on network: {} (key length: {})",
         nickname,
-        network
+        network,
+        plaintext_key.len()
     );
 
     // Derive a 32-byte key from the plaintext password using HKDF-SHA256.
-    // The salt can be empty for this use case, or we can use a fixed one.
-    // An empty salt is acceptable here.
-    let hk = Hkdf::<Sha256>::new(None, plaintext_key.as_bytes());
+    // Use network:target as salt to ensure unique keys for different contexts.
+    let salt = format!("{}:{}", network, nickname);
+    let hk = Hkdf::<Sha256>::new(Some(salt.as_bytes()), plaintext_key.as_bytes());
     let mut derived_key = [0u8; 32];
     hk.expand(&[], &mut derived_key).map_err(|_| DllError::KeyDerivationFailed)?;
 
