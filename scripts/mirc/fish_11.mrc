@@ -1202,6 +1202,7 @@ menu query {
       echo $color(Mode text) -at *** FiSH_11: fingerprint for $1 copied to clipboard
     }
   }
+  .Set manual key... :{ var %key = $?="Enter manual key for " $+ $1 $+ ":" | if (%key != $null) fish11_setkey_manual $1 %key }
   .Set new key :{ var %key = $?="Enter new key for " $+ $1 $+ ":" | if (%key != $null) fish11_setkey $1 %key }
   .Set new key (UTF-8) :{ var %key = $?="Enter new key for " $+ $1 $+ " (UTF-8):" | if (%key != $null) fish11_setkey_utf8 $1 %key }
   .Remove key :fish11_removekey $1
@@ -1229,6 +1230,7 @@ menu nicklist {
   .-
   .Show key :fish11_showkey $1
   .Show fingerprint :fish11_showfingerprint $1
+  .Set manual key... :{ var %key = $?="Enter manual key for " $+ $1 $+ ":" | if (%key != $null) fish11_setkey_manual $1 %key }
   .Set new key :{ var %key = $?="Enter new key for " $+ $1 $+ ":" | if (%key != $null) fish11_setkey $1 %key }
   .Set new key (UTF-8) :{ var %key = $?="Enter new key for " $+ $1 $+ " (UTF-8):" | if (%key != $null) fish11_setkey_utf8 $1 %key }
   .Remove key :fish11_removekey $1
