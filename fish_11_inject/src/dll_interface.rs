@@ -200,8 +200,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
 
 #[no_mangle]
 #[allow(non_snake_case)]
-
-pub extern "stdcall" fn UnloadDll(action: c_int) -> c_int {
+pub extern "system" fn UnloadDll(action: c_int) -> c_int {
     info!("UnloadDll() called with action: {}", action); // 0=Script unload, 1=mIRC exit, 2=DLL crash unload
 
     // Perform cleanup regardless of action type

@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use winapi::shared::ws2def::SOCKADDR;
 use winapi::um::winsock2::{SOCKET, SOCKET_ERROR, WSAEINTR};
 use fish_11_core::globals::{
-    CMD_JOIN, CMD_NOTICE, CMD_PRIVMSG, ENCRYPTION_PREFIX_FISH, ENCRYPTION_PREFIX_OK,
+    CMD_JOIN, CMD_NOTICE, CMD_PRIVMSG,
     KEY_EXCHANGE_INIT, KEY_EXCHANGE_PUBKEY,
 };
 use crate::hook_ssl::{SOCKET_TO_SSL, SSL_TO_SOCKET};
