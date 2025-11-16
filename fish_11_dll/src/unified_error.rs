@@ -210,6 +210,11 @@ pub enum DllError {
     /// Feature not implemented
     #[error("not implemented: {0}")]
     NotImplemented(String),
+
+    /// Key derivation failed
+    #[error("key derivation failed")]
+    KeyDerivationFailed,
+    // ... other variants
 }
 
 impl DllError {
