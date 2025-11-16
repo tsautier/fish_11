@@ -8,6 +8,7 @@ use std::{fmt, io};
 
 use log::{debug, info, trace, warn};
 use parking_lot::{Mutex, RwLock};
+use fish_11_core::globals::CMD_NOTICE;
 
 use crate::engines::InjectEngines;
 
@@ -880,6 +881,8 @@ impl SocketInfo {
                     #[cfg(debug_assertions)]
                     {
                         // Log details about each IRC line
+
+                        use fish_11_core::globals::CMD_PRIVMSG;
                         debug!(
                             "[PROCESS_LINES DEBUG] socket {}: processing IRC line ({} bytes): {:?}",
                             self.socket,
@@ -888,7 +891,7 @@ impl SocketInfo {
                         );
 
                         // Check for specific IRC commands or FiSH markers
-                        if line.contains("PRIVMSG") || line.contains("NOTICE") {
+                        if line.contains(CMD_PRIVMSG) || line.contains(CMD_NOTICE) {
                             debug!(
                                 "[PROCESS_LINES DEBUG] socket {}: detected IRC message command",
                                 self.socket

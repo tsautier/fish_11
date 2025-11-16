@@ -8,6 +8,8 @@ use retour::GenericDetour;
 use winapi::shared::minwindef::FARPROC;
 use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
 
+use fish_11_core::globals::{CMD_NOTICE, CMD_JOIN, CMD_PRIVMSG};
+
 use crate::SOCKET;
 use crate::helpers_inject::handle_poison;
 use crate::hook_socket::get_or_create_socket;
@@ -323,7 +325,7 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
                 );
                 
                 // Check for IRC protocol markers
-                if text.contains("PRIVMSG") || text.contains("NOTICE") || text.contains("JOIN") {
+                if text.contains(CMD_PRIVMSG) || text.contains(CMD_NOTICE) || text.contains(CMD_JOIN) {
                     debug!("[SSL_READ DEBUG] Socket {}: detected IRC protocol command", socket_id);
                 }
                 
@@ -481,7 +483,7 @@ unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int)
             );
             
             // Check for IRC protocol markers
-            if text.contains("PRIVMSG") || text.contains("NOTICE") || text.contains("JOIN") {
+            if text.contains(CMD_PRIVMSG) || text.contains(CMD_NOTICE) || text.contains(CMD_JOIN) {
                 debug!("[SSL_WRITE DEBUG] Socket {}: detected IRC protocol command", socket_id);
             }
             

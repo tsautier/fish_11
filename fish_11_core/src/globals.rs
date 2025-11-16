@@ -42,3 +42,10 @@ pub static MIRC_BUFFER_SIZE: Mutex<usize> = Mutex::new(DEFAULT_MIRC_BUFFER_SIZE)
 
 // Maximum size of a message that can be encrypted/decrypted
 pub const MAX_MESSAGE_SIZE: usize = 4096;
+
+pub const CMD_PRIVMSG: &str = "PRIVMSG";
+pub const CMD_NOTICE: &str = "NOTICE";
+pub const CMD_JOIN: &str = "JOIN";
+
+pub const RPL_WELCOME: &str = "001";
+pub const ENCRYPTION_PREFIX: &str = "+FiSH ";

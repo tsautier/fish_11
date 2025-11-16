@@ -1,26 +1,6 @@
 //! This module contains the hooks for Winsock functions
 //! It includes the hooks for recv, send, connect, and closesocket
 
-/* list of stuff we possibly need to decrypt:
-        :nick!ident@host PRIVMSG #chan :+FISH 2T5zD0mPgMn
-        :nick!ident@host PRIVMSG #chan :\x01ACTION +FISH 2T5zD0mPgMn\x01
-        :nick!ident@host PRIVMSG ownNick :+FISH 2T5zD0mPgMn
-        :nick!ident@host PRIVMSG ownNick :\x01ACTION +FISH 2T5zD0mPgMn\x01
-        :nick!ident@host NOTICE ownNick :+FISH 2T5zD0mPgMn
-        :nick!ident@host NOTICE #chan :+FISH 2T5zD0mPgMn
-        TODO: support encrypting outbound notices to the next 5 targets @#chan +#chan %#chan &#chan ~#chan
-        :nick!ident@host NOTICE @#chan :+FISH 2T5zD0mPgMn
-        :nick!ident@host NOTICE ~#chan :+FISH 2T5zD0mPgMn
-        :nick!ident@host NOTICE %#chan :+FISH 2T5zD0mPgMn
-        :nick!ident@host NOTICE +#chan :+FISH 2T5zD0mPgMn
-          if '&' is within STATUSMSG=~&@%+ then &#chan is a group target not the name of a server-local channel
-        :nick!ident@host NOTICE &#chan :+FISH 2T5zD0mPgMn
-        (topic) :irc.tld 332 nick #chan :+FISH hqnSD1kaIaE00uei/.3LjAO1Den3t/iMNsc1
-        :nick!ident@host TOPIC #chan :+FISH JRFEAKWS
-        (topic /list) :irc.tld 322 nick #chan 2 :[+snt] +FISH BLAH
-        @aaa=bbb;ccc;example.com/ddd=eee :nick!ident@host.com PRIVMSG me :Hello
-*/
-
 use std::ffi::c_int;
 use std::sync::{Arc, Mutex as StdMutex};
 
@@ -29,7 +9,7 @@ use retour::GenericDetour;
 use sha2::{Digest, Sha256};
 use winapi::shared::ws2def::SOCKADDR;
 use winapi::um::winsock2::{SOCKET, SOCKET_ERROR, WSAEINTR};
-
+use fish_11_core::globals::{CMD_PRIVMSG, CMD_JOIN, CMD_NOTICE};
 use crate::hook_ssl::{SOCKET_TO_SSL, SSL_TO_SOCKET};
 use crate::socket_info::SocketState;
 use crate::{ACTIVE_SOCKETS, DISCARDED_SOCKETS, ENGINES, InjectEngines, SocketInfo};
@@ -117,7 +97,7 @@ pub unsafe extern "system" fn hooked_recv(
                 debug!("[RECV DEBUG] socket {}: UTF-8 content (sanitized): {:?}", s, sanitized);
 
                 // Check for IRC protocol markers
-                if text.contains("PRIVMSG") || text.contains("NOTICE") || text.contains("JOIN") {
+                if text.contains(CMD_PRIVMSG) || text.contains(CMD_NOTICE) || text.contains(CMD_JOIN) {
                     debug!("[RECV DEBUG] socket {}: detected IRC protocol command", s);
                 }
 
@@ -236,7 +216,7 @@ pub unsafe extern "system" fn hooked_send(
             debug!("[SEND DEBUG] Socket {}: UTF-8 content (sanitized): {:?}", s, sanitized);
 
             // Check for IRC protocol markers
-            if text.contains("PRIVMSG") || text.contains("NOTICE") || text.contains("JOIN") {
+            if text.contains(CMD_PRIVMSG ) || text.contains(CMD_NOTICE) || text.contains(CMD_JOIN) {
                 debug!("[SEND DEBUG] socket {}: detected IRC protocol command", s);
             }
 
@@ -246,7 +226,7 @@ pub unsafe extern "system" fn hooked_send(
             }
 
             // Check for encrypted message markers
-            if text.contains("+FISH ") || text.contains("+FiSH ") || text.contains("mcps ") {
+            if text.contains("+FiSH ") || text.contains("+FiSH ") || text.contains("mcps ") {
                 debug!("[SEND DEBUG] socket {}: detected FiSH encrypted message", s);
             }
         } else {
