@@ -109,6 +109,88 @@ Calculates and returns a human-readable fingerprint for a user's key. This is us
   - `nickname`: the nickname whose key fingerprint you want.
 - **returns**: a string containing the formatted fingerprint, e.g., `Key fingerprint for alice: ABCD EFGH IJKL MNOP`.
 
+### `FiSH11_GetKeyTTL`
+
+Get the time-to-live (TTL) for a key in seconds.
+
+- **usage**: `/dll fish_11.dll FiSH11_GetKeyTTL <nickname> [network]`
+- **parameters**:
+  - `nickname`: the nickname for which to get the TTL
+  - `network` (optional): the network name (default: current network)
+- **returns**:
+  - `>0` - Time remaining until expiration in seconds
+  - `0` - Key has expired
+  - `EXPIRED` - Key has expired (for mIRC scripts)
+  - `NO_TTL` - Key is not an exchange key (manual key)
+  - Error message on failure
+
+### `FiSH11_GetKeyTTLHumanReadable`
+
+Get the time-to-live (TTL) for a key in a human-readable format.
+
+- **usage**: `/dll fish_11.dll FiSH11_GetKeyTTLHumanReadable <nickname> [network]`
+- **parameters**:
+  - `nickname`: the nickname for which to get the TTL
+  - `network` (optional): the network name (default: current network)
+- **returns**:
+  - Human-readable TTL description (e.g., "12h 30m", "EXPIRED", "NO_TTL")
+  - Error message on failure
+
+### `FiSH11_GetKeyStatus`
+
+Get detailed status information for a key.
+
+- **usage**: `/dll fish_11.dll FiSH11_GetKeyStatus <nickname> [network]`
+- **parameters**:
+  - `nickname`: the nickname for which to get the status
+  - `network` (optional): the network name (default: current network)
+- **returns**:
+  - JSON-like status information including nickname, network, is_exchange, is_valid, and TTL
+  - Error message on failure
+
+### `FiSH11_GetKeyStatusHumanReadable`
+
+Get human-readable status information for a key.
+
+- **usage**: `/dll fish_11.dll FiSH11_GetKeyStatusHumanReadable <nickname> [network]`
+- **parameters**:
+  - `nickname`: the nickname for which to get the status
+  - `network` (optional): the network name (default: current network)
+- **returns**:
+  - Human-readable status description (e.g., "exchange key, expires in 12h 30m", "manual key, expired")
+  - Error message on failure
+
+### `FiSH11_GetAllKeysWithTTL`
+
+Get information about all keys with their TTL status.
+
+- **usage**: `/dll fish_11.dll FiSH11_GetAllKeysWithTTL`
+- **parameters**: none
+- **returns**:
+  - List of all keys with their status information
+  - Error message on failure
+
+### `FiSH11_GetConfiguredKeyTTL`
+
+Get the configured TTL for exchange keys.
+
+- **usage**: `/dll fish_11.dll FiSH11_GetConfiguredKeyTTL`
+- **parameters**: none
+- **returns**:
+  - TTL in seconds on success
+  - Error message on failure
+
+### `FiSH11_SetKeyTTL`
+
+Set the TTL for exchange keys (not yet implemented).
+
+- **usage**: `/dll fish_11.dll FiSH11_SetKeyTTL <ttl_seconds>`
+- **parameters**:
+  - `ttl_seconds`: the TTL in seconds
+- **returns**:
+  - Success message on success
+  - Error message on failure
+
 ---
 
 ## Asymmetric key exchange (X25519)
