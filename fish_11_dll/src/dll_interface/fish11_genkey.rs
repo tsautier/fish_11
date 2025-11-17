@@ -36,7 +36,7 @@ dll_function_identifier!(FiSH11_GenKey, data, {
 
     // 2. Store the key, with overwrite disabled to prevent accidental data loss.
     // This will return a `DllError::DuplicateEntry` if the key already exists.
-    config::set_key(&nickname, &key, network, false)?;
+    config::set_key(&nickname, &key, network, false, false)?;
 
     Ok(format!("New key pair generated successfully for {}", nickname))
 });

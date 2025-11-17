@@ -504,7 +504,7 @@ pub fn process_dh_key_exchange(
     let shared_secret = compute_shared_secret(&our_keypair.private_key, &their_public_key)?;
 
     // Store the shared key
-    match crate::config::set_key(nickname, &shared_secret, network, false) {
+    match crate::config::set_key(nickname, &shared_secret, network, false, true) {
         Ok(_) => {
             log_audit(&format!("Key exchange completed with {}", nickname));
             Ok(())
@@ -512,7 +512,7 @@ pub fn process_dh_key_exchange(
         Err(FishError::DuplicateEntry(_)) => {
             // Key already exists, try to overwrite
             log_audit(&format!("Key exchange updated existing key for {}", nickname));
-            crate::config::set_key(nickname, &shared_secret, network, true)
+            crate::config::set_key(nickname, &shared_secret, network, true, true)
         }
         Err(e) => Err(e),
     }

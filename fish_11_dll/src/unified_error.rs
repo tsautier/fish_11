@@ -47,6 +47,10 @@ pub enum DllError {
     #[error("no encryption key found for '{0}'")]
     KeyNotFound(String),
 
+    /// Key has expired and needs to be re-exchanged
+    #[error("encryption key for '{nickname}' has expired")]
+    KeyExpired { nickname: String },
+
     /// Key has invalid length or format
     #[error("invalid key: {reason}")]
     KeyInvalid { reason: String },
@@ -249,6 +253,18 @@ impl DllError {
             }
         } else {
             log::error!("DLL Error: {}", self);
+        }
+
+        // Special handling for KeyExpired to trigger re-exchange
+        if let DllError::KeyExpired { nickname } = self {
+            // Return a simple, parseable identifier instead of a full command.
+            // The mIRC script will be responsible for handling this output.
+            let mirc_identifier = format!("KEY_EXPIRED {}", nickname);
+            if let Ok(cstring) = std::ffi::CString::new(mirc_identifier) {
+                let buf_size = crate::dll_interface::get_buffer_size();
+                let _ = buffer_utils::write_cstring_to_buffer(data, buf_size, &cstring);
+            }
+            return MIRC_COMMAND;
         }
 
         // Write error message to mIRC buffer (using thiserror-generated Display)

@@ -6,6 +6,7 @@ use crate::platform_types::HWND;
 
 use crate::buffer_utils;
 use crate::config;
+use crate::config::key_management::check_key_expiry;
 use crate::crypto;
 use crate::dll_function_identifier;
 use crate::log_debug;
@@ -129,6 +130,9 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
     // --- Private Message Decryption Logic ---
     let nickname = normalize_nick(target);
     log_debug!("Decrypting for nickname: {}", nickname);
+
+    // Check for key expiration before attempting to use it.
+    check_key_expiry(&nickname, None)?;
 
     let key_vec = config::get_key(&nickname, None)?;
     let key: &[u8; 32] = key_vec.as_slice().try_into().map_err(|_| DllError::InvalidInput {

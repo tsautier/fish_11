@@ -64,7 +64,7 @@ dll_function_identifier!(FiSH11_SetKeyFromPlaintext, data, {
     log_debug!("Key derived successfully, storing...");
 
     // Then store the key, allowing overwrite.
-    config::set_key(&nickname, &derived_key, Some(network), true)?;
+    config::set_key(&nickname, &derived_key, Some(network), true, false)?;
 
     log::info!("Successfully set key from plaintext for {} on network {}", nickname, network);
 

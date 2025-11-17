@@ -7,7 +7,9 @@ use crate::config::networks;
 use crate::crypto;
 use crate::error::{FishError, Result};
 use crate::log_debug;
+use crate::unified_error::{DllError, DllResult};
 use crate::utils::{base64_decode, base64_encode, normalize_nick};
+use chrono::NaiveDateTime;
 
 use crate::log_info;
 
@@ -106,11 +108,12 @@ pub fn set_key(
     key: &[u8; 32],
     network: Option<&str>,
     overwrite: bool,
+    is_exchange: bool,
 ) -> Result<()> {
     #[cfg(debug_assertions)]
     log_debug!(
-        "set_key: Called with nickname='{}', network={:?}, overwrite={}",
-        nickname, network, overwrite
+        "set_key: Called with nickname='{}', network={:?}, overwrite={}, is_exchange={}",
+        nickname, network, overwrite, is_exchange
     );
 
     let normalized_nick = normalize_nick(nickname);
@@ -169,7 +172,11 @@ pub fn set_key(
 
         log_debug!("Setting key for entry: {}", entry_key);
 
-        let entry = EntryData { key: Some(base64_encode(key)), date: Some(date_str) };
+        let entry = EntryData {
+            key: Some(base64_encode(key)),
+            date: Some(date_str),
+            is_exchange: Some(is_exchange),
+        };
 
         // Check for existing entry if not overwriting
         if !overwrite && config.entries.contains_key(&entry_key) {
@@ -238,7 +245,49 @@ pub fn delete_key(nickname: &str, network: Option<&str>) -> Result<()> {
             log_debug!("Key not found for {} in any format", normalized_nick);
             Err(FishError::KeyNotFound(normalized_nick))
         }
-    })
+    })?;
+
+    Ok(())
+}
+
+/// Get the time-to-live (TTL) for a key in seconds.
+pub fn get_key_ttl(nickname: &str, network: Option<&str>) -> DllResult<Option<i64>> {
+    const KEY_LIFETIME_SECONDS: i64 = 86400; // 24 hours
+
+    let normalized_nick = normalize_nick(nickname);
+
+    let result = with_config(|config| {
+        let network_name = resolve_network_name(config, network, &normalized_nick, true);
+        let entry_key = format!("{}@{}", normalized_nick, network_name);
+
+        if let Some(entry) = config.entries.get(&entry_key) {
+            if entry.is_exchange != Some(true) {
+                return Ok(None); // Not an exchange key, no TTL
+            }
+
+            if let Some(date_str) = &entry.date {
+                match NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S") {
+                    Ok(key_date) => {
+                        let now = Local::now().naive_local();
+                        let duration = now.signed_duration_since(key_date);
+                        let elapsed_seconds = duration.num_seconds();
+
+                        if elapsed_seconds < KEY_LIFETIME_SECONDS {
+                            return Ok(Some(KEY_LIFETIME_SECONDS - elapsed_seconds));
+                        } else {
+                            return Ok(Some(0)); // Expired
+                        }
+                    }
+                    Err(_) => Ok(None), // Date parsing failed, treat as no TTL
+                }
+            } else {
+                Ok(None) // No date, no TTL
+            }
+        } else {
+            Err(FishError::KeyNotFound(normalized_nick.to_string()))
+        }
+    });
+    result.map_err(DllError::from)
 }
 
 /// Get our keypair
@@ -385,6 +434,56 @@ pub fn store_keypair(keypair: &crypto::KeyPair) -> Result<()> {
     })
 }
 
+/// Check if a key has expired and delete it if it has.
+pub fn check_key_expiry(nickname: &str, network: Option<&str>) -> DllResult<()> {
+    const KEY_LIFETIME_SECONDS: i64 = 86400; // 24 hours
+
+    let normalized_nick = normalize_nick(nickname);
+
+    // This closure returns Ok(true) if a key was expired, Ok(false) otherwise.
+    let was_expired = with_config_mut(|config| {
+        let network_name = resolve_network_name(config, network, &normalized_nick, true);
+        let entry_key = format!("{}@{}", normalized_nick, network_name);
+
+        if let Some(entry) = config.entries.get(&entry_key) {
+            if entry.is_exchange != Some(true) {
+                return Ok(false);
+            }
+
+            if let Some(date_str) = &entry.date {
+                if let Ok(key_date) = NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S") {
+                    let now = Local::now().naive_local();
+                    let duration = now.signed_duration_since(key_date);
+
+                    if duration.num_seconds() > KEY_LIFETIME_SECONDS {
+                        log_debug!(
+                            "Key for '{}' on network '{}' has expired (age: {}s). Deleting.",
+                            normalized_nick,
+                            network_name,
+                            duration.num_seconds()
+                        );
+                        // Key has expired, remove it and signal that it was expired.
+                        config.entries.remove(&entry_key);
+                        config.keys.remove(&normalized_nick);
+                        config.nick_networks.remove(&normalized_nick);
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+        Ok(false)
+    })
+    .map_err(DllError::from)?;
+
+    if was_expired {
+        Err(DllError::KeyExpired {
+            nickname: normalized_nick.to_string(),
+        })
+    } else {
+        Ok(())
+    }
+}
+
 /// Get a key for a nickname using default network (backward compatibility)
 pub fn get_key_default(nickname: &str) -> Result<Vec<u8>> {
     get_key(nickname, Some("default"))
@@ -397,7 +496,7 @@ pub fn delete_key_default(nickname: &str) -> Result<()> {
 
 /// Set a key for a nickname using default network (backward compatibility)
 pub fn set_key_default(nickname: &str, key: &[u8; 32], overwrite: bool) -> Result<()> {
-    set_key(nickname, key, Some("default"), overwrite)
+    set_key(nickname, key, Some("default"), overwrite, false)
 }
 
 #[cfg(test)]
@@ -455,8 +554,8 @@ mod tests {
         let key1 = random_key();
         let key2 = random_key();
 
-        set_key(nickname1, &key1, Some("testnet"), true).expect("Failed to set key 1");
-        set_key(nickname2, &key2, Some("testnet"), true).expect("Failed to set key 2");
+        set_key(nickname1, &key1, Some("testnet"), true, false).expect("Failed to set key 1");
+        set_key(nickname2, &key2, Some("testnet"), true, false).expect("Failed to set key 2");
 
         let keys = list_keys().expect("Failed to list keys");
 

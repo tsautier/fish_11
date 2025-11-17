@@ -311,7 +311,11 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
                 if let Some(key_val) = key_val_opt {
                     // Find the corresponding date using the case-sensitive key
                     let date_val = dates_map.get(entry_key).and_then(|v| v.clone());
-                    let entry_data = EntryData { key: Some(key_val.clone()), date: date_val };
+                    let entry_data = EntryData {
+                        key: Some(key_val.clone()),
+                        date: date_val,
+                        is_exchange: Some(false),
+                    };
                     config.entries.insert(entry_key.clone(), entry_data);
                 }
             }
@@ -498,6 +502,7 @@ mod tests {
             EntryData {
                 key: Some("entry_key_b64".to_string()),
                 date: Some("2025-01-01 00:00:00".to_string()),
+                is_exchange: Some(false),
             },
         );
         config.entries.insert(
@@ -505,6 +510,7 @@ mod tests {
             EntryData {
                 key: Some("chan_key_b64".to_string()),
                 date: Some("2025-01-02 00:00:00".to_string()),
+                is_exchange: Some(false),
             },
         );
         config

@@ -82,11 +82,11 @@ dll_function_identifier!(FiSH11_ProcessPublicKey, data, {
     // Store the shared secret with intelligent duplicate handling:
     // - First try without overwrite (fail if key exists)
     // - If duplicate detected, update it as part of key exchange protocol
-    let store_result = match config::set_key(&nickname, &shared_secret, None, false) {
+    let store_result = match config::set_key(&nickname, &shared_secret, None, false, true) {
         Ok(_) => Ok(()),
         Err(crate::error::FishError::DuplicateEntry(ref nick)) => {
             log::info!("Updating existing key for {} as part of key exchange", nick);
-            config::set_key(&nickname, &shared_secret, None, true)
+            config::set_key(&nickname, &shared_secret, None, true, true)
         }
         Err(e) => Err(e),
     };
