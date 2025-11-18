@@ -218,7 +218,6 @@ pub enum DllError {
     /// Key derivation failed
     #[error("key derivation failed")]
     KeyDerivationFailed,
-    // ... other variants
 }
 
 impl DllError {
