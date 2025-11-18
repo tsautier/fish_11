@@ -26,6 +26,7 @@ const MAX_NONCE_CACHE_SIZE: usize = 100;
 pub struct EntryData {
     pub key: Option<String>,
     pub date: Option<String>,
+    pub is_exchange: Option<bool>,
 }
 
 /// Configuration for FiSH11 settings

@@ -6,6 +6,9 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, Once};
 use std::time::Duration;
+use crate::{log_info, log_debug};
+use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION};
+
 
 // Ensure initialization happens only once
 static LOGGER_INIT: Once = Once::new();
@@ -137,23 +140,23 @@ pub fn init_logger(level: LevelFilter) -> Result<(), SetLoggerError> {
                                     log::set_max_level(effective_level);
                                     
                                     // Log to file only, no console output
-                                    log::info!("*********** *********** FiSH_11 core DLL logger initialized *************** ***********");
+                                    log_info!("*********** *********** FiSH_11 core DLL logger initialized *************** ***********");
 
                                     // Log the initialization
-                                    log::info!(
+                                    log_info!(
                                         "Logger initialized - writing to: {}",
                                         log_path.display()
                                     );
                                     
                                     // Log current working directory in the log file too
                                     if let Ok(cwd) = std::env::current_dir() {
-                                        log::info!("Current working directory: {}", cwd.display());
+                                        log_info!("Current working directory: {}", cwd.display());
                                     }
-                                    log::info!("FiSH_11 DLL version: {}", crate::FISH_11_VERSION);
-                                    log::info!(
+                                    log_info!("FiSH_11 DLL version: {}", BUILD_VERSION);
+                                    log_info!(
                                         "Build date: {}, Build time: {}",
-                                        crate::FISH_11_BUILD_DATE,
-                                        crate::FISH_11_BUILD_TIME
+                                        BUILD_DATE,
+                                        BUILD_TIME
                                     );
                                 }                                Err(e) => {
                                     // Don't output to console, just return error
@@ -185,11 +188,11 @@ pub fn is_logger_initialized() -> bool {
 /// Log a module initialization event
 pub fn log_module_init(module_name: &str, version: &str) {
     if is_logger_initialized() {
-        log::info!("Module initialized: {} (version: {})", module_name, version);
-        log::debug!(
+        log_info!("Module initialized: {} (version: {})", module_name, version);
+        log_debug!(
             "Module initialization details - Build date: {}, Build time: {}",
-            crate::FISH_11_BUILD_DATE,
-            crate::FISH_11_BUILD_TIME
+            BUILD_DATE,
+            BUILD_TIME
         );
     }
 }
@@ -197,7 +200,7 @@ pub fn log_module_init(module_name: &str, version: &str) {
 /// Log a module shutdown event
 pub fn log_module_shutdown(module_name: &str) {
     if is_logger_initialized() {
-        log::info!("Module shutdown: {}", module_name);
+        log_info!("Module shutdown: {}", module_name);
     }
 }
 
@@ -205,8 +208,8 @@ pub fn log_module_shutdown(module_name: &str) {
 pub fn log_function_entry<T: std::fmt::Debug>(function_name: &str, params: Option<T>) {
     if is_logger_initialized() {
         match params {
-            Some(p) => log::debug!("ENTER: {} - params: {:?}", function_name, p),
-            None => log::debug!("ENTER: {}", function_name),
+            Some(p) => log_debug!("ENTER: {} - params: {:?}", function_name, p),
+            None => log_debug!("ENTER: {}", function_name),
         }
     }
 }
@@ -215,8 +218,8 @@ pub fn log_function_entry<T: std::fmt::Debug>(function_name: &str, params: Optio
 pub fn log_function_exit<T: std::fmt::Debug>(function_name: &str, return_value: Option<T>) {
     if is_logger_initialized() {
         match return_value {
-            Some(r) => log::debug!("EXIT: {} - returned: {:?}", function_name, r),
-            None => log::debug!("EXIT: {}", function_name),
+            Some(r) => log_debug!("EXIT: {} - returned: {:?}", function_name, r),
+            None => log_debug!("EXIT: {}", function_name),
         }
     }
 }
@@ -224,6 +227,6 @@ pub fn log_function_exit<T: std::fmt::Debug>(function_name: &str, return_value: 
 /// Log a configuration update or reading
 pub fn log_config(context: &str, key: &str, value: &dyn std::fmt::Debug) {
     if is_logger_initialized() {
-        log::debug!("CONFIG [{}]: {} = {:?}", context, key, value);
+        log_debug!("CONFIG [{}]: {} = {:?}", context, key, value);
     }
 }

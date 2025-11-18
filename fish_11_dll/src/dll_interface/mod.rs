@@ -14,6 +14,7 @@ mod fish11_filelistkeys;
 mod fish11_filelistkeysitem;
 mod fish11_genkey;
 mod fish11_getconfigpath;
+mod fish11_getkeyttl;
 mod fish11_help;
 mod fish11_setnetwork;
 mod key_management;
@@ -22,6 +23,7 @@ mod utility;
 pub mod dll_error;
 pub mod fish11_exchangekey;
 pub mod fish11_setkey;
+pub mod fish11_setkeyfromplaintext;
 pub mod fish11_setmircdir;
 pub mod function_template;
 pub mod ini_types;
@@ -90,3 +92,5 @@ pub(crate) fn restore_buffer_size_for_test(prev_size: Option<usize>) {
 
 pub use crate::channel_encryption::init_key::FiSH11_InitChannelKey;
 pub use crate::channel_encryption::process_key::FiSH11_ProcessChannelKey;
+
+pub use fish11_getkeyttl::FiSH11_GetKeyTTL;

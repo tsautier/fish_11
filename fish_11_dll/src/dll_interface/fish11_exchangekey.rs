@@ -206,7 +206,7 @@ fn ensure_key_exists(nickname: &str) -> DllResult<bool> {
             log_debug!("Storing key in config...");
 
             // Store the key with overwrite enabled (in-memory only, no disk I/O yet)
-            set_key(nickname, &key_bytes, None, true)?;
+            set_key(nickname, &key_bytes, None, true, true)?;
 
             log_debug!("set_key_default took {:?}", store_start.elapsed());
 

@@ -41,32 +41,44 @@ pub fn normalize_nick(nick: &str) -> String {
 
 /// Normalize a channel or target name by stripping STATUSMSG prefixes.
 ///
-/// IRC STATUSMSG allows sending to specific user classes in a channel using prefixes:
-/// - `@#channel` - ops only
-/// - `+#channel` - voiced users
-/// - `%#channel` - half-ops
-/// - `~#channel` - owners
-/// - `&#channel` - could be server-local channel OR group target (depends on STATUSMSG)
-///
-/// This function strips any leading status prefix to get the actual channel name.
-/// For non-channel targets (private messages), returns the input unchanged.
+/// IRC STATUSMSG allows sending to specific user classes in a channel using prefixes such as
+/// `@#channel`, `+#channel`, `%#channel`, or `~#channel`. This function removes those leading
+/// prefixes so the rest of the stack always sees the bare channel name (`#channel` or `&channel`).
+/// For non-channel targets (private messages), it returns the input untouched.
 ///
 /// Examples:
 /// - `@#fish_11` → `#fish_11`
-/// - `+#test` → `#test`
-/// - `#channel` → `#channel`
+/// - `@%+#test` → `#test`
+/// - `&fish_11` → `&fish_11`
 /// - `bob` → `bob`
 pub fn normalize_target(target: &str) -> &str {
     let trimmed = target.trim();
 
-    // Check if it has a status prefix followed by a channel marker
-    if trimmed.len() > 1 {
-        let first_char = trimmed.chars().nth(0).unwrap();
-        let second_char = trimmed.chars().nth(1).unwrap();
+    if trimmed.is_empty() {
+        return trimmed;
+    }
 
-        // If first char is a status prefix and second char is a channel marker, strip prefix
-        if matches!(first_char, '@' | '+' | '%' | '~' | '&') && matches!(second_char, '#' | '&') {
-            return &trimmed[1..];
+    let status_chars = ['@', '+', '%', '~'];
+    let mut seen_status = false;
+    let mut channel_start = None;
+
+    for (idx, ch) in trimmed.char_indices() {
+        if ch == '#' || ch == '&' {
+            channel_start = Some(idx);
+            break;
+        }
+
+        if status_chars.contains(&ch) {
+            seen_status = true;
+            continue;
+        }
+
+        break;
+    }
+
+    if let Some(idx) = channel_start {
+        if seen_status && idx > 0 {
+            return &trimmed[idx..];
         }
     }
 
@@ -155,6 +167,15 @@ mod tests {
         // Tests if nickname normalization (lowercase) works correctly.
         assert_eq!(normalize_nick("TeStNiCk"), "testnick");
         assert_eq!(normalize_nick("  AnotherNick "), "anothernick");
+    }
+
+    #[test]
+    fn test_normalize_target_strips_status_prefixes() {
+        assert_eq!(normalize_target("@#fish_11"), "#fish_11");
+        assert_eq!(normalize_target("@%+#test"), "#test");
+        assert_eq!(normalize_target("~#secure"), "#secure");
+        assert_eq!(normalize_target("&fish_11"), "&fish_11");
+        assert_eq!(normalize_target("bob"), "bob");
     }
 
     #[test]

@@ -8,6 +8,10 @@ use std::{fmt, io};
 
 use log::{debug, info, trace, warn};
 use parking_lot::{Mutex, RwLock};
+use fish_11_core::globals::{
+    CMD_NOTICE, CMD_PRIVMSG, ENCRYPTION_PREFIX_FISH, ENCRYPTION_PREFIX_MCPS,
+    ENCRYPTION_PREFIX_OK, KEY_EXCHANGE_INIT, KEY_EXCHANGE_PUBKEY,
+};
 
 use crate::engines::InjectEngines;
 
@@ -880,6 +884,7 @@ impl SocketInfo {
                     #[cfg(debug_assertions)]
                     {
                         // Log details about each IRC line
+
                         debug!(
                             "[PROCESS_LINES DEBUG] socket {}: processing IRC line ({} bytes): {:?}",
                             self.socket,
@@ -888,16 +893,16 @@ impl SocketInfo {
                         );
 
                         // Check for specific IRC commands or FiSH markers
-                        if line.contains("PRIVMSG") || line.contains("NOTICE") {
+                        if line.contains(CMD_PRIVMSG) || line.contains(CMD_NOTICE) {
                             debug!(
                                 "[PROCESS_LINES DEBUG] socket {}: detected IRC message command",
                                 self.socket
                             );
 
                             // Check for encrypted content markers
-                            if line.contains("+OK ")
-                                || line.contains("+FiSH ")
-                                || line.contains("mcps ")
+                            if line.contains(ENCRYPTION_PREFIX_OK)
+                                || line.contains(ENCRYPTION_PREFIX_FISH)
+                                || line.contains(ENCRYPTION_PREFIX_MCPS)
                             {
                                 debug!(
                                     "[PROCESS_LINES DEBUG] socket {}: detected encrypted FiSH message",
@@ -906,7 +911,7 @@ impl SocketInfo {
                             }
                         }
 
-                        if line.contains("X25519_INIT") || line.contains("FiSH11-PubKey:") {
+                        if line.contains(KEY_EXCHANGE_INIT) || line.contains(KEY_EXCHANGE_PUBKEY) {
                             debug!(
                                 "[PROCESS_LINES DEBUG] socket {}: detected FiSH key exchange",
                                 self.socket

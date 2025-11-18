@@ -1,8 +1,9 @@
 use std::sync::Mutex;
 use log;
 use crate::platform_types::{BOOL, HWND, c_int};
-use crate::log_debug;
+use crate::{log_debug, log_info};
 use crate::dll_interface::DEFAULT_MIRC_BUFFER_SIZE;
+use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION};
 
 #[cfg(windows)]
 use winapi::shared::minwindef::{DWORD, HINSTANCE, LPVOID, TRUE};
@@ -106,14 +107,14 @@ pub extern "system" fn DllMain(_hinst: HINSTANCE, reason: DWORD, _: LPVOID) -> B
             let _ = crate::logging::init_logger(log::LevelFilter::Info);
 
             // Use structured logging helper for module initialization
-            crate::logging::log_module_init("DLL Core", &crate::FISH_11_VERSION);
+            crate::logging::log_module_init("DLL Core", &BUILD_VERSION);
 
             // Log version info once during DLL attach
             if crate::logging::is_logger_initialized() {
-                log::info!("DLL Process Attach - FiSH v{} (built {} {})", 
-                    crate::FISH_11_VERSION, 
-                    crate::FISH_11_BUILD_DATE, 
-                    crate::FISH_11_BUILD_TIME);
+                log_info!("DLL Process Attach - FiSH v{} (built {} {})", 
+                    BUILD_VERSION, 
+                    BUILD_DATE, 
+                    BUILD_TIME);
                 log_debug!("System information: Process ID: {}", std::process::id());
 
                 // When this DLL is loaded, it tries to register itself with the inject DLL.
@@ -157,7 +158,7 @@ pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
     }
 
     // Log version information to file, not to console
-    log_debug!("LoadDll called for FiSH v{}", crate::FISH_11_VERSION);
+    log_debug!("LoadDll called for FiSH v{}", BUILD_VERSION);
 
     // Log function entry with structured logging
     crate::logging::log_function_entry("LoadDll", None::<i32>);
@@ -204,7 +205,7 @@ pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
     // Log successful initialization
     log::info!(
         "FiSH_11 v{} initialized successfully for mIRC {}",
-        crate::FISH_11_VERSION,
+        BUILD_VERSION,
         mirc_version
     );
 

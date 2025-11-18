@@ -9,10 +9,10 @@ use windows::Win32::UI::WindowsAndMessaging::{MB_ICONEXCLAMATION, MB_OK, Message
 
 use crate::helpers_inject::install_hooks;
 use crate::{
-    ACTIVE_SOCKETS, DISCARDED_SOCKETS, DLL_HANDLE_PTR, ENGINES, FISH_11_BUILD_DATE,
-    FISH_11_BUILD_TIME, FISH_11_VERSION, LOADED, MAX_MIRC_RETURN_BYTES, MIRC_COMMAND, MIRC_HALT,
+    ACTIVE_SOCKETS, DISCARDED_SOCKETS, DLL_HANDLE_PTR, ENGINES, LOADED, MAX_MIRC_RETURN_BYTES, MIRC_COMMAND, MIRC_HALT,
     MIRC_RET_DATA_COMMAND, VERSION_SHOWN, c_int, cleanup_hooks,
 };
+use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION};
 
 #[repr(C)]
 pub struct LOADINFO {
@@ -156,7 +156,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
 
         // Prepare version string as a command
         let version_cmd =
-            format!("/echo -ts *** FiSH_11 inject v{} loaded successfully. ***", FISH_11_VERSION);
+            format!("/echo -ts *** FiSH_11 inject v{} loaded successfully. ***", BUILD_VERSION);
         if let Ok(c_cmd) = CString::new(version_cmd) {
             let current_max_len = *MAX_MIRC_RETURN_BYTES.lock().unwrap();
             if c_cmd.as_bytes_with_nul().len() <= current_max_len {
@@ -200,8 +200,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
 
 #[no_mangle]
 #[allow(non_snake_case)]
-
-pub extern "stdcall" fn UnloadDll(action: c_int) -> c_int {
+pub extern "system" fn UnloadDll(action: c_int) -> c_int {
     info!("UnloadDll() called with action: {}", action); // 0=Script unload, 1=mIRC exit, 2=DLL crash unload
 
     // Perform cleanup regardless of action type
@@ -320,7 +319,7 @@ pub extern "system" fn FiSH11_InjectVersion(
     // Return raw version info (script handles display formatting)
     let version_info = format!(
         "FiSH injection v{}. Compiled on {} at {}. Written by [GuY], licensed under the GPL-v3.",
-        FISH_11_VERSION, FISH_11_BUILD_DATE, FISH_11_BUILD_TIME
+        BUILD_VERSION, BUILD_DATE, BUILD_TIME
     );
 
     let data_str = match CString::new(version_info) {

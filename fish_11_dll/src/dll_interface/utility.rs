@@ -1,11 +1,13 @@
-use std::ffi::c_char;
-use std::os::raw::c_int;
 use crate::log_debug;
+use crate::platform_types::{BOOL, HWND};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION};
 use sha2::{Digest, Sha256};
+use std::ffi::c_char;
+use std::os::raw::c_int;
 use subtle::ConstantTimeEq;
-use crate::platform_types::{BOOL, HWND};
+
 use x25519_dalek::PublicKey;
 
 use crate::dll_function_identifier;
@@ -17,9 +19,7 @@ dll_function_identifier!(FiSH11_GetVersion, _data, {
     // Return raw version info for script to display
     let version_info = format!(
         "FiSH_11 core v{} - Compiled {} at {} - Licensed under GPL-v3",
-        crate::FISH_11_VERSION,
-        crate::FISH_11_BUILD_DATE,
-        crate::FISH_11_BUILD_TIME
+        BUILD_VERSION, BUILD_DATE, BUILD_TIME
     );
 
     log_debug!("FiSH11_GetVersion called, returning: {}", version_info);

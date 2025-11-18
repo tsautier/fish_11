@@ -117,7 +117,7 @@ unsafe fn get_module_filename(module: HMODULE) -> Option<String> {
 }
 
 /// Detect OpenSSL in the current process
-pub unsafe fn detect_openssl() -> Option<OpenSslInfo> {
+pub unsafe fn _detect_openssl() -> Option<OpenSslInfo> {
     #[cfg(debug_assertions)]
     info!("detect_openssl: starting OpenSSL detection...");
 
@@ -275,7 +275,7 @@ pub unsafe fn detect_openssl() -> Option<OpenSslInfo> {
 }
 
 /// Validate that OpenSSL is properly loaded and ready
-pub unsafe fn validate_openssl(info: &OpenSslInfo) -> Result<(), String> {
+pub unsafe fn _validate_openssl(info: &OpenSslInfo) -> Result<(), String> {
     #[cfg(debug_assertions)]
     info!("validate_openssl: starting OpenSSL validation for '{}'...", info.dll_name);
 

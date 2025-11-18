@@ -4,6 +4,7 @@ use std::os::raw::c_int;
 
 use crate::buffer_utils;
 use crate::config;
+use crate::config::key_management::check_key_expiry;
 use crate::crypto;
 use crate::dll_function_identifier;
 use crate::log_debug;
@@ -88,6 +89,9 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
     }
 
     log_debug!("Encrypting for nickname: {}", nickname);
+
+    // Check for key expiration before attempting to use it.
+    check_key_expiry(&nickname, None)?;
 
     // 2. Retrieve the encryption key for the target.
     let key_vec = config::get_key_default(&nickname)?;

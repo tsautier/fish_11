@@ -8,6 +8,11 @@ use retour::GenericDetour;
 use winapi::shared::minwindef::FARPROC;
 use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
 
+use fish_11_core::globals::{
+    CMD_JOIN, CMD_NOTICE, CMD_PRIVMSG, ENCRYPTION_PREFIX_FISH, ENCRYPTION_PREFIX_MCPS,
+    ENCRYPTION_PREFIX_OK, KEY_EXCHANGE_INIT, KEY_EXCHANGE_PUBKEY,
+};
+
 use crate::SOCKET;
 use crate::helpers_inject::handle_poison;
 use crate::hook_socket::get_or_create_socket;
@@ -323,12 +328,12 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
                 );
                 
                 // Check for IRC protocol markers
-                if text.contains("PRIVMSG") || text.contains("NOTICE") || text.contains("JOIN") {
+                if text.contains(CMD_PRIVMSG) || text.contains(CMD_NOTICE) || text.contains(CMD_JOIN) {
                     debug!("[SSL_READ DEBUG] Socket {}: detected IRC protocol command", socket_id);
                 }
                 
                 // Check for FiSH key exchange markers
-                if text.contains("X25519_INIT") || text.contains("FiSH11-PubKey:") {
+                if text.contains(KEY_EXCHANGE_INIT) || text.contains(KEY_EXCHANGE_PUBKEY) {
                     debug!("[SSL_READ DEBUG] Socket {}: detected FiSH key exchange data", socket_id);
                 }
             } else {
@@ -481,17 +486,17 @@ unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int)
             );
             
             // Check for IRC protocol markers
-            if text.contains("PRIVMSG") || text.contains("NOTICE") || text.contains("JOIN") {
+            if text.contains(CMD_PRIVMSG) || text.contains(CMD_NOTICE) || text.contains(CMD_JOIN) {
                 debug!("[SSL_WRITE DEBUG] Socket {}: detected IRC protocol command", socket_id);
             }
             
             // Check for FiSH key exchange markers
-            if text.contains("X25519_INIT") || text.contains("FiSH11-PubKey:") {
+            if text.contains(KEY_EXCHANGE_INIT) || text.contains(KEY_EXCHANGE_PUBKEY) {
                 debug!("[SSL_WRITE DEBUG] Socket {}: detected FiSH key exchange data", socket_id);
             }
             
             // Check for encrypted message markers
-            if text.contains("+OK ") || text.contains("+FiSH ") || text.contains("mcps ") {
+            if text.contains(ENCRYPTION_PREFIX_OK) || text.contains(ENCRYPTION_PREFIX_FISH) || text.contains(ENCRYPTION_PREFIX_MCPS) {
                 debug!("[SSL_WRITE DEBUG] Socket {}: detected FiSH encrypted message", socket_id);
             }
         } else {

@@ -64,7 +64,7 @@ dll_function_identifier!(FiSH11_SetKey, data, {
     log_debug!("Key decoded successfully, storing...");
 
     // 4. Store the key, allowing overwrite.
-    config::set_key(&nickname, &key, Some(network), true)?;
+    config::set_key(&nickname, &key, Some(network), true, false)?;
 
     log::info!("Successfully set key for {} on network {}", nickname, network);
 
@@ -92,7 +92,7 @@ mod tests {
         let nickname = "fishuser";
         let key = [1u8; 32];
 
-        let result = config::set_key(nickname, &key, None, true);
+        let result = config::set_key(nickname, &key, None, true, false);
         assert!(result.is_ok());
 
         let stored = config::get_key_default(nickname).unwrap();

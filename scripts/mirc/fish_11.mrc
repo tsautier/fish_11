@@ -2,7 +2,7 @@
 ;* FiSH_11 mIRC Script *
 ;***********************
 ; "FiSH_11" - Secure IRC encryption script for mIRC
-; Written by GuY, 2025. GPL v3.
+; Written by GuY, 2025. Licensed under GPL-v3.
 ;
 ; SECURITY NOTICE: The security of this script depends entirely on the
 ; binary DLL files (fish_11.dll, fish_11_inject.dll). This mIRC script
@@ -434,12 +434,31 @@ alias fish11_setkey {
     return
   }
   ; $1 = nickname (data), $2- = key (parms)
-  var %msg = $dll(%Fish11DllFile, FiSH11_SetKey, $network, $1, $2-)
+  var %msg = $dll(%Fish11DllFile, FiSH11_SetKey, $+($network, $chr(32), $1, $chr(32), $2-))
   if (%msg) {
     echo -a *** FiSH_11: key set for $1 on network $network
   }
   else {
     echo -a *** FiSH_11: error - could not set key for $1
+  }
+}
+
+alias fish11_setkey_manual {
+  if ($1 == $null || $2 == $null) {
+    echo 4 -a Syntax: /fish11_setkey_manual <target> <key>
+    return
+  }
+  var %target = $1
+  var %key = $2-
+  var %input = $+(%network, $chr(32), %target, $chr(32), %key)
+  
+  var %msg = $dll(%Fish11DllFile, FiSH11_SetKeyFromPlaintext, %input)
+
+  if (%msg && $left(%msg, 6) != Error:) {
+    echo -a *** FiSH_11: manual key set for %target on network $network
+  }
+  else {
+    echo -a *** FiSH_11: error setting manual key for %target $+ . DLL returned: %msg
   }
 }
 
@@ -1145,8 +1164,7 @@ menu channel {
       echo $color(Mode text) -at *** FiSH_11: fingerprint for $chan copied to clipboard
     }
   }
-  .Set new key :{ var %key = $?="Enter new key for " $+ $chan $+ ":" | if (%key != $null) fish11_setkey $chan %key }
-  .Set new key (UTF-8) :{ var %key = $?="Enter new key for " $+ $chan $+ " (UTF-8):" | if (%key != $null) fish11_setkey_utf8 $chan %key }
+  .Set manual key... :{ var %key = $?="Enter manual key for " $+ $chan $+ ":" | if (%key != $null) fish11_setkey_manual $chan %key }
   .Remove key :fish11_removekey $chan
   .Encrypt message :{
     var %msg = $?="Enter message to encrypt:"
@@ -1184,6 +1202,7 @@ menu query {
       echo $color(Mode text) -at *** FiSH_11: fingerprint for $1 copied to clipboard
     }
   }
+  .Set manual key... :{ var %key = $?="Enter manual key for " $+ $1 $+ ":" | if (%key != $null) fish11_setkey_manual $1 %key }
   .Set new key :{ var %key = $?="Enter new key for " $+ $1 $+ ":" | if (%key != $null) fish11_setkey $1 %key }
   .Set new key (UTF-8) :{ var %key = $?="Enter new key for " $+ $1 $+ " (UTF-8):" | if (%key != $null) fish11_setkey_utf8 $1 %key }
   .Remove key :fish11_removekey $1
@@ -1211,6 +1230,7 @@ menu nicklist {
   .-
   .Show key :fish11_showkey $1
   .Show fingerprint :fish11_showfingerprint $1
+  .Set manual key... :{ var %key = $?="Enter manual key for " $+ $1 $+ ":" | if (%key != $null) fish11_setkey_manual $1 %key }
   .Set new key :{ var %key = $?="Enter new key for " $+ $1 $+ ":" | if (%key != $null) fish11_setkey $1 %key }
   .Set new key (UTF-8) :{ var %key = $?="Enter new key for " $+ $1 $+ " (UTF-8):" | if (%key != $null) fish11_setkey_utf8 $1 %key }
   .Remove key :fish11_removekey $1
