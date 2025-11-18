@@ -23,9 +23,6 @@ Cargo.lock
 # Exclude the local copydll.bat script from version control :P
 copydll.bat
 
-.github
-.vscode
-.idea
 GEMINI.md
 QWEN.md
 
