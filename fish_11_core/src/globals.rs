@@ -65,7 +65,7 @@ pub const ENCRYPTION_PREFIX_MCPS: &str = "mcps ";
 pub const KEY_EXCHANGE_INIT: &str = "X25519_INIT";
 pub const KEY_EXCHANGE_PUBKEY: &str = "FiSH11-PubKey:";
 
-/// Version sémantique, par exemple "5.0.1-13-g5ee5b76"
+/// Semantic version, e.g. "5.0.1-13-g5ee5b76"
 pub const BUILD_VERSION: &str = match option_env!("VERGEN_GIT_DESCRIBE") {
     Some(version) => version,
     None => env!("CARGO_PKG_VERSION"),
