@@ -62,7 +62,7 @@ alias fish11_startup {
   }
   
   ; Get and display core DLL version
-  var %core_version = $dll(%Fish11DllFile, FiSH11_GetVersion, $null)
+  var %core_version = $dll(%Fish11DllFile, FiSH11_CoreVersion, $null)
   if (%core_version) {
     echo -ts *** %core_version ***
   }
