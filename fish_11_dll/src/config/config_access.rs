@@ -6,7 +6,7 @@ use crate::config::CONFIG;
 use crate::config::file_storage::save_config;
 use crate::config::models::FishConfig;
 use crate::error::{FishError, Result};
-use crate::log_debug;
+use crate::{log_debug, log_warn, log_info, log_error};
 
 /// A read-only guard for the configuration
 pub struct ConfigReadGuard<'a> {
@@ -66,7 +66,7 @@ impl<'a> Drop for ConfigWriteGuard<'a> {
             // Try to save, but ignore errors since we're in a destructor
             match save_config(&self.guard, None) {
                 Ok(_) => log_debug!("ConfigWriteGuard::drop - config saved successfully"),
-                Err(e) => log::warn!("ConfigWriteGuard::drop - failed to save config: {}", e),
+                Err(e) => log_warn!("ConfigWriteGuard::drop - failed to save config: {}", e),
             }
         } else {
             log_debug!("ConfigWriteGuard::drop - config not modified, skipping save");
@@ -90,7 +90,7 @@ where
     F: FnOnce(&FishConfig) -> Result<T>,
 {
     #[cfg(debug_assertions)]
-    log::info!("with_config: Attempting to acquire read lock on CONFIG...");
+    log_info!("with_config: Attempting to acquire read lock on CONFIG...");
 
     // Add timeout to prevent deadlocks
     let timeout = std::time::Duration::from_secs(10); // Increased to 10 seconds
@@ -100,12 +100,12 @@ where
     const MAX_ATTEMPTS: usize = 30; // Increased to 30 attempts
 
     #[cfg(debug_assertions)]
-    log::info!("with_config: Starting lock acquisition loop (max attempts: {})...", MAX_ATTEMPTS);
+    log_info!("with_config: Starting lock acquisition loop (max attempts: {})...", MAX_ATTEMPTS);
 
     while attempts < MAX_ATTEMPTS {
         #[cfg(debug_assertions)]
         if attempts == 0 {
-            log::info!(
+            log_info!(
                 "with_config: Attempt {} - About to call CONFIG.try_lock()...",
                 attempts + 1
             );
@@ -113,7 +113,7 @@ where
 
         // Check if we've already timed out
         if start_time.elapsed() > timeout {
-            log::error!("with_config: operation timed out after {} attempts", attempts);
+            log_error!("with_config: operation timed out after {} attempts", attempts);
             return Err(FishError::ConfigError("Config lock timed out".to_string()));
         }
 
@@ -177,7 +177,7 @@ where
                 attempts += 1;
                 let backoff_ms = 10 + (attempts as u64 * 15); // Base 10ms + 15ms per attempt (up to ~310ms max)
                 if attempts % 3 == 0 {
-                    log::warn!(
+                    log_warn!(
                         "with_config: failed to acquire lock, attempt {}/{}, waiting {}ms",
                         attempts,
                         MAX_ATTEMPTS,
@@ -189,7 +189,7 @@ where
         }
     }
 
-    log::error!("with_config: failed to acquire lock after {} attempts", MAX_ATTEMPTS);
+    log_error!("with_config: failed to acquire lock after {} attempts", MAX_ATTEMPTS);
     Err(FishError::ConfigError("Failed to acquire config lock".to_string()))
 }
 
@@ -199,7 +199,7 @@ where
     F: FnOnce(&mut FishConfig) -> Result<T>,
 {
     #[cfg(debug_assertions)]
-    log::info!("with_config_mut: Attempting to acquire write lock on CONFIG...");
+    log_info!("with_config_mut: Attempting to acquire write lock on CONFIG...");
 
     // Add timeout to prevent deadlocks
     let timeout = std::time::Duration::from_secs(10); // Increased to 10 seconds
@@ -209,7 +209,7 @@ where
     const MAX_ATTEMPTS: usize = 30; // Increased to 30 attempts
 
     #[cfg(debug_assertions)]
-    log::info!(
+    log_info!(
         "with_config_mut: Starting lock acquisition loop (max attempts: {})...",
         MAX_ATTEMPTS
     );
@@ -217,7 +217,7 @@ where
     while attempts < MAX_ATTEMPTS {
         #[cfg(debug_assertions)]
         if attempts == 0 {
-            log::info!(
+            log_info!(
                 "with_config_mut: Attempt {} - About to call CONFIG.try_lock()...",
                 attempts + 1
             );
@@ -225,7 +225,7 @@ where
 
         // Check if we've already timed out
         if start_time.elapsed() > timeout {
-            log::error!("with_config_mut: operation timed out after {} attempts", attempts);
+            log_error!("with_config_mut: operation timed out after {} attempts", attempts);
             return Err(FishError::ConfigError("Config write lock timed out".to_string()));
         }
 
@@ -266,7 +266,7 @@ where
 
                 // Check if saving would time out
                 if start_time.elapsed() > timeout {
-                    log::error!("with_config_mut: timed out before saving");
+                    log_error!("with_config_mut: timed out before saving");
                     return result;
                 }
 
@@ -274,7 +274,7 @@ where
                 match &result {
                     Ok(_) => {
                         if let Err(e) = guard.save_if_modified() {
-                            log::error!("with_config_mut: Error saving config: {}", e);
+                            log_error!("with_config_mut: Error saving config: {}", e);
                             // Mark as not modified to prevent double-save in Drop
                             guard.modified = false;
                         } else {
@@ -315,7 +315,7 @@ where
                 attempts += 1;
                 let backoff_ms = 10 + (attempts as u64 * 15); // Base 10ms + 15ms per attempt (up to ~310ms max)
                 if attempts % 3 == 0 {
-                    log::warn!(
+                    log_warn!(
                         "with_config_mut: failed to acquire lock, attempt {}/{}, waiting {}ms",
                         attempts,
                         MAX_ATTEMPTS,
@@ -327,6 +327,6 @@ where
         }
     }
 
-    log::error!("with_config_mut: failed to acquire lock after {} attempts", MAX_ATTEMPTS);
+    log_error!("with_config_mut: failed to acquire lock after {} attempts", MAX_ATTEMPTS);
     Err(FishError::ConfigError("Failed to acquire config write lock".to_string()))
 }
