@@ -64,3 +64,23 @@ pub const ENCRYPTION_PREFIX_MCPS: &str = "mcps ";
 /// FiSH Key Exchange Markers
 pub const KEY_EXCHANGE_INIT: &str = "X25519_INIT";
 pub const KEY_EXCHANGE_PUBKEY: &str = "FiSH11-PubKey:";
+
+/// Version sémantique, par exemple "5.0.1-13-g5ee5b76"
+pub const BUILD_VERSION: &str = match option_env!("VERGEN_GIT_DESCRIBE") {
+    Some(version) => version,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
+/// Date de compilation, par exemple "2024-08-01"
+pub const BUILD_DATE: &str = match option_env!("VERGEN_BUILD_DATE") {
+    Some(date) => date,
+    None => "N/A",
+};
+
+/// Heure de compilation, par exemple "23:25:01"
+pub const BUILD_TIME: &str = match option_env!("VERGEN_BUILD_TIME") {
+    Some(time) => time,
+    None => "N/A",
+};
+
+

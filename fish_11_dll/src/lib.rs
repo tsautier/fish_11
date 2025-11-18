@@ -36,23 +36,17 @@ pub mod channel_encryption;
 #[cfg(windows)]
 pub mod engine_registration;
 
-/// Get build information from VERGEN or use fallbacks
-pub const FISH_11_BUILD_DATE: &str = match option_env!("VERGEN_BUILD_DATE") {
-    Some(date) => date,
-    None => env!("FISH_FALLBACK_DATE"),
-};
+// Use the centralized version string from the core library
+// Reconstruct the original version string for the DLL using the correct format and centralized build components.
+pub fn fish_main_version() -> String {
+    format!(
+        "*** FiSH_11 core v{} - Compiled {} at {} - Written by [GuY], licensed under the GPL-v3. ***",
+        fish_11_core::globals::BUILD_VERSION,
+        fish_11_core::globals::BUILD_DATE,
+        fish_11_core::globals::BUILD_TIME
+    )
+}
 
-/// Get build information from VERGEN or use fallbacks
-pub const FISH_11_BUILD_TIME: &str = match option_env!("VERGEN_BUILD_TIME") {
-    Some(time) => time,
-    None => env!("FISH_FALLBACK_TIME"),
-};
-
-/// Version of the FiSH_11 DLL
-pub const FISH_11_VERSION: &str = env!("CARGO_PKG_VERSION");
-
-/// Complete version string with all information
-pub const FISH_MAIN_VERSION: &str = env!("FISH_MAIN_VERSION");
 
 /// Global storage for current IRC network name
 /// Updated by fish_inject when it detects the network from IRC "005" messages

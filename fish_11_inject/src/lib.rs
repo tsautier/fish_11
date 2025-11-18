@@ -72,23 +72,6 @@ const MIRC_CONTINUE: c_int = 1;
 #[allow(dead_code)]
 const MIRC_COMMAND: c_int = 2;
 
-/// Get build information from VERGEN or use fallbacks
-pub const FISH_11_BUILD_DATE: &str = match option_env!("FISH_BUILD_DATE") {
-    Some(date) => date,
-    None => "unknown",
-};
-
-/// Get build information from VERGEN or use fallbacks
-pub const FISH_11_BUILD_TIME: &str = match option_env!("FISH_BUILD_TIME") {
-    Some(time) => time,
-    None => "unknown",
-};
-
-pub const FISH_11_VERSION: &str = env!("CARGO_PKG_VERSION");
-
-/// Complete version string with all information
-pub const FISH_MAIN_VERSION: &str = env!("FISH_MAIN_VERSION");
-
 /// Global flags
 static LOADED: AtomicBool = AtomicBool::new(false);
 static VERSION_SHOWN: AtomicBool = AtomicBool::new(false);
@@ -181,7 +164,9 @@ pub unsafe extern "system" fn DllMain(
             info!("***");
             info!(
                 "FiSH_11 inject v{} (build date: {}, build time: {})",
-                FISH_11_VERSION, FISH_11_BUILD_DATE, FISH_11_BUILD_TIME
+                fish_11_core::globals::CRATE_VERSION,
+                fish_11_core::globals::BUILD_DATE,
+                fish_11_core::globals::BUILD_TIME
             );
             info!("***");
             info!("The DLL is loaded successfully. Now it's time to h00k some calls baby !");

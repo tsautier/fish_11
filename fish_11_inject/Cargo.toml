@@ -41,9 +41,6 @@ chrono = "0.4"
 [dependencies.fish_11_core]
 path = "../fish_11_core"
 
-[build-dependencies]
-vergen = { version = "9.0.6", features = ["build", "cargo", "rustc", "si"] }
-
 # NO dependencies on non-Windows platforms
 [target.'cfg(not(windows))'.dependencies]
 # Intentionally empty to prevent building on non-Windows platforms !
