@@ -77,7 +77,7 @@ pub const BUILD_DATE: &str = match option_env!("VERGEN_BUILD_DATE") {
     None => "N/A",
 };
 
-/// Heure de compilation, par exemple "23:25:01"
+/// Build time, e.g. "23:25:01"
 pub const BUILD_TIME: &str = match option_env!("VERGEN_BUILD_TIME") {
     Some(time) => time,
     None => "N/A",
