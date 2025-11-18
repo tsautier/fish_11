@@ -43,44 +43,42 @@ pub static MIRC_BUFFER_SIZE: Mutex<usize> = Mutex::new(DEFAULT_MIRC_BUFFER_SIZE)
 // Maximum size of a message that can be encrypted/decrypted
 pub const MAX_MESSAGE_SIZE: usize = 4096;
 
-/// IRC Protocol Commands
+/// IRC protocol commands
 pub const CMD_PRIVMSG: &str = "PRIVMSG";
 pub const CMD_NOTICE: &str = "NOTICE";
 pub const CMD_JOIN: &str = "JOIN";
 pub const CMD_TOPIC: &str = "TOPIC";
 
-/// IRC Numeric Replies
+/// IRC numeric replies
 pub const RPL_WELCOME: &str = "001";
 pub const RPL_TOPIC: &str = "332";
 pub const RPL_ISUPPORT: &str = "005";
 
-/// FiSH_11 Encryption Markers  
+/// FiSH_11 encryption markers  
 pub const ENCRYPTION_PREFIX_FISH: &str = "+FiSH ";
 // FiSH_10 legacy
 pub const ENCRYPTION_PREFIX_OK: &str = "+OK ";
 // mircryption
 pub const ENCRYPTION_PREFIX_MCPS: &str = "mcps ";
 
-/// FiSH Key Exchange Markers
+/// FiSH key exchange markers
 pub const KEY_EXCHANGE_INIT: &str = "X25519_INIT";
 pub const KEY_EXCHANGE_PUBKEY: &str = "FiSH11-PubKey:";
 
-/// Version sémantique, par exemple "5.0.1-13-g5ee5b76"
+/// sematic version, e.g "5.0.1-13-g5ee5b76"
 pub const BUILD_VERSION: &str = match option_env!("VERGEN_GIT_DESCRIBE") {
     Some(version) => version,
     None => env!("CARGO_PKG_VERSION"),
 };
 
-/// Date de compilation, par exemple "2024-08-01"
+/// Build date, e.g "2024-08-01"
 pub const BUILD_DATE: &str = match option_env!("VERGEN_BUILD_DATE") {
     Some(date) => date,
     None => "N/A",
 };
 
-/// Heure de compilation, par exemple "23:25:01"
+/// Build time, e.g "23:25:01"
 pub const BUILD_TIME: &str = match option_env!("VERGEN_BUILD_TIME") {
     Some(time) => time,
-    None => "N/A",
+    None => "13:37",
 };
-
-

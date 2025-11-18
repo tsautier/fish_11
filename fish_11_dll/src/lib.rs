@@ -16,12 +16,12 @@
 //!
 //! Written by [GuY], 2025. Licensed under the GPL v3.
 
-pub mod platform_types;
 pub mod config;
 pub mod crypto;
 pub mod dll_interface;
 pub mod error;
 pub mod logging;
+pub mod platform_types;
 pub mod utils;
 
 pub mod buffer_utils;
@@ -47,11 +47,10 @@ pub fn fish_main_version() -> String {
     )
 }
 
-
+use once_cell::sync::Lazy;
 /// Global storage for current IRC network name
 /// Updated by fish_inject when it detects the network from IRC "005" messages
 use parking_lot::RwLock;
-use once_cell::sync::Lazy;
 
 pub static CURRENT_NETWORK: Lazy<RwLock<Option<String>>> = Lazy::new(|| RwLock::new(None));
 

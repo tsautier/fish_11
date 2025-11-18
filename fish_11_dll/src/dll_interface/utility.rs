@@ -2,7 +2,6 @@ use crate::log_debug;
 use crate::platform_types::{BOOL, HWND};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION};
 use sha2::{Digest, Sha256};
 use std::ffi::c_char;
 use std::os::raw::c_int;
@@ -14,18 +13,6 @@ use crate::dll_function_identifier;
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 use crate::{buffer_utils, config};
-
-dll_function_identifier!(FiSH11_GetVersion, _data, {
-    // Return raw version info for script to display
-    let version_info = format!(
-        "FiSH_11 core v{} - Compiled {} at {} - Licensed under GPL-v3",
-        BUILD_VERSION, BUILD_DATE, BUILD_TIME
-    );
-
-    log_debug!("FiSH11_GetVersion called, returning: {}", version_info);
-
-    Ok(version_info)
-});
 
 dll_function_identifier!(FiSH11_GetKeyFingerprint, data, {
     // Parse input to get the nickname

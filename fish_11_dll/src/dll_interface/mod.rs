@@ -1,10 +1,7 @@
 //use once_cell::sync::Lazy;
 //use regex::Regex;
-use std::ffi::{CStr, CString, c_char};
-//use std::os::raw::c_int;
+use std::ffi::CStr;
 use std::ptr;
-//use std::sync::Mutex;
-//use std::time::Duration;
 
 mod fish11_decryptmsg;
 mod fish11_encryptmsg;
@@ -17,6 +14,7 @@ mod fish11_getconfigpath;
 mod fish11_getkeyttl;
 mod fish11_help;
 mod fish11_setnetwork;
+mod fish_11_coreversion;
 mod key_management;
 mod utility;
 
