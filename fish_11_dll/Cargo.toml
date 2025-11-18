@@ -3,7 +3,7 @@ name = "fish_11"
 version = "11.25.0"
 edition = "2021"
 description = "FiSH_11 - secure encryption for mIRC : the core library"
-license = "GPL-v3.0"
+license = "GPL-3.0-or-later"
 authors = ["GuY"]
 
 [lib]

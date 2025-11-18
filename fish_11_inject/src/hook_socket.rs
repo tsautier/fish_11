@@ -219,7 +219,7 @@ pub unsafe extern "system" fn hooked_send(
             debug!("[SEND DEBUG] Socket {}: UTF-8 content (sanitized): {:?}", s, sanitized);
 
             // Check for IRC protocol markers
-            if text.contains(CMD_PRIVMSG ) || text.contains(CMD_NOTICE) || text.contains(CMD_JOIN) {
+            if text.contains(CMD_PRIVMSG) || text.contains(CMD_NOTICE) || text.contains(CMD_JOIN) {
                 debug!("[SEND DEBUG] socket {}: detected IRC protocol command", s);
             }
 

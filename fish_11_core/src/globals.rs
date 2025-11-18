@@ -65,19 +65,19 @@ pub const ENCRYPTION_PREFIX_MCPS: &str = "mcps ";
 pub const KEY_EXCHANGE_INIT: &str = "X25519_INIT";
 pub const KEY_EXCHANGE_PUBKEY: &str = "FiSH11-PubKey:";
 
-/// sematic version, e.g "5.0.1-13-g5ee5b76"
+/// Semantic version, e.g. "5.0.1-13-g5ee5b76"
 pub const BUILD_VERSION: &str = match option_env!("VERGEN_GIT_DESCRIBE") {
     Some(version) => version,
     None => env!("CARGO_PKG_VERSION"),
 };
 
-/// Build date, e.g "2024-08-01"
+/// Build date, e.g. "2024-08-01"
 pub const BUILD_DATE: &str = match option_env!("VERGEN_BUILD_DATE") {
     Some(date) => date,
     None => "N/A",
 };
 
-/// Build time, e.g "23:25:01"
+/// Build time, e.g. "23:25:01"
 pub const BUILD_TIME: &str = match option_env!("VERGEN_BUILD_TIME") {
     Some(time) => time,
     None => "13:37",
