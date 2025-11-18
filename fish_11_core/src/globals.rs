@@ -71,7 +71,7 @@ pub const BUILD_VERSION: &str = match option_env!("VERGEN_GIT_DESCRIBE") {
     None => env!("CARGO_PKG_VERSION"),
 };
 
-/// Date de compilation, par exemple "2024-08-01"
+/// Build date, e.g. "2024-08-01"
 pub const BUILD_DATE: &str = match option_env!("VERGEN_BUILD_DATE") {
     Some(date) => date,
     None => "N/A",
