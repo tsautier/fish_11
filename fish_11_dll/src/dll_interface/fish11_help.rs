@@ -17,7 +17,7 @@ dll_function_identifier!(FiSH11_Help, _data, {
         format!("Written by [GuY], {} - licensed under the GPL v3.", CURRENT_YEAR),
         "".to_string(), // Empty line
         "Commands:".to_string(),
-        "  FiSH11_GetVersion : show version information".to_string(),
+        "  FiSH11_CoreVersion : show version information".to_string(),
         "  FiSH11_GenKey <nick> : generate a random key".to_string(),
         "  FiSH11_SetKey <nick> <key> : set a key manually".to_string(),
         "  FiSH11_FileGetKey <nick> : get the key for a nickname".to_string(),

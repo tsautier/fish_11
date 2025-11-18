@@ -14,7 +14,7 @@ mod fish11_getconfigpath;
 mod fish11_getkeyttl;
 mod fish11_help;
 mod fish11_setnetwork;
-mod fish_11_coreversion;
+mod fish11_coreversion;
 mod key_management;
 mod utility;
 
