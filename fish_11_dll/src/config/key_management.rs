@@ -409,8 +409,8 @@ pub fn get_configured_key_ttl() -> i64 {
             }
         }
         Err(e) => {
-            log_debug!("Failed to read TTL config: {}, using default ({})", e, DEFAULT_KEY_TTL);
-            DEFAULT_KEY_TTL
+            log_debug!("Failed to read TTL config: {}, using default ({})", e, DEFAULT_TTL);
+            DEFAULT_TTL
         }
     }
 }
