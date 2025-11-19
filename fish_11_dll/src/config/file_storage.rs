@@ -278,6 +278,12 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
         if let Some(value) = ini.get(section_name, "no_fish10_legacy") {
             config.fish11.no_fish10_legacy = value.eq_ignore_ascii_case("true") || value == "1";
         }
+
+        if let Some(value) = ini.get(section_name, "key_ttl") {
+            if let Ok(ttl) = value.parse::<i64>() {
+                config.fish11.key_ttl = Some(ttl);
+            }
+        }
     }
     log_warn!("load_config: [FiSH11] processed in {:?}", fish11_start.elapsed());
     let startup_start = std::time::Instant::now();
@@ -381,6 +387,9 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
     ini.set("FiSH11", "mark_position", Some(config.fish11.mark_position.to_string()));
     ini.set("FiSH11", "mark_encrypted", Some(config.fish11.mark_encrypted.clone()));
     ini.set("FiSH11", "no_fish10_legacy", Some(config.fish11.no_fish10_legacy.to_string()));
+    if let Some(ttl) = config.fish11.key_ttl {
+        ini.set("FiSH11", "key_ttl", Some(ttl.to_string()));
+    }
 
     // Save [Startup] section
     if let Some(date) = config.startup_data.date {

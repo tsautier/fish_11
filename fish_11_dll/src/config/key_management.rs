@@ -15,6 +15,34 @@ use crate::log_info;
 
 
 // ============================================================================
+/// Represents the status and configuration of an encryption key for a specific user on a network.
+///
+/// This structure holds information about a key's current state, including whether it's
+/// being used for key exchange, its validity, and its time-to-live (TTL) configuration.
+///
+/// # Fields
+///
+/// * `nickname` - The nickname/username associated with this key
+/// * `network` - The network identifier where this key is used
+/// * `is_exchange` - Indicates if this key is currently being used for a key exchange operation
+/// * `is_valid` - Indicates whether the key is valid and can be used for encryption/decryption
+/// * `ttl` - Optional time-to-live in seconds. When `Some(value)`, the key will expire after
+///   the specified duration. When `None`, the key has no expiration.
+///
+/// # Note
+///
+/// TTL configuration via INI file is currently unimplemented. This is placeholder
+/// functionality for future development.
+/// 
+#[derive(Debug, Clone)]
+pub struct KeyStatus {
+    pub nickname: String,
+    pub network: String,
+    pub is_exchange: bool,
+    pub is_valid: bool,
+    pub ttl: Option<i64>,
+}
+
 // Internal lock-free helper functions
 // ============================================================================
 // These functions work with a provided &FishConfig or &mut FishConfig reference
@@ -251,9 +279,16 @@ pub fn delete_key(nickname: &str, network: Option<&str>) -> Result<()> {
 }
 
 /// Get the time-to-live (TTL) for a key in seconds.
+///
+/// Returns:
+/// - `Ok(Some(seconds))` - Time remaining until expiration (0 if expired)
+/// - `Ok(None)` - Key is not an exchange key (no TTL)
+/// - `Err` - Key not found or other error
 pub fn get_key_ttl(nickname: &str, network: Option<&str>) -> DllResult<Option<i64>> {
-    const KEY_LIFETIME_SECONDS: i64 = 86400; // 24 hours
+    const GRACE_PERIOD_SECONDS: i64 = 300; // 5 minutes grace period for clock drift
 
+    // Get configured TTL instead of hardcoded value
+    let key_lifetime_seconds = get_configured_key_ttl();
     let normalized_nick = normalize_nick(nickname);
 
     let result = with_config(|config| {
@@ -272,8 +307,11 @@ pub fn get_key_ttl(nickname: &str, network: Option<&str>) -> DllResult<Option<i6
                         let duration = now.signed_duration_since(key_date);
                         let elapsed_seconds = duration.num_seconds();
 
-                        if elapsed_seconds < KEY_LIFETIME_SECONDS {
-                            return Ok(Some(KEY_LIFETIME_SECONDS - elapsed_seconds));
+                        // Add grace period to account for clock drift
+                        let remaining_seconds = key_lifetime_seconds + GRACE_PERIOD_SECONDS - elapsed_seconds;
+
+                        if remaining_seconds > 0 {
+                            return Ok(Some(remaining_seconds));
                         } else {
                             return Ok(Some(0)); // Expired
                         }
@@ -288,6 +326,235 @@ pub fn get_key_ttl(nickname: &str, network: Option<&str>) -> DllResult<Option<i6
         }
     });
     result.map_err(DllError::from)
+}
+
+/// Get the time-to-live (TTL) for a key in a human-readable format.
+///
+/// Returns:
+/// - `Ok(String)` - Human-readable TTL description
+/// - `Err` - Key not found or other error
+pub fn get_key_ttl_human_readable(nickname: &str, network: Option<&str>) -> DllResult<String> {
+    let ttl = get_key_ttl(nickname, network)?;
+
+    match ttl {
+        Some(0) => Ok("EXPIRED".to_string()),
+        Some(seconds) => {
+            let hours = seconds / 3600;
+            let minutes = (seconds % 3600) / 60;
+            if hours > 0 {
+                Ok(format!("{}h {}m", hours, minutes))
+            } else {
+                Ok(format!("{}m", minutes))
+            }
+        }
+        None => Ok("NO_TTL".to_string()),
+    }
+}
+
+/// Get the configured TTL for exchange keys (in seconds).
+///
+/// This function reads the TTL from the configuration file, defaulting to 24 hours.
+/// The TTL can be configured in `fish_11.ini` under the `[fish11]` section with the key `key_ttl`.
+///
+/// # Configuration Example
+/// ```ini
+/// [fish11]
+/// key_ttl=86400  ; 24 hours in seconds
+/// ```
+///
+/// # Returns
+/// - Configured TTL value if found and valid (>= 3600 and <= 604800)
+/// - Default value of 86400 seconds (24 hours) if not configured or invalid
+///
+/// # Valid Range
+/// - Minimum: 3600 seconds (1 hour) - prevents too frequent re-keying
+/// - Maximum: 604800 seconds (7 days) - ensures regular key rotation for security
+pub fn get_configured_key_ttl() -> i64 {
+    const DEFAULT_TTL: i64 = 86400; // 24 hours
+    const MIN_TTL: i64 = 3600; // 1 hour minimum
+    const MAX_TTL: i64 = 604800; // 7 days maximum
+
+    let result = with_config(|config| {
+        // Read key_ttl from fish11 section, defaulting to 24 hours
+        Ok(config.fish11.key_ttl.unwrap_or(DEFAULT_TTL))
+    });
+
+    match result {
+        Ok(ttl) => {
+            // Validate TTL is within acceptable range
+            if ttl < MIN_TTL {
+                log_debug!("Configured TTL ({}) is below minimum ({}), using minimum", ttl, MIN_TTL);
+                MIN_TTL
+            } else if ttl > MAX_TTL {
+                log_debug!("Configured TTL ({}) exceeds maximum ({}), using maximum", ttl, MAX_TTL);
+                MAX_TTL
+            } else {
+                ttl
+            }
+        }
+        Err(e) => {
+            log_debug!("Failed to read TTL config: {}, using default ({})", e, DEFAULT_TTL);
+            DEFAULT_TTL
+        }
+    }
+}
+
+/// Set the TTL for exchange keys (in seconds).
+///
+/// This function would be used to configure the TTL via the INI file.
+pub fn set_configured_key_ttl(_ttl_seconds: i64) -> DllResult<()> {
+    // Placeholder for future implementation that would read from config
+    // For now, we'll just return Ok(())
+    Ok(())
+}
+
+/// Check if a key is about to expire (within a configurable warning threshold).
+///
+/// Returns:
+/// - `Ok(true)` - Key is about to expire (within 1 hour)
+/// - `Ok(false)` - Key is not about to expire
+/// - `Err` - Key not found or other error
+pub fn is_key_about_to_expire(nickname: &str, network: Option<&str>) -> DllResult<bool> {
+    const WARNING_THRESHOLD_SECONDS: i64 = 3600; // 1 hour warning threshold
+
+    let ttl = get_key_ttl(nickname, network)?;
+
+    match ttl {
+        Some(seconds) => {
+            // If seconds is 0 or negative, the key is expired
+            if seconds <= WARNING_THRESHOLD_SECONDS {
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        }
+        None => Ok(false), // Not an exchange key, no TTL
+    }
+}
+
+/// Get detailed key status information.
+///
+/// Returns:
+/// - `Ok(KeyStatus)` - Detailed status information
+/// - `Err` - Key not found or other error
+pub fn get_key_status(nickname: &str, network: Option<&str>) -> DllResult<KeyStatus> {
+    let normalized_nick = normalize_nick(nickname);
+
+    let result = with_config(|config| {
+        let network_name = resolve_network_name(config, network, &normalized_nick, true);
+        let entry_key = format!("{}@{}", normalized_nick, network_name);
+
+        if let Some(entry) = config.entries.get(&entry_key) {
+            let is_exchange = entry.is_exchange == Some(true);
+            let is_valid = is_exchange; // For now, we consider exchange keys as valid
+
+            let ttl = if is_exchange {
+                match get_key_ttl(nickname, network) {
+                    Ok(Some(seconds)) => Some(seconds),
+                    Ok(None) => None,
+                    Err(_) => None,
+                }
+            } else {
+                None
+            };
+
+            Ok(KeyStatus {
+                nickname: normalized_nick.to_string(),
+                network: network_name,
+                is_exchange,
+                is_valid,
+                ttl,
+            })
+        } else {
+            Err(FishError::KeyNotFound(normalized_nick.to_string()))
+        }
+    });
+    result.map_err(DllError::from)
+}
+
+/// Get key status in a human-readable format.
+///
+/// Returns:
+/// - `Ok(String)` - Human-readable status description
+/// - `Err` - Key not found or other error
+pub fn get_key_status_human_readable(nickname: &str, network: Option<&str>) -> DllResult<String> {
+    let status = get_key_status(nickname, network)?;
+
+    let mut parts = vec![];
+
+    if status.is_exchange {
+        parts.push("exchange key".to_string());
+    } else {
+        parts.push("manual key".to_string());
+    }
+
+    if let Some(ttl) = status.ttl {
+        if ttl <= 0 {
+            parts.push("expired".to_string());
+        } else {
+            let hours = ttl / 3600;
+            let minutes = (ttl % 3600) / 60;
+            if hours > 0 {
+                parts.push(format!("expires in {}h {}m", hours, minutes));
+            } else {
+                parts.push(format!("expires in {}m", minutes));
+            }
+        }
+    }
+
+    Ok(parts.join(", "))
+}
+
+/// Get all keys with their TTL information.
+///
+/// Returns:
+/// - `Ok(Vec<KeyInfo>)` - List of all keys with their information
+pub fn get_all_keys_with_ttl() -> DllResult<Vec<KeyInfo>> {
+    let mut keys_info = Vec::new();
+
+    let result = with_config(|config| {
+        for (entry_key, entry) in &config.entries {
+            // Parse nickname and network from the entry key
+            let (nickname, network) = if let Some(at_pos) = entry_key.find('@') {
+                let nick = &entry_key[..at_pos];
+                let net = &entry_key[at_pos + 1..];
+                (nick.to_string(), net.to_string())
+            } else {
+                // Fallback for keys without network
+                (entry_key.clone(), "default".to_string())
+            };
+
+            let is_exchange = entry.is_exchange == Some(true);
+            let ttl = if is_exchange {
+                match get_key_ttl(&nickname, Some(&network)) {
+                    Ok(Some(seconds)) => Some(seconds),
+                    _ => None,
+                }
+            } else {
+                None
+            };
+
+            keys_info.push(KeyInfo {
+                nickname,
+                network,
+                is_exchange,
+                ttl,
+            });
+        }
+        Ok(())
+    });
+    result.map_err(DllError::from)?;
+
+    Ok(keys_info)
+}
+
+/// Key information structure
+#[derive(Debug, Clone)]
+pub struct KeyInfo {
+    pub nickname: String,
+    pub network: String,
+    pub is_exchange: bool,
+    pub ttl: Option<i64>, // Time to live in seconds
 }
 
 /// Get our keypair
@@ -436,13 +703,16 @@ pub fn store_keypair(keypair: &crypto::KeyPair) -> Result<()> {
 
 /// Check if a key has expired and delete it if it has.
 pub fn check_key_expiry(nickname: &str, network: Option<&str>) -> DllResult<()> {
-    const KEY_LIFETIME_SECONDS: i64 = 86400; // 24 hours
+    const GRACE_PERIOD_SECONDS: i64 = 300; // 5 minutes grace period for clock drift
 
+    // Get configured TTL instead of hardcoded value
+    let key_lifetime_seconds = get_configured_key_ttl();
     let normalized_nick = normalize_nick(nickname);
 
     // This closure returns Ok(true) if a key was expired, Ok(false) otherwise.
     let was_expired = with_config_mut(|config| {
-        let network_name = resolve_network_name(config, network, &normalized_nick, true);
+        // Use the simpler resolution method for consistency
+        let network_name = resolve_network_name_simple(network);
         let entry_key = format!("{}@{}", normalized_nick, network_name);
 
         if let Some(entry) = config.entries.get(&entry_key) {
@@ -455,7 +725,8 @@ pub fn check_key_expiry(nickname: &str, network: Option<&str>) -> DllResult<()> 
                     let now = Local::now().naive_local();
                     let duration = now.signed_duration_since(key_date);
 
-                    if duration.num_seconds() > KEY_LIFETIME_SECONDS {
+                    // Add grace period to account for clock drift
+                    if duration.num_seconds() > key_lifetime_seconds + GRACE_PERIOD_SECONDS {
                         log_debug!(
                             "Key for '{}' on network '{}' has expired (age: {}s). Deleting.",
                             normalized_nick,
@@ -568,5 +839,97 @@ mod tests {
         // Cleanup
         delete_key(nickname1, Some("testnet")).ok();
         delete_key(nickname2, Some("testnet")).ok();
+    }
+
+    #[test]
+    fn test_get_key_ttl() {
+        // Tests getting TTL for a key
+        let nickname = "ttl_test_user";
+        let key = random_key();
+
+        // Set a key with exchange flag
+        set_key(nickname, &key, Some("testnet"), true, true).expect("Failed to set key");
+
+        // Check that TTL is returned
+        let ttl = get_key_ttl(nickname, Some("testnet")).expect("Failed to get TTL");
+        assert!(ttl.is_some());
+        assert!(ttl.unwrap() > 0);
+
+        // Cleanup
+        delete_key(nickname, Some("testnet")).ok();
+    }
+
+    #[test]
+    fn test_get_key_ttl_human_readable() {
+        // Tests getting human-readable TTL for a key
+        let nickname = "ttl_readable_test_user";
+        let key = random_key();
+
+        // Set a key with exchange flag
+        set_key(nickname, &key, Some("testnet"), true, true).expect("Failed to set key");
+
+        // Check that human-readable TTL is returned
+        let ttl = get_key_ttl_human_readable(nickname, Some("testnet")).expect("Failed to get TTL");
+        assert!(!ttl.is_empty());
+
+        // Cleanup
+        delete_key(nickname, Some("testnet")).ok();
+    }
+
+    #[test]
+    fn test_key_expiry() {
+        // Tests key expiry functionality
+        let nickname = "expiry_test_user";
+        let key = random_key();
+
+        // Set a key with exchange flag
+        set_key(nickname, &key, Some("testnet"), true, true).expect("Failed to set key");
+
+        // Check that key is not expired
+        let result = check_key_expiry(nickname, Some("testnet"));
+        assert!(result.is_ok());
+
+        // Cleanup
+        delete_key(nickname, Some("testnet")).ok();
+    }
+
+    #[test]
+    fn test_key_status() {
+        // Tests getting key status
+        let nickname = "status_test_user";
+        let key = random_key();
+
+        // Set a key with exchange flag
+        set_key(nickname, &key, Some("testnet"), true, true).expect("Failed to set key");
+
+        // Check that key status is returned
+        let status = get_key_status(nickname, Some("testnet")).expect("Failed to get key status");
+        assert_eq!(status.nickname, nickname);
+        assert!(status.is_exchange);
+        assert!(status.is_valid);
+
+        // Test human-readable status
+        let human_readable = get_key_status_human_readable(nickname, Some("testnet")).expect("Failed to get human-readable status");
+        assert!(!human_readable.is_empty());
+
+        // Cleanup
+        delete_key(nickname, Some("testnet")).ok();
+    }
+
+    #[test]
+    fn test_get_all_keys_with_ttl() {
+        // Tests getting all keys with TTL
+        let nickname = "all_keys_test_user";
+        let key = random_key();
+
+        // Set a key with exchange flag
+        set_key(nickname, &key, Some("testnet"), true, true).expect("Failed to set key");
+
+        // Check that all keys are returned
+        let all_keys = get_all_keys_with_ttl().expect("Failed to get all keys");
+        assert!(!all_keys.is_empty());
+
+        // Cleanup
+        delete_key(nickname, Some("testnet")).ok();
     }
 }

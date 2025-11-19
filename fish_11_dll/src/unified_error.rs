@@ -256,6 +256,8 @@ impl DllError {
 
         // Special handling for KeyExpired to trigger re-exchange
         if let DllError::KeyExpired { nickname } = self {
+            // Log the expiration event for security monitoring
+            log::info!("Key expiration detected for user: {}", nickname);
             // Return a simple, parseable identifier instead of a full command.
             // The mIRC script will be responsible for handling this output.
             let mirc_identifier = format!("KEY_EXPIRED {}", nickname);
@@ -568,5 +570,11 @@ mod tests {
         let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "test");
         let dll_err: DllError = io_err.into();
         assert!(matches!(dll_err, DllError::Io(_)));
+    }
+
+    #[test]
+    fn test_key_expired_error() {
+        let err = DllError::KeyExpired { nickname: "test_user".to_string() };
+        assert_eq!(err.to_string(), "encryption key for 'test_user' has expired");
     }
 }
