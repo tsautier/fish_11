@@ -41,6 +41,9 @@ pub struct Fish11Section {
     pub mark_position: u8,
     pub mark_encrypted: String,
     pub no_fish10_legacy: bool,
+    /// Time-to-live for exchange keys in seconds (default: 86400 = 24 hours)
+    /// Valid range: 3600 (1 hour) to 604800 (7 days)
+    pub key_ttl: Option<i64>,
 }
 
 impl Default for Fish11Section {
@@ -55,6 +58,7 @@ impl Default for Fish11Section {
             mark_position: 1,
             mark_encrypted: " 12$chr(183)".to_string(),
             no_fish10_legacy: false,
+            key_ttl: None, // None means use default (86400 seconds)
         }
     }
 }

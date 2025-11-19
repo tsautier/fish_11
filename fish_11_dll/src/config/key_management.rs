@@ -257,9 +257,10 @@ pub fn delete_key(nickname: &str, network: Option<&str>) -> Result<()> {
 /// - `Ok(None)` - Key is not an exchange key (no TTL)
 /// - `Err` - Key not found or other error
 pub fn get_key_ttl(nickname: &str, network: Option<&str>) -> DllResult<Option<i64>> {
-    const KEY_LIFETIME_SECONDS: i64 = 86400; // 24 hours
     const GRACE_PERIOD_SECONDS: i64 = 300; // 5 minutes grace period for clock drift
 
+    // Get configured TTL instead of hardcoded value
+    let key_lifetime_seconds = get_configured_key_ttl();
     let normalized_nick = normalize_nick(nickname);
 
     let result = with_config(|config| {
@@ -279,7 +280,7 @@ pub fn get_key_ttl(nickname: &str, network: Option<&str>) -> DllResult<Option<i6
                         let elapsed_seconds = duration.num_seconds();
 
                         // Add grace period to account for clock drift
-                        let remaining_seconds = KEY_LIFETIME_SECONDS + GRACE_PERIOD_SECONDS - elapsed_seconds;
+                        let remaining_seconds = key_lifetime_seconds + GRACE_PERIOD_SECONDS - elapsed_seconds;
 
                         if remaining_seconds > 0 {
                             return Ok(Some(remaining_seconds));
@@ -325,9 +326,49 @@ pub fn get_key_ttl_human_readable(nickname: &str, network: Option<&str>) -> DllR
 /// Get the configured TTL for exchange keys (in seconds).
 ///
 /// This function reads the TTL from the configuration file, defaulting to 24 hours.
+/// The TTL can be configured in `fish_11.ini` under the `[fish11]` section with the key `key_ttl`.
+///
+/// # Configuration Example
+/// ```ini
+/// [fish11]
+/// key_ttl=86400  ; 24 hours in seconds
+/// ```
+///
+/// # Returns
+/// - Configured TTL value if found and valid (>= 3600 and <= 604800)
+/// - Default value of 86400 seconds (24 hours) if not configured or invalid
+///
+/// # Valid Range
+/// - Minimum: 3600 seconds (1 hour) - prevents too frequent re-keying
+/// - Maximum: 604800 seconds (7 days) - ensures regular key rotation for security
 pub fn get_configured_key_ttl() -> i64 {
-    // For now, we'll use the hardcoded value, but in the future this could read from config
-    86400 // 24 hours in seconds
+    const DEFAULT_TTL: i64 = 86400; // 24 hours
+    const MIN_TTL: i64 = 3600; // 1 hour minimum
+    const MAX_TTL: i64 = 604800; // 7 days maximum
+
+    let result = with_config(|config| {
+        // Read key_ttl from fish11 section, defaulting to 24 hours
+        Ok(config.fish11.key_ttl.unwrap_or(DEFAULT_TTL))
+    });
+
+    match result {
+        Ok(ttl) => {
+            // Validate TTL is within acceptable range
+            if ttl < MIN_TTL {
+                log_debug!("Configured TTL ({}) is below minimum ({}), using minimum", ttl, MIN_TTL);
+                MIN_TTL
+            } else if ttl > MAX_TTL {
+                log_debug!("Configured TTL ({}) exceeds maximum ({}), using maximum", ttl, MAX_TTL);
+                MAX_TTL
+            } else {
+                ttl
+            }
+        }
+        Err(e) => {
+            log_debug!("Failed to read TTL config: {}, using default ({})", e, DEFAULT_TTL);
+            DEFAULT_TTL
+        }
+    }
 }
 
 /// Set the TTL for exchange keys (in seconds).
@@ -634,9 +675,10 @@ pub fn store_keypair(keypair: &crypto::KeyPair) -> Result<()> {
 
 /// Check if a key has expired and delete it if it has.
 pub fn check_key_expiry(nickname: &str, network: Option<&str>) -> DllResult<()> {
-    const KEY_LIFETIME_SECONDS: i64 = 86400; // 24 hours
     const GRACE_PERIOD_SECONDS: i64 = 300; // 5 minutes grace period for clock drift
 
+    // Get configured TTL instead of hardcoded value
+    let key_lifetime_seconds = get_configured_key_ttl();
     let normalized_nick = normalize_nick(nickname);
 
     // This closure returns Ok(true) if a key was expired, Ok(false) otherwise.
@@ -656,7 +698,7 @@ pub fn check_key_expiry(nickname: &str, network: Option<&str>) -> DllResult<()> 
                     let duration = now.signed_duration_since(key_date);
 
                     // Add grace period to account for clock drift
-                    if duration.num_seconds() > KEY_LIFETIME_SECONDS + GRACE_PERIOD_SECONDS {
+                    if duration.num_seconds() > key_lifetime_seconds + GRACE_PERIOD_SECONDS {
                         log_debug!(
                             "Key for '{}' on network '{}' has expired (age: {}s). Deleting.",
                             normalized_nick,
