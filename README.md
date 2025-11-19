@@ -10,7 +10,7 @@ FiSH_11 is a modern implementation of an IRC encryption plugin, written in Rust.
 - **Post-compromise security**: compromised keys become useless after the next message exchange, with TTL on exchanged key 
 - **Automatic key management**: handles key generation, exchange, and cleanup automatically
 - **mIRC integration**: full integration with mIRC through DLL injection
-- **Portable**: shared librairies (.so format) for *NIX world.
+- **Portable**: shared libraries (.so format) for *NIX world.
 
 ## Documentation
 
