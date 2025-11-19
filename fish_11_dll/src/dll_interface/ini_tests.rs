@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 mod tests {
     use std::ffi::CString;
@@ -6,7 +5,7 @@ mod tests {
     use std::ptr;
 
     use crate::config::{self, Fish11Section};
-    use crate::dll_interface::{ini_types::*, MIRC_HALT};
+    use crate::dll_interface::{MIRC_HALT, ini_types::*};
     use crate::platform_types::HWND;
     use std::os::raw::c_int;
 
@@ -42,10 +41,14 @@ mod tests {
     ) -> (c_int, String) {
         let mut buffer: [c_char; 1024] = [0; 1024];
         let c_input = CString::new(input).unwrap();
-        
+
         // Copy input to buffer
         unsafe {
-            ptr::copy_nonoverlapping(c_input.as_ptr(), buffer.as_mut_ptr(), c_input.as_bytes().len());
+            ptr::copy_nonoverlapping(
+                c_input.as_ptr(),
+                buffer.as_mut_ptr(),
+                c_input.as_bytes().len(),
+            );
         }
 
         let result_code = unsafe {
@@ -60,11 +63,7 @@ mod tests {
         };
 
         let result_str = if result_code != MIRC_HALT {
-            unsafe {
-                std::ffi::CStr::from_ptr(buffer.as_ptr())
-                    .to_string_lossy()
-                    .into_owned()
-            }
+            unsafe { std::ffi::CStr::from_ptr(buffer.as_ptr()).to_string_lossy().into_owned() }
         } else {
             "".to_string()
         };
@@ -108,7 +107,11 @@ mod tests {
         // Should return error message (MIRC_COMMAND with raw error text)
         assert_eq!(result_code, crate::dll_interface::MIRC_COMMAND);
         // Empty input results in "invalid input" or "null pointer" error
-        assert!(msg.to_lowercase().contains("invalid") || msg.to_lowercase().contains("null") || msg.to_lowercase().contains("missing"));
+        assert!(
+            msg.to_lowercase().contains("invalid")
+                || msg.to_lowercase().contains("null")
+                || msg.to_lowercase().contains("missing")
+        );
     }
 
     // INI_GetString Tests

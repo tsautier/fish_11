@@ -13,6 +13,24 @@ use chrono::NaiveDateTime;
 
 use crate::log_info;
 
+// ============================================================================
+// TTL Configuration Constants
+// ============================================================================
+
+/// Default time-to-live for exchange keys (24 hours)
+const DEFAULT_KEY_TTL: i64 = 86400;
+
+/// Minimum allowed TTL for exchange keys (1 hour)
+/// Prevents too frequent re-keying which could impact performance and user experience
+const MIN_KEY_TTL: i64 = 3600;
+
+/// Maximum allowed TTL for exchange keys (7 days)
+/// Ensures regular key rotation for security best practices
+const MAX_KEY_TTL: i64 = 604800;
+
+/// Grace period for clock drift when checking key expiration (5 minutes)
+/// Allows tolerance for time synchronization issues between clients
+const KEY_EXPIRY_GRACE_PERIOD: i64 = 300;
 
 // ============================================================================
 /// Represents the status and configuration of an encryption key for a specific user on a network.
@@ -285,8 +303,6 @@ pub fn delete_key(nickname: &str, network: Option<&str>) -> Result<()> {
 /// - `Ok(None)` - Key is not an exchange key (no TTL)
 /// - `Err` - Key not found or other error
 pub fn get_key_ttl(nickname: &str, network: Option<&str>) -> DllResult<Option<i64>> {
-    const GRACE_PERIOD_SECONDS: i64 = 300; // 5 minutes grace period for clock drift
-
     // Get configured TTL instead of hardcoded value
     let key_lifetime_seconds = get_configured_key_ttl();
     let normalized_nick = normalize_nick(nickname);
@@ -308,7 +324,7 @@ pub fn get_key_ttl(nickname: &str, network: Option<&str>) -> DllResult<Option<i6
                         let elapsed_seconds = duration.num_seconds();
 
                         // Add grace period to account for clock drift
-                        let remaining_seconds = key_lifetime_seconds + GRACE_PERIOD_SECONDS - elapsed_seconds;
+                        let remaining_seconds = key_lifetime_seconds + KEY_EXPIRY_GRACE_PERIOD - elapsed_seconds;
 
                         if remaining_seconds > 0 {
                             return Ok(Some(remaining_seconds));
@@ -393,18 +409,69 @@ pub fn get_configured_key_ttl() -> i64 {
             }
         }
         Err(e) => {
-            log_debug!("Failed to read TTL config: {}, using default ({})", e, DEFAULT_TTL);
-            DEFAULT_TTL
+            log_debug!("Failed to read TTL config: {}, using default ({})", e, DEFAULT_KEY_TTL);
+            DEFAULT_KEY_TTL
         }
     }
 }
 
 /// Set the TTL for exchange keys (in seconds).
 ///
-/// This function would be used to configure the TTL via the INI file.
-pub fn set_configured_key_ttl(_ttl_seconds: i64) -> DllResult<()> {
-    // Placeholder for future implementation that would read from config
-    // For now, we'll just return Ok(())
+/// This function updates the `key_ttl` setting in the `[fish11]` section of the configuration file.
+/// The value is validated to be within the allowed range and persisted immediately.
+///
+/// # Arguments
+///
+/// * `ttl_seconds` - The new TTL value in seconds.
+///
+/// # Valid Range
+/// - Minimum: 3600 seconds (1 hour) - prevents too frequent re-keying
+/// - Maximum: 604800 seconds (7 days) - ensures regular key rotation for security
+///
+/// # Returns
+/// - `Ok(())` - TTL successfully updated and saved
+/// - `Err(DllError::InvalidInput)` - Value outside valid range
+/// - `Err(DllError::ConfigError)` - Failed to save configuration
+///
+/// # Example
+/// ```ignore
+/// // Set TTL to 48 hours (172800 seconds)
+/// set_configured_key_ttl(172800)?;
+/// ```
+pub fn set_configured_key_ttl(ttl_seconds: i64) -> DllResult<()> {
+    log_debug!("Attempting to set configured key TTL to {} seconds", ttl_seconds);
+
+    // Validate TTL is within acceptable range
+    if ttl_seconds < MIN_KEY_TTL {
+        log_debug!("Invalid TTL value: {}. Below minimum of {} seconds.", ttl_seconds, MIN_KEY_TTL);
+        return Err(DllError::InvalidInput {
+            param: "ttl_seconds".to_string(),
+            reason: format!(
+                "Value {} is below minimum. Must be at least {} seconds (1 hour).",
+                ttl_seconds, MIN_KEY_TTL
+            ),
+        });
+    }
+    
+    if ttl_seconds > MAX_KEY_TTL {
+        log_debug!("Invalid TTL value: {}. Exceeds maximum of {} seconds.", ttl_seconds, MAX_KEY_TTL);
+        return Err(DllError::InvalidInput {
+            param: "ttl_seconds".to_string(),
+            reason: format!(
+                "Value {} exceeds maximum. Must be at most {} seconds (7 days).",
+                ttl_seconds, MAX_KEY_TTL
+            ),
+        });
+    }
+
+    with_config_mut(|config| {
+        log_debug!("Setting config.fish11.key_ttl to Some({})", ttl_seconds);
+        config.fish11.key_ttl = Some(ttl_seconds);
+        config.mark_dirty();
+        Ok(())
+    })?;
+
+    log_debug!("Successfully set and saved key TTL to {} seconds.", ttl_seconds);
     Ok(())
 }
 
@@ -703,8 +770,6 @@ pub fn store_keypair(keypair: &crypto::KeyPair) -> Result<()> {
 
 /// Check if a key has expired and delete it if it has.
 pub fn check_key_expiry(nickname: &str, network: Option<&str>) -> DllResult<()> {
-    const GRACE_PERIOD_SECONDS: i64 = 300; // 5 minutes grace period for clock drift
-
     // Get configured TTL instead of hardcoded value
     let key_lifetime_seconds = get_configured_key_ttl();
     let normalized_nick = normalize_nick(nickname);
@@ -726,7 +791,7 @@ pub fn check_key_expiry(nickname: &str, network: Option<&str>) -> DllResult<()> 
                     let duration = now.signed_duration_since(key_date);
 
                     // Add grace period to account for clock drift
-                    if duration.num_seconds() > key_lifetime_seconds + GRACE_PERIOD_SECONDS {
+                    if duration.num_seconds() > key_lifetime_seconds + KEY_EXPIRY_GRACE_PERIOD {
                         log_debug!(
                             "Key for '{}' on network '{}' has expired (age: {}s). Deleting.",
                             normalized_nick,
