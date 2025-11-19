@@ -24,6 +24,7 @@ mod tests {
             mark_position: 5,
             mark_encrypted: "[encrypted]".to_string(),
             no_fish10_legacy: true,
+            key_ttl: Some(0),
         };
     }
 

@@ -100,6 +100,7 @@ mod tests {
             mark_encrypted: "[ENCRYPTED]".to_string(),
             no_fish10_legacy: true,
             nickname: "".to_string(),
+            key_ttl: Some(0),
         };
         update_fish11_config(config).unwrap();
     }
