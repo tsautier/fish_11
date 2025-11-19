@@ -32,7 +32,7 @@ FiSH_11 is a modern implementation of an IRC encryption plugin, written in Rust.
 ### Project management
 
 - **[Roadmap](./docs/ROADMAP.md)**: the development status and future plans ?
-- **[Contributing guide](./CONTRIBUTING.md)**: contribution are welcome ! :)
+- **[Contributing guide](./CONTRIBUTING.md)**: contributions are welcome ! :)
 
 ## License
 
