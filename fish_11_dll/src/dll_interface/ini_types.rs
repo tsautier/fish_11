@@ -1,11 +1,10 @@
-use std::ffi::c_char;
-use std::os::raw::c_int;
-use crate::platform_types::{BOOL, HWND};
 use crate::config;
 use crate::dll_function_identifier;
-use crate::unified_error::DllError;
 use crate::log_debug;
-
+use crate::platform_types::{BOOL, HWND};
+use crate::unified_error::DllError;
+use std::ffi::c_char;
+use std::os::raw::c_int;
 
 /// Gets a boolean value from the config file.
 /// Input: <key> [default_value]
@@ -97,7 +96,10 @@ dll_function_identifier!(INI_GetInt, data, {
         match s.parse::<i32>() {
             Ok(v) => v,
             Err(_) => {
-                log_debug!("INI_GetInt: could not parse default value '{}' as int, defaulting to 0.", s);
+                log_debug!(
+                    "INI_GetInt: could not parse default value '{}' as int, defaulting to 0.",
+                    s
+                );
                 0
             }
         }

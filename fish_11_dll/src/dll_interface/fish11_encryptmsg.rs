@@ -12,12 +12,12 @@ use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 
-/// Encrypts a message for a specific nickname or channel.
-/// This function handles the complete encryption workflow, including:
-/// - Retrieving the appropriate encryption key.
-/// - For channels: applying a symmetric key ratchet for Forward Secrecy.
-/// - Performing authenticated encryption with Associated Data.
-/// - Formatting the output with the FiSH protocol prefix `+FiSH `.
+// Encrypts a message for a specific nickname or channel.
+// This function handles the complete encryption workflow, including:
+// - Retrieving the appropriate encryption key.
+// - For channels: applying a symmetric key ratchet for Forward Secrecy.
+// - Performing authenticated encryption with Associated Data.
+// - Formatting the output with the FiSH protocol prefix `+FiSH `.
 dll_function_identifier!(FiSH11_EncryptMsg, data, {
     // 1. Parse input: <target> <message>
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
@@ -43,7 +43,7 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
         return Err(DllError::MissingParameter("message".to_string()));
     }
 
-    // --- Channel Encryption Logic ---
+    // Channel encryption logic here
     if target.starts_with('#') || target.starts_with('&') {
         log_debug!("Encrypting for channel: {}", target);
 
@@ -67,7 +67,11 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
                     cause: "Encrypted payload too short to contain a nonce".to_string(),
                 });
             }
-            let nonce: [u8; 12] = encrypted_bytes[..12].try_into().unwrap();
+            let nonce: [u8; 12] =
+                encrypted_bytes[..12].try_into().map_err(|_| DllError::EncryptionFailed {
+                    context: "nonce extraction".to_string(),
+                    cause: "Could not convert slice to 12-byte nonce array".to_string(),
+                })?;
 
             // Advance the ratchet to the next key.
             let next_key = crypto::advance_ratchet_key(&current_key, &nonce, target)?;
@@ -81,7 +85,7 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
         return Ok(result);
     }
 
-    // --- Private Message Encryption Logic ---
+    // --- Private message encryption logic
     let nickname = normalize_nick(target);
 
     if nickname.is_empty() {

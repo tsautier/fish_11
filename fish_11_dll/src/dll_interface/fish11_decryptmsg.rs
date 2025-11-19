@@ -75,7 +75,11 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
                 cause: "Encrypted payload too short to contain a nonce".to_string(),
             });
         }
-        let nonce: [u8; 12] = encrypted_bytes[..12].try_into().unwrap();
+        let nonce: [u8; 12] =
+            encrypted_bytes[..12].try_into().map_err(|_| DllError::DecryptionFailed {
+                context: "nonce extraction".to_string(),
+                cause: "Could not convert slice to 12-byte nonce array".to_string(),
+            })?;
 
         // 1. Anti-replay check (read-only)
         if config::check_nonce(target, &nonce)? {
