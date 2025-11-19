@@ -73,8 +73,10 @@ impl Zeroize for KeyPair {
 }
 
 /// Generate a new 32-byte symmetric key for ChaCha20-Poly1305
-pub fn generate_symmetric_key() -> [u8; 32] {
-    generate_random_bytes(32).try_into().unwrap()
+pub fn generate_symmetric_key() -> Result<[u8; 32]> {
+    generate_random_bytes(32)
+        .try_into()
+        .map_err(|_| FishError::CryptoError("Failed to convert Vec<u8> to [u8; 32]".to_string()))
 }
 
 impl Drop for KeyPair {

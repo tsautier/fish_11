@@ -2,10 +2,10 @@ use crate::buffer_utils;
 use crate::config;
 use crate::crypto;
 use crate::dll_function_identifier;
-use crate::unified_error::DllError;
-use std::ffi::{c_char, c_int};
 use crate::platform_types::BOOL;
 use crate::platform_types::HWND;
+use crate::unified_error::DllError;
+use std::ffi::{c_char, c_int};
 
 dll_function_identifier!(FiSH11_InitChannelKey, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
@@ -32,7 +32,7 @@ dll_function_identifier!(FiSH11_InitChannelKey, data, {
     }
 
     // 1. Generate a fresh random 32-byte channel key
-    let channel_key = crypto::generate_symmetric_key();
+    let channel_key = crypto::generate_symmetric_key()?;
 
     // 2. Store the channel key locally and initialize the ratchet state
     config::set_channel_key(channel_name, &channel_key)?;

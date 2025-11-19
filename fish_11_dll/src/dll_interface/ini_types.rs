@@ -1,11 +1,10 @@
-use std::ffi::c_char;
-use std::os::raw::c_int;
-
-use crate::platform_types::{BOOL, HWND};
-
 use crate::config;
 use crate::dll_function_identifier;
+use crate::log_debug;
+use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
+use std::ffi::c_char;
+use std::os::raw::c_int;
 
 /// Gets a boolean value from the config file.
 /// Input: <key> [default_value]
@@ -18,7 +17,27 @@ dll_function_identifier!(INI_GetBool, data, {
         return Err(DllError::MissingParameter("key".to_string()));
     }
 
-    let default = parts.get(1).map_or(false, |d| d.trim().parse::<i32>().unwrap_or(0) != 0);
+    let default = parts.get(1).map_or(false, |s| {
+        let s = s.trim();
+        if s.is_empty() {
+            return false;
+        }
+        // Handle common boolean strings first
+        if s.eq_ignore_ascii_case("true") {
+            return true;
+        }
+        if s.eq_ignore_ascii_case("false") {
+            return false;
+        }
+        // Fallback to integer parsing for 1/0
+        match s.parse::<i32>() {
+            Ok(v) => v != 0,
+            Err(_) => {
+                log_debug!("INI_GetBool: could not parse default value '{}' as bool or int, defaulting to false.", s);
+                false
+            }
+        }
+    });
 
     let config = config::get_fish11_config()?;
 
@@ -45,15 +64,14 @@ dll_function_identifier!(INI_GetString, data, {
         return Err(DllError::MissingParameter("key".to_string()));
     }
 
-    let default = parts.get(1).map_or("", |d| d.trim());
+    let default = parts.get(1).map_or("".to_string(), |d| d.trim().to_string());
 
-    let value = match config::get_fish11_config() {
-        Ok(config) => match key.to_lowercase().as_str() {
-            "plain_prefix" => config.plain_prefix,
-            "mark_encrypted" => config.mark_encrypted,
-            _ => default.to_string(),
-        },
-        Err(_) => default.to_string(),
+    let config = config::get_fish11_config()?;
+
+    let value = match key.to_lowercase().as_str() {
+        "plain_prefix" => config.plain_prefix,
+        "mark_encrypted" => config.mark_encrypted,
+        _ => default,
     };
 
     Ok(value)
@@ -70,14 +88,28 @@ dll_function_identifier!(INI_GetInt, data, {
         return Err(DllError::MissingParameter("key".to_string()));
     }
 
-    let default = parts.get(1).map_or(0, |d| d.trim().parse::<i32>().unwrap_or(0));
+    let default = parts.get(1).map_or(0, |s| {
+        let s = s.trim();
+        if s.is_empty() {
+            return 0;
+        }
+        match s.parse::<i32>() {
+            Ok(v) => v,
+            Err(_) => {
+                log_debug!(
+                    "INI_GetInt: could not parse default value '{}' as int, defaulting to 0.",
+                    s
+                );
+                0
+            }
+        }
+    });
 
-    let value = match config::get_fish11_config() {
-        Ok(config) => match key.to_lowercase().as_str() {
-            "mark_position" => config.mark_position as i32,
-            _ => default,
-        },
-        Err(_) => default,
+    let config = config::get_fish11_config()?;
+
+    let value = match key.to_lowercase().as_str() {
+        "mark_position" => config.mark_position as i32,
+        _ => default,
     };
 
     Ok(value.to_string())
@@ -100,6 +132,7 @@ mod tests {
             mark_encrypted: "[ENCRYPTED]".to_string(),
             no_fish10_legacy: true,
             nickname: "".to_string(),
+            key_ttl: Some(0),
         };
         update_fish11_config(config).unwrap();
     }
