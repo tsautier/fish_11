@@ -15,6 +15,34 @@ use crate::log_info;
 
 
 // ============================================================================
+/// Represents the status and configuration of an encryption key for a specific user on a network.
+///
+/// This structure holds information about a key's current state, including whether it's
+/// being used for key exchange, its validity, and its time-to-live (TTL) configuration.
+///
+/// # Fields
+///
+/// * `nickname` - The nickname/username associated with this key
+/// * `network` - The network identifier where this key is used
+/// * `is_exchange` - Indicates if this key is currently being used for a key exchange operation
+/// * `is_valid` - Indicates whether the key is valid and can be used for encryption/decryption
+/// * `ttl` - Optional time-to-live in seconds. When `Some(value)`, the key will expire after
+///   the specified duration. When `None`, the key has no expiration.
+///
+/// # Note
+///
+/// TTL configuration via INI file is currently unimplemented. This is placeholder
+/// functionality for future development.
+/// 
+#[derive(Debug, Clone)]
+pub struct KeyStatus {
+    pub nickname: String,
+    pub network: String,
+    pub is_exchange: bool,
+    pub is_valid: bool,
+    pub ttl: Option<i64>,
+}
+
 // Internal lock-free helper functions
 // ============================================================================
 // These functions work with a provided &FishConfig or &mut FishConfig reference
