@@ -13,7 +13,7 @@ FiSH_11 is a modern implementation of an IRC encryption plugin, fully written in
 
 #### mIRC client
 
-- [x] Right clic on an user => key exhange DH X25519 => encrypt/decrypt private messages :)
+- [x] Right click on a user => key exchange DH X25519 => encrypt/decrypt private messages :)
 - [x] Configuration persistence and key management (`fish_11.ini`)
 - [x] Read and write the fish_11.ini config file
 
