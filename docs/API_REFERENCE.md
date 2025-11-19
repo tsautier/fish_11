@@ -119,7 +119,6 @@ Get the time-to-live (TTL) for a key in seconds.
   - `network` (optional): the network name (default: current network)
 - **returns**:
   - `>0` - Time remaining until expiration in seconds
-  - `0` - Key has expired
   - `EXPIRED` - Key has expired (for mIRC scripts)
   - `NO_TTL` - Key is not an exchange key (manual key)
   - Error message on failure
