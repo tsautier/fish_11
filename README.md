@@ -40,7 +40,7 @@ FiSH_11 is a modern implementation of an IRC encryption plugin, fully written in
 - [x] cross-platform library: mature the `fish_11_core` library and provide stable C-APIs for easy integration on Linux and other systems.
 - [x] Topic encryption with manual password
 - [ ] Refactor the logging engine for fish11_core, fish11_dll and fish11_inject
-- [ ] CLI in linux can call the .so librarie
+- [ ] CLI in linux can call the .so library
 
 ### Current limitations
 
