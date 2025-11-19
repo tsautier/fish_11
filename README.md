@@ -8,7 +8,7 @@ FiSH_11 is a modern implementation of an IRC encryption plugin, written in Rust.
 - **Multi-user channel encryption**: implements and introduce a draft of FCEP-1 (FiSH-11 Channel Encryption Protocol) for secure multi-user channels and key exchange 
 - **Forward secrecy**: keys automatically expire after 24 hours to provide forward secrecy
 - **Post-compromise security**: compromised keys become useless after the next message exchange, with TTL on exchanged key 
-- **Automatickey management**: handles key generation, exchange, and cleanup automatically
+- **Automatic key management**: handles key generation, exchange, and cleanup automatically
 - **mIRC integration**: full integration with mIRC through DLL injection
 - **Portable**: shared librairies (.so format) for *NIX world.
 
