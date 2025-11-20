@@ -507,7 +507,7 @@ alias fish11_X25519_INIT {
 
   ; Use regex to validate the entire key format. This is more robust against
   ; hidden characters or whitespace returned by the DLL.
-  if ($regex(%pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{43}=$/)) {
+  if ($regex(%pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{43}={0,2}$/)) {
     .notice %cur_contact X25519_INIT %pub
     echo $color(Mode text) -tm %cur_contact *** FiSH_11: sent X25519_INIT to %cur_contact $+ , waiting for reply...
   }
