@@ -16,10 +16,6 @@ use crate::log_info;
 // ============================================================================
 // TTL Configuration Constants
 // ============================================================================
-
-/// Default time-to-live for exchange keys (24 hours)
-const DEFAULT_KEY_TTL: i64 = 86400;
-
 /// Minimum allowed TTL for exchange keys (1 hour)
 /// Prevents too frequent re-keying which could impact performance and user experience
 const MIN_KEY_TTL: i64 = 3600;
@@ -51,7 +47,8 @@ const KEY_EXPIRY_GRACE_PERIOD: i64 = 300;
 ///
 /// TTL configuration via INI file is currently unimplemented. This is placeholder
 /// functionality for future development.
-/// 
+// ============================================================================
+
 #[derive(Debug, Clone)]
 pub struct KeyStatus {
     pub nickname: String,
@@ -67,7 +64,7 @@ pub struct KeyStatus {
 // and do NOT acquire locks. They are used by the public functions to avoid
 // nested lock acquisition which causes deadlocks.
 // ============================================================================
-
+//
 /// Resolves the network name for a nickname with priority fallback.
 /// Priority: explicitly provided > globally set > existing mapping for nick > "default"
 fn resolve_network_name(

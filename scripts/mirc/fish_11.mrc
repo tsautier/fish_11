@@ -31,27 +31,29 @@ alias fish11_startup {
   ; Check if DLLs exist
   if (!$exists(%Fish11InjectDllFile)) {
     echo 4 -a *** FiSH_11 ERROR: inject DLL not found: %Fish11InjectDllFile
-    
-   halt
+    halt
   }
-  
+
   if (!$exists(%Fish11DllFile)) {
     echo 4 -a *** FiSH_11 ERROR: DLL not found: %Fish11DllFile
-    
-   halt
+    halt
   }
 
   ; Check mIRC's DLL lock
   if ($dllock) {
     echo 4 -a *** FiSH_11 ERROR: mIRC DLLs are locked. Enable DLLs in mIRC settings.
-    
     halt
+  }
+
+  ; Initialize hash table for tracking key exchanges
+  if (!$hget(fish11.dh).size) {
+    hmake fish11.dh 10
   }
 
   echo 4 -a DEBUG : calling fish_11.dll FiSH11_SetMircDir to set configuration path...
   ;noop $dll(%Fish11DllFile, FiSH11_SetMircDir, $mircdir)
   echo 4 -a DEBUG : MIRCDIR set to: $mircdir
-  
+
   ; Get and display inject DLL version
   var %inject_version = $dll(%Fish11InjectDllFile, FiSH11_InjectVersion, $null)
   if (%inject_version) {
@@ -60,7 +62,7 @@ alias fish11_startup {
   else {
     echo -ts *** FiSH_11: WARNING - could not load inject DLL version ***
   }
-  
+
   ; Get and display core DLL version
   var %core_version = $dll(%Fish11DllFile, FiSH11_CoreVersion, $null)
   if (%core_version) {
@@ -208,7 +210,7 @@ on ^*:NOTICE:X25519_INIT*:?:{
   var %their_pub = $2-
 
   ; Validate incoming key format using regex for robustness.
-  if (!$regex(%their_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/=]{44}/i)) {
+  if (!$regex(%their_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{42,43}={0,2}$/)) {
     echo $color(Mode text) -tm $nick *** FiSH_11: received invalid INIT key format from $nick
     halt
   }
@@ -256,7 +258,7 @@ on ^*:NOTICE:X25519_FINISH*:?:{
   var %their_pub = $2-
 
   ; Use regex to validate the key format from the peer.
-  if ($regex(%their_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/=]{44}/i)) {
+  if ($regex(%their_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{43}(=|==)?$/)) {
     ; Process the received public key. The DLL computes and stores the shared secret.
     var %process_result = $dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $nick %their_pub)
     
@@ -420,15 +422,14 @@ on *:JOIN:#:{
   var %theKey = $dll(%Fish11DllFile, FiSH11_FileGetKey, $chan)
   if (%theKey != $null) {
     echo $color(Mode text) -at *** FiSH_11: found encryption key for $chan
-    
+
     ; Check if topic encryption is enabled for this channel
     var %encryptTopic = $fish11_GetChannelIniValue($chan, encrypt_topic)
     if (%encryptTopic == 1) {
       echo $color(Mode text) -at *** FiSH_11: topic encryption enabled for $chan
     }
-    ; DEBUG : log the key for debugging purposes
-    echo $color(Mode text) -at *** FiSH_11: key for $chan is %theKey
   }
+  unset %theKey
 }
 
 
@@ -446,12 +447,14 @@ alias fish11_setkey {
   }
   ; $1 = nickname (data), $2- = key (parms)
   var %msg = $dll(%Fish11DllFile, FiSH11_SetKey, $+($network, $chr(32), $1, $chr(32), $2-))
-  if (%msg) {
+  if (%msg && $left(%msg, 6) != Error:) {
     echo -a *** FiSH_11: key set for $1 on network $network
   }
   else {
-    echo -a *** FiSH_11: error - could not set key for $1
+    var %error_msg = $iif(%msg, %msg, "Unknown error - could not set key for $1")
+    echo -a *** FiSH_11: error setting key for $1 - %error_msg
   }
+  unset %msg
 }
 
 alias fish11_setkey_manual {
@@ -517,7 +520,7 @@ alias fish11_X25519_INIT {
 
   ; Use regex to validate the entire key format. This is more robust against
   ; hidden characters or whitespace returned by the DLL.
-  if ($regex(%pub, /^FiSH11-PubKey:[A-Za-z0-9+\/=]{44}/i)) {
+  if ($regex(%pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{43}={0,2}$/)) {
     .notice %cur_contact X25519_INIT %pub
     echo $color(Mode text) -tm %cur_contact *** FiSH_11: sent X25519_INIT to %cur_contact $+ , waiting for reply...
   }
@@ -606,8 +609,15 @@ alias fish11_initchannel {
   while (%i <= %num_parts) {
     var %part = $gettok(%result, %i, 124)
     if ($left(%part, 1) == /) {
-      %part
-      %has_commands = $true
+      ; Security: Validate that this is an expected command before executing
+      if ($left(%part, 8) == /notice ) {
+        ; Only allow notice commands which are expected for FCEP-1
+        %part
+        %has_commands = $true
+      }
+      else {
+        echo $color(Error) -at *** FiSH_11 FCEP-1: SECURITY WARNING - unexpected command from DLL: %part
+      }
     }
     else {
       ; This is the confirmation message - display it
@@ -766,29 +776,30 @@ alias fish11_display_multiline_result {
   var %text = $1-
   var %line_count = 0
   var %max_lines = 100
-  
+
   ; Handle different line ending formats
   %text = $replace(%text, $chr(13) $+ $chr(10), $chr(1))
   %text = $replace(%text, $chr(13), $chr(1))
   %text = $replace(%text, $chr(10), $chr(1))
-  
+
   ; Display each line
   var %i = 1
-  while (%i <= $numtok(%text, 1)) {
+  var %num_tokens = $numtok(%text, 1)
+  while (%i <= %num_tokens) {
     var %line = $gettok(%text, %i, 1)
-    
+
     ; Safety check: limit number of lines to prevent crashes
     inc %line_count
     if (%line_count > %max_lines) {
-      echo $color(Mode text) -at *** FiSH: output truncated (exceeded %max_lines lines)
+      echo $color(Mode text) -at *** FiSH_11: output truncated (exceeded %max_lines lines)
       break
     }
-    
+
     ; Display the line with proper formatting
     if ($len(%line) > 0) {
       echo $color(Mode text) -at %line
     }
-    
+
     inc %i
   }
 }
@@ -974,7 +985,7 @@ alias fish11_help {
 
 
 alias fish11_version {
-  var %core_version = $dll(%Fish11DllFile, FiSH11_GetVersion, $null)
+  var %core_version = $dll(%Fish11DllFile, FiSH11_CoreVersion, $null)
   echo -ts *** %core_version ***
 }
 
@@ -1207,6 +1218,10 @@ menu channel {
       echo $color(Mode text) -at *** FiSH: decrypted message: %decrypted
     }
   }
+  .Set topic (encrypted) :{
+    var %topic = $?="Enter encrypted topic for " $+ $chan $+ ":"
+    if (%topic != $null) etopic %topic
+  }
   .Misc config
   ..Encrypt TOPIC
   ...Enable :{ fish11_SetChannelIniValue $chan encrypt_topic 1 | echo $color(Mode text) -at *** FiSH: topic encryption enabled for $chan }
@@ -1297,6 +1312,15 @@ menu status,channel,nicklist,query {
   .Injection version : fish11_injection_version
   .Help :fish11_help
   .-
+  .Set topic (encrypted) :{
+    ; Only allow in channel windows
+    if ($chantype($active) != # && $chantype($active) != &) {
+      echo $color(Mode text) -at *** FiSH_11: etopic can only be used in channel windows
+      return
+    }
+    var %topic = $?="Enter encrypted topic for " $+ $active $+ ":"
+    if (%topic != $null) etopic %topic
+  }
   .List all keys :fish11_file_list_keys
   .Test encryption :fish11_test_crypt
   .-
@@ -1435,6 +1459,31 @@ menu @iniviewer {
 
 ; === ALIAS SHORTCUTS FOR USER COMMANDS ===
 ; These provide simplified commands for users
+
+; Encrypted topic alias - transparently encrypts the topic via the injection hook
+alias etopic {
+  ; Check if we're in a channel window
+  if ($chantype($active) != # && $chantype($active) != &) {
+    echo $color(Mode text) -at *** FiSH_11: etopic can only be used in channel windows
+    return
+  }
+
+  ; Check if there's a key for this channel (both traditional and FCEP-1)
+  var %channelKey = $dll(%Fish11DllFile, FiSH11_FileGetKey, $active)
+  if (%channelKey == $null) {
+    ; No key exists, but the engine may still try to encrypt if a channel key exists
+    ; This will be handled by the engine registration code
+    echo $color(Mode text) -at *** FiSH_11: No encryption key found for $active, topic will be sent in plain text
+  } else {
+    echo $color(Mode text) -at *** FiSH_11: Topic will be encrypted for $active
+  }
+
+  ; Execute the topic command - encryption will be handled by the engine
+  /topic $1-
+
+  ; Clean up variables
+  unset %channelKey
+}
 
 alias fish_genkey11 { fish11_setkey_safe $1 $2- }
 alias fish_setkey11 { fish11_setkey $1 $2- }
