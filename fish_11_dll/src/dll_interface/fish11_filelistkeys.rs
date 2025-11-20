@@ -1,17 +1,24 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
-use crate::platform_types::BOOL;
-use crate::platform_types::HWND;
-
 use crate::config;
 use crate::dll_function_identifier;
+use crate::log_info;
+use crate::platform_types::BOOL;
+use crate::platform_types::HWND;
 use crate::unified_error::DllError;
 
 dll_function_identifier!(FiSH11_FileListKeys, data, {
     log::info!("Starting key listing");
 
+    // Log that the function was called
+    log_info!("FiSH11_FileListKeys function called");
+
+    // Attempt to list the keys
     let keys = config::list_keys()?;
+
+    // Log how many keys were found
+    log_info!("Retrieved {} keys from config", keys.len());
 
     if keys.is_empty() {
         return Ok("FiSH: No keys stored.".to_string());
