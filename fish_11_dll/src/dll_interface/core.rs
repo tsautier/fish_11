@@ -114,8 +114,8 @@ pub extern "system" fn DllMain(_hinst: HINSTANCE, reason: DWORD, _: LPVOID) -> B
                 log_info!(
                     "DLL Process Attach - FiSH v{} (built {} {})",
                     BUILD_VERSION,
-                    BUILD_DATE,
-                    BUILD_TIME
+                    BUILD_DATE.as_str(),
+                    BUILD_TIME.as_str()
                 );
                 log_debug!("System information: Process ID: {}", std::process::id());
 

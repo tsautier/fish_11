@@ -146,8 +146,8 @@ pub fn init_logger(level: LevelFilter) -> Result<(), SetLoggerError> {
                                     log_info!("FiSH_11 DLL version: {}", BUILD_VERSION);
                                     log_info!(
                                         "Build date: {}, Build time: {}",
-                                        BUILD_DATE,
-                                        BUILD_TIME
+                                        BUILD_DATE.as_str(),
+                                        BUILD_TIME.as_str()
                                     );
                                 }                                Err(e) => {
                                     // Don't output to console, just return error
@@ -182,8 +182,8 @@ pub fn log_module_init(module_name: &str, version: &str) {
         log_info!("Module initialized: {} (version: {})", module_name, version);
         log_debug!(
             "Module initialization details - Build date: {}, Build time: {}",
-            BUILD_DATE,
-            BUILD_TIME
+            BUILD_DATE.as_str(),
+            BUILD_TIME.as_str()
         );
     }
 }

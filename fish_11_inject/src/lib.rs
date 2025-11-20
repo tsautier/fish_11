@@ -151,8 +151,8 @@ pub unsafe extern "system" fn DllMain(
             info!(
                 "FiSH_11 inject v{} (build date: {}, build time: {})",
                 fish_11_core::globals::CRATE_VERSION,
-                fish_11_core::globals::BUILD_DATE,
-                fish_11_core::globals::BUILD_TIME
+                fish_11_core::globals::BUILD_DATE.as_str(),
+                fish_11_core::globals::BUILD_TIME.as_str()
             );
             info!("***");
             info!("The DLL is loaded successfully. Now it's time to h00k some calls baby !");

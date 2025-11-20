@@ -669,12 +669,20 @@ pub fn get_our_keypair() -> Result<([u8; 32], [u8; 32])> {
 /// List all stored keys in the configuration
 pub fn list_keys() -> Result<Vec<(String, String, Option<String>, Option<String>)>> {
     with_config(|config| {
+        log_debug!("list_keys: Starting to process {} total entries", config.entries.len());
         let mut result = Vec::new();
 
         // Process all entries in the new format: "nickname@network" or "#channel@network"
         for (entry_key, entry) in config.entries.iter() {
+            log_debug!(
+                "list_keys: Processing entry: '{}' with key present: {}",
+                entry_key,
+                entry.key.is_some()
+            );
+
             // Skip entries without keys
             if entry.key.is_none() {
+                log_debug!("list_keys: Skipping entry '{}' due to no key", entry_key);
                 continue;
             }
 

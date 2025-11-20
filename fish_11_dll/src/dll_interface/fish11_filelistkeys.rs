@@ -3,22 +3,23 @@ use std::os::raw::c_int;
 
 use crate::config;
 use crate::dll_function_identifier;
-use crate::log_info;
+
+use crate::log_debug;
 use crate::platform_types::BOOL;
 use crate::platform_types::HWND;
 use crate::unified_error::DllError;
 
 dll_function_identifier!(FiSH11_FileListKeys, data, {
-    log::info!("Starting key listing");
+    log_debug!("Starting key listing");
 
     // Log that the function was called
-    log_info!("FiSH11_FileListKeys function called");
+    log_debug!("FiSH11_FileListKeys function called");
 
     // Attempt to list the keys
     let keys = config::list_keys()?;
 
     // Log how many keys were found
-    log_info!("Retrieved {} keys from config", keys.len());
+    log_debug!("Retrieved {} keys from config", keys.len());
 
     if keys.is_empty() {
         return Ok("FiSH: No keys stored.".to_string());
@@ -43,8 +44,12 @@ dll_function_identifier!(FiSH11_FileListKeys, data, {
 
     lines.push("-------------------".to_string());
 
+    let result_string = lines.join("\r\n");
+
+    log_debug!("FiSH11_FileListKeys: about to return: '{}'", result_string);
+
     // Join lines with CRLF so the mIRC display helper can split them into tokens
-    Ok(lines.join("\r\n"))
+    Ok(result_string)
 });
 
 #[cfg(test)]
