@@ -13,11 +13,13 @@ use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 
 // Encrypts a message for a specific nickname or channel.
+//
 // This function handles the complete encryption workflow, including:
 // - Retrieving the appropriate encryption key.
 // - For channels: applying a symmetric key ratchet for Forward Secrecy.
 // - Performing authenticated encryption with Associated Data.
 // - Formatting the output with the FiSH protocol prefix `+FiSH `.
+//
 dll_function_identifier!(FiSH11_EncryptMsg, data, {
     // 1. Parse input: <target> <message>
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
