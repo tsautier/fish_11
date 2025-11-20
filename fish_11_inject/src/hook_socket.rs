@@ -4,18 +4,20 @@
 use std::ffi::c_int;
 use std::sync::{Arc, Mutex as StdMutex};
 
+use fish_11_core::globals::{
+    CMD_JOIN, CMD_NOTICE, CMD_PRIVMSG, KEY_EXCHANGE_INIT, KEY_EXCHANGE_PUBKEY,
+};
 use log::{debug, error, info, trace, warn};
 use retour::GenericDetour;
 use sha2::{Digest, Sha256};
 use winapi::shared::ws2def::SOCKADDR;
 use winapi::um::winsock2::{SOCKET, SOCKET_ERROR, WSAEINTR};
-use fish_11_core::globals::{
-    CMD_JOIN, CMD_NOTICE, CMD_PRIVMSG,
-    KEY_EXCHANGE_INIT, KEY_EXCHANGE_PUBKEY,
-};
+
 use crate::hook_ssl::{SOCKET_TO_SSL, SSL_TO_SOCKET};
-use crate::socket_info::SocketState;
-use crate::{ACTIVE_SOCKETS, DISCARDED_SOCKETS, ENGINES, InjectEngines, SocketInfo};
+use crate::socket::handlers::protocol_detection;
+use crate::socket::info::SocketInfo;
+use crate::socket::state::SocketState;
+use crate::{ACTIVE_SOCKETS, DISCARDED_SOCKETS, ENGINES, InjectEngines};
 
 // Type definitions for Winsock functions and ensure "system" ABI (stdcall) for function types
 pub type RecvFn = unsafe extern "system" fn(SOCKET, *mut i8, c_int, c_int) -> c_int;
@@ -100,7 +102,10 @@ pub unsafe extern "system" fn hooked_recv(
                 debug!("[RECV DEBUG] socket {}: UTF-8 content (sanitized): {:?}", s, sanitized);
 
                 // Check for IRC protocol markers
-                if text.contains(CMD_PRIVMSG) || text.contains(CMD_NOTICE) || text.contains(CMD_JOIN) {
+                if text.contains(CMD_PRIVMSG)
+                    || text.contains(CMD_NOTICE)
+                    || text.contains(CMD_JOIN)
+                {
                     debug!("[RECV DEBUG] socket {}: detected IRC protocol command", s);
                 }
 
@@ -266,14 +271,14 @@ pub unsafe extern "system" fn hooked_send(
     if stats.bytes_sent == 0 && socket_info.get_state() == SocketState::Initializing {
         drop(stats); // Release the lock before protocol detection
 
-        if SocketInfo::is_initial_irc_command(data_slice) {
+        if protocol_detection::is_initial_irc_command(data_slice) {
             socket_info.set_state(SocketState::IrcIdentified);
             debug!("Socket {}: identified as IRC connection", s);
 
             if let Ok(utf8_str) = std::str::from_utf8(data_slice) {
                 trace!("Socket {}: sending initial IRC data: {}", s, utf8_str.trim());
             }
-        } else if SocketInfo::is_tls_handshake_packet(data_slice) {
+        } else if protocol_detection::is_tls_handshake_packet(data_slice) {
             socket_info.set_ssl(true);
             socket_info.set_state(SocketState::TlsHandshake);
             debug!("Socket {}: identified as TLS handshake", s);

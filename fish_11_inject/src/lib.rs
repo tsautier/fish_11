@@ -5,7 +5,7 @@
   Main entry point for the FiSH_11 injection DLL for Windows (mIRC).
 
   Author: GuY
-  License: GNU GPL v3
+  License: GNU GPL-v3
   Date: 2025
 
 1. Windows calls DllMain() when the DLL is loaded
@@ -16,16 +16,14 @@
 // This DLL is only for Windows
 #![cfg(windows)]
 
-
 // Here we define all the necessary imports and modules (files)
 mod dll_interface;
 mod engines;
 mod helpers_inject;
 mod hook_socket;
 mod hook_ssl;
-mod socket_info;
+pub mod socket;
 mod ssl_detection;
-// mod ssl_inline_patch; // NOTE: this experimental module has been moved to the /experimental directory.
 
 use std::collections::HashMap;
 use std::ffi::{c_int, c_void};
@@ -35,13 +33,12 @@ use std::sync::{Arc, Mutex, RwLock};
 use engines::InjectEngines;
 use lazy_static::lazy_static;
 use log::{error, info};
-use socket_info::SocketInfo;
+use socket::info::SocketInfo;
 use windows::Win32::Foundation::HMODULE;
 use windows::Win32::Networking::WinSock::SOCKET;
 use windows::Win32::System::Threading::GetCurrentThreadId;
 
 use crate::helpers_inject::{cleanup_hooks, init_logger};
-
 
 // Wrapper to make HMODULE Send + Sync
 #[derive(Clone, Copy)]

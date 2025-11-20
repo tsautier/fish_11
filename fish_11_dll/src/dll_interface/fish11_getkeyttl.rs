@@ -22,7 +22,7 @@ use std::os::raw::c_int;
 
 use crate::platform_types::{BOOL, HWND};
 use crate::{
-    buffer_utils, config, config::key_management::get_key_ttl, dll_function_identifier, log_debug,
+    buffer_utils, config::key_management::get_key_ttl, dll_function_identifier, log_debug,
     unified_error::DllError, utils::normalize_nick,
 };
 
