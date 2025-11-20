@@ -15,8 +15,8 @@ on *:START: {
 }
 
 alias fish11_startup {
-  echo 4 -a *** FiSH_11 SECURITY NOTICE *** This script relies on 2 external DLL files. Only use trusted, signed versions from official sources.  ***
-  echo 4 -a *** FiSH_11 SECURITY NOTICE *** Never run this script if you suspect your system has been compromised.                                ***
+  echo 4 -a *** FiSH_11 SECURITY NOTICE *** This script relies on two external DLL files. Only use trusted, signed versions from official sources.  ***
+  echo 4 -a *** FiSH_11 SECURITY NOTICE *** Never run this script if you suspect your system has been compromised.                                  ***
 
   var %exe_dir = $nofile($mircexe)
 
@@ -77,9 +77,6 @@ alias fish11_startup {
   if (%NickTrack == $null) { set %NickTrack [Off] }
   ; Key exchange timeout (seconds) - keep in sync with DLL constant; can be overridden by user
   if (%KEY_EXCHANGE_TIMEOUT_SECONDS == $null) { set %KEY_EXCHANGE_TIMEOUT_SECONDS 10 }
-  
-
-  
 }
 
 
@@ -91,6 +88,8 @@ on *:ACTIVE:*: {
   }
 }
 
+
+
 ; === AUTO KEY EXCHANGE ===
 on *:OPEN:?:{
   if (%autokeyx == [On]) {
@@ -101,6 +100,8 @@ on *:OPEN:?:{
     unset %tmp1
   }
 }
+
+
 
 ; === OUTGOING MESSAGE HANDLING ===
 on *:INPUT:*: {
@@ -240,6 +241,9 @@ on ^*:NOTICE:X25519_INIT*:?:{
   halt
 }
 
+
+
+
 on ^*:NOTICE:X25519_FINISH*:?:{
   ; This event triggers when a peer responds to our key exchange initiation.
   ; $1 = X25519_FINISH, $2- = public key token from peer
@@ -277,11 +281,13 @@ on ^*:NOTICE:X25519_FINISH*:?:{
   halt
 }
 
+
+
+
 ; === FCEP-1 CHANNEL ENCRYPTION PROTOCOL HANDLERS ===
 ; FCEP-1 (FiSH-11 Channel Encryption Protocol) enables secure multi-party
 ; channel encryption using a hub-and-spoke model where a coordinator distributes
 ; a shared channel key to all participants via their pre-established pairwise keys.
-
 on ^*:NOTICE:+FiSH-CEP-KEY*:?:{
   ; This event triggers when receiving a channel key distribution message.
   ; Format: +FiSH-CEP-KEY <#channel> <coordinator_nick> <base64_wrapped_key>
@@ -345,6 +351,8 @@ on ^*:NOTICE:+FiSH-CEP-KEY*:?:{
 
 
 
+
+
 ; Handle key exchange timeout
 alias fish11_timeout_keyexchange {
   if ($1 == $null) {
@@ -364,6 +372,8 @@ alias fish11_timeout_keyexchange {
     echo $color(Mode text) -at *** FiSH_11: to try again, use: /fish11_X25519_INIT %contact
   }
 }
+
+
 
 
 
@@ -399,6 +409,8 @@ on *:NICK:{
 
 
 
+
+
 ; === CHANNEL JOIN HANDLING ===
 on *:JOIN:#:{
   ; Only process our own joins
@@ -422,7 +434,6 @@ on *:JOIN:#:{
 
 
 ; === SIGNAL HANDLERS ===
-
 
 
 
@@ -610,6 +621,8 @@ alias fish11_initchannel {
     echo $color(Error) -at *** FiSH_11 FCEP-1 ERROR: No distribution commands generated
   }
 }
+
+
 
 ; Shorthand alias for channel encryption
 alias fcep { fish11_initchannel $1- }
@@ -1173,6 +1186,20 @@ menu channel {
       echo $color(Mode text) -at *** FiSH: encrypted message: %encrypted
     }
   }
+  .Set topic (encrypted) :{
+    var %topic = $?="Enter encrypted topic for " $+ $chan $+ ":"
+    if (%topic != $null) {
+      window -a $chan
+      etopic %topic
+    }
+  }
+  .Encrypt message :{
+    var %msg = $?="Enter message to encrypt:"
+    if (%msg) {
+      var %encrypted = $fish11_encrypt($chan,%msg)
+      echo $color(Mode text) -at *** FiSH: encrypted message: %encrypted
+    }
+  }
   .Decrypt message :{
     var %msg = $?="Enter message to decrypt:"
     if (%msg) {
@@ -1235,6 +1262,18 @@ menu nicklist {
   .Set new key (UTF-8) :{ var %key = $?="Enter new key for " $+ $1 $+ " (UTF-8):" | if (%key != $null) fish11_setkey_utf8 $1 %key }
   .Remove key :fish11_removekey $1
   .Use same key as $chan :fish11_usechankey $1 $chan
+  .Set topic (encrypted) :{
+    ; Only allow in channel windows
+    if ($chantype($active) != # && $chantype($active) != &) {
+      echo $color(Mode text) -at *** FiSH_11: etopic can only be used in channel windows
+      return
+    }
+    var %topic = $?="Enter encrypted topic for " $+ $active $+ ":"
+    if (%topic != $null) {
+      window -a $active
+      etopic %topic
+    }
+  }
   .Encrypt message :{
     var %msg = $?="Enter message to encrypt:"
     if (%msg) {
