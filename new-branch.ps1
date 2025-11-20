@@ -1,4 +1,3 @@
-#Requires -Modules Git
 <#
 .SYNOPSIS
     Crée une nouvelle branche Git avec un type, un numéro de version auto-incrémenté et une description.
