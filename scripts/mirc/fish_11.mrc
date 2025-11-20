@@ -207,7 +207,7 @@ on ^*:NOTICE:X25519_INIT*:?:{
   var %their_pub = $2-
 
   ; Validate incoming key format using regex for robustness.
-  if (!$regex(%their_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{43}=$/)) {
+  if (!$regex(%their_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{42,43}={0,2}$/)) {
     echo $color(Mode text) -tm $nick *** FiSH_11: received invalid INIT key format from $nick
     halt
   }
