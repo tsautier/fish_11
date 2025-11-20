@@ -64,7 +64,7 @@ impl SocketInfo {
         *self.state.read()
     }
 
-    /// Set the SSL flage for socket state
+    /// Set the SSL flag for socket state
     pub fn set_ssl(&self, is_ssl: bool) {
         let mut flags = self.flags.write();
         flags.is_ssl = is_ssl;
