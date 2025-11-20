@@ -1220,7 +1220,10 @@ menu channel {
   }
   .Set topic (encrypted) :{
     var %topic = $?="Enter encrypted topic for " $+ $chan $+ ":"
-    if (%topic != $null) etopic %topic
+    if (%topic != $null) {
+      window -a $chan
+      etopic %topic
+    }
   }
   .Misc config
   ..Encrypt TOPIC
@@ -1312,15 +1315,6 @@ menu status,channel,nicklist,query {
   .Injection version : fish11_injection_version
   .Help :fish11_help
   .-
-  .Set topic (encrypted) :{
-    ; Only allow in channel windows
-    if ($chantype($active) != # && $chantype($active) != &) {
-      echo $color(Mode text) -at *** FiSH_11: etopic can only be used in channel windows
-      return
-    }
-    var %topic = $?="Enter encrypted topic for " $+ $active $+ ":"
-    if (%topic != $null) etopic %topic
-  }
   .List all keys :fish11_file_list_keys
   .Test encryption :fish11_test_crypt
   .-
