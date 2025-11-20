@@ -262,7 +262,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
             }
         };
 
-        let decrypted = match decrypt_message(key_array, encrypted_data, Some(key_identifier)) {
+        let decrypted = match decrypt_message(key_array, encrypted_data, Some(key_identifier.as_bytes())) {
             Ok(msg) => msg,
             Err(e) => {
                 log_error!("Engine: topic decryption failed for channel '{}': {}", key_identifier, e);
