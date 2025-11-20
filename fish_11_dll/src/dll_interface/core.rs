@@ -1,9 +1,9 @@
-use std::sync::Mutex;
-use log;
+use crate::dll_interface::DEFAULT_MIRC_BUFFER_SIZE;
 use crate::platform_types::{BOOL, HWND, c_int};
 use crate::{log_debug, log_info};
-use crate::dll_interface::DEFAULT_MIRC_BUFFER_SIZE;
 use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION};
+use log;
+use std::sync::Mutex;
 
 #[cfg(windows)]
 use winapi::shared::minwindef::{DWORD, HINSTANCE, LPVOID, TRUE};
@@ -111,10 +111,12 @@ pub extern "system" fn DllMain(_hinst: HINSTANCE, reason: DWORD, _: LPVOID) -> B
 
             // Log version info once during DLL attach
             if crate::logging::is_logger_initialized() {
-                log_info!("DLL Process Attach - FiSH v{} (built {} {})", 
-                    BUILD_VERSION, 
-                    BUILD_DATE, 
-                    BUILD_TIME);
+                log_info!(
+                    "DLL Process Attach - FiSH v{} (built {} {})",
+                    BUILD_VERSION,
+                    BUILD_DATE,
+                    BUILD_TIME
+                );
                 log_debug!("System information: Process ID: {}", std::process::id());
 
                 // When this DLL is loaded, it tries to register itself with the inject DLL.
@@ -166,9 +168,9 @@ pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
     // Initialize CONFIG early to avoid lazy initialization deadlocks
     #[cfg(debug_assertions)]
     log::info!("LoadDll: calling init_config() to force CONFIG initialization...");
-    
+
     crate::config::init_config();
-    
+
     #[cfg(debug_assertions)]
     log::info!("LoadDll: CONFIG initialized successfully");
 
@@ -203,11 +205,7 @@ pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
     }
 
     // Log successful initialization
-    log::info!(
-        "FiSH_11 v{} initialized successfully for mIRC {}",
-        BUILD_VERSION,
-        mirc_version
-    );
+    log::info!("FiSH_11 v{} initialized successfully for mIRC {}", BUILD_VERSION, mirc_version);
 
     // Log function exit
     log_debug!("EXIT: LoadDll - returned TRUE");
@@ -265,9 +263,9 @@ pub extern "C" fn LoadDll(load: *mut LOADINFO) -> BOOL {
 
     log_debug!("LoadDll called for FiSH v{}", crate::FISH_11_VERSION);
     crate::logging::log_function_entry("LoadDll", None::<i32>);
-    
+
     crate::config::init_config();
-    
+
     let mut mirc_version = String::from("Unknown version");
     let mut buffer_size = DEFAULT_MIRC_BUFFER_SIZE;
     let mut unicode_mode = false;
@@ -292,7 +290,11 @@ pub extern "C" fn LoadDll(load: *mut LOADINFO) -> BOOL {
         log::warn!("LoadDll called with null pointer - using default buffer size");
     }
 
-    log::info!("FiSH_11 v{} initialized successfully (version {})", crate::FISH_11_VERSION, mirc_version);
+    log::info!(
+        "FiSH_11 v{} initialized successfully (version {})",
+        crate::FISH_11_VERSION,
+        mirc_version
+    );
     log_debug!("EXIT: LoadDll - returned TRUE");
 
     TRUE

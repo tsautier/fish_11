@@ -309,16 +309,16 @@ pub extern "C" fn FiSH11_InjectDebugInfo(
 #[no_mangle]
 #[allow(non_snake_case)]
 pub extern "system" fn FiSH11_InjectVersion(
-    _m_wnd: HWND,
-    _a_wnd: HWND,
+    _m_wnd: *mut HWND,
+    _a_wnd: *mut HWND,
     data: *mut c_char,
     _parms: *mut c_char,
-    _show: BOOL,
-    _nopause: BOOL,
+    _show: *mut BOOL,
+    _nopause: *mut BOOL,
 ) -> c_int {
     // Return raw version info (script handles display formatting)
     let version_info = format!(
-        "FiSH injection v{}. Compiled on {} at {}. Written by [GuY], licensed under the GPL-v3.",
+        "FiSH injection dll version {}. *** Compiled on {} at {} *** Written by [GuY], licensed under the GPL-v3",
         BUILD_VERSION, BUILD_DATE, BUILD_TIME
     );
 

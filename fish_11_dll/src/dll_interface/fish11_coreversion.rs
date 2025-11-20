@@ -11,7 +11,7 @@ use std::os::raw::c_int;
 dll_function_identifier!(FiSH11_CoreVersion, _data, {
     // Return raw version info for script to display
     let version_info = format!(
-        "FiSH_11 core v{} - Compiled {} at {} - Licensed under GPL-v3",
+        "FiSH_11 core dll version {} *** Compiled {} at {} *** Written by [GuY], licensed under the GPL-v3",
         BUILD_VERSION, BUILD_DATE, BUILD_TIME
     );
 
