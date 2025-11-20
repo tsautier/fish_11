@@ -166,55 +166,33 @@ mod tests {
 
     #[test]
     fn test_encryptmsg_channel_valid() {
-        use crate::config::{with_ratchet_state_mut, RatchetState};
-        use std::collections::VecDeque;
-
         let channel = "#testchan";
         let message = "Hello channel!";
-
-        // Initialize ratchet state for the channel
-        with_ratchet_state_mut(channel, |state| {
-            state.current_key = [1u8; 32]; // Use a valid key
-            state.previous_keys = VecDeque::new();
-            state.epoch = 0;
-        }).unwrap();
 
         // Format input as expected: "<target> <message>"
         let input = format!("{} {}", channel, message);
 
-        // Create a buffer to simulate the DLL interface
-        let mut buffer = [0; 1024];
-        buffer[..input.len()].copy_from_slice(input.as_bytes());
-
-        // This test would need to call the actual function, but we'll just test the functionality logic
-        // The actual function would handle channel encryption differently than private messages
-        // The important test is that channel messages are handled differently
-
         // Just verify that channel names are detected properly
         assert!(channel.starts_with('#'));
+
+        // Test input parsing
+        let parts: Vec<&str> = input.splitn(2, ' ').collect();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0], "#testchan");
+        assert_eq!(parts[1], "Hello channel!");
     }
 
     #[test]
     fn test_encryptmsg_channel_ratchet_advancement() {
-        use crate::config::{with_ratchet_state_mut, RatchetState};
-        use std::collections::VecDeque;
-
         let channel = "#ratchetchan";
         let message1 = "First message";
         let message2 = "Second message";
 
-        // Initialize ratchet state for the channel
-        with_ratchet_state_mut(channel, |state| {
-            state.current_key = [2u8; 32]; // Use a valid key
-            state.previous_keys = VecDeque::new();
-            state.epoch = 0;
-        }).unwrap();
-
         // Test that ratchet advancement works conceptually
         // (we can't fully test this without the full encryption/decryption cycle)
-        assert!(channel.starts_with('#'));  // Channel should be detected
-        assert_eq!(message1, "First message");  // Message integrity
-        assert_eq!(message2, "Second message");  // Message integrity
+        assert!(channel.starts_with('#')); // Channel should be detected
+        assert_eq!(message1, "First message"); // Message integrity
+        assert_eq!(message2, "Second message"); // Message integrity
     }
 
     #[test]
@@ -223,8 +201,6 @@ mod tests {
         // but are handled in a different context by the engine
 
         let topic_target = "#topicchan";
-        let topic_message = "This is a secret topic";
-
         // Verify channel detection
         assert!(topic_target.starts_with('#'));
 
@@ -240,7 +216,7 @@ mod tests {
         for target in prefixes {
             // All should be recognized as channels
             assert!(target.starts_with(['@', '+', '&', '%', '~']));
-            assert!(target[1..].starts_with('#'));  // After prefix, starts with #
+            assert!(target[1..].starts_with('#')); // After prefix, starts with #
         }
     }
 
@@ -258,19 +234,9 @@ mod tests {
     #[test]
     fn test_encryptmsg_channel_with_statusmsg_prefix() {
         use crate::utils::normalize_target;
-        use crate::config::{with_ratchet_state_mut, RatchetState};
-        use std::collections::VecDeque;
 
         let raw_target = "@#testchan";
         let normalized_target = normalize_target(raw_target);
-        let message = "Test message with statusmsg prefix";
-
-        // Initialize ratchet state for the normalized channel
-        with_ratchet_state_mut(&normalized_target, |state| {
-            state.current_key = [3u8; 32];
-            state.previous_keys = VecDeque::new();
-            state.epoch = 0;
-        }).unwrap();
 
         // Verify the target gets normalized properly
         assert_eq!(normalized_target, "#testchan");
