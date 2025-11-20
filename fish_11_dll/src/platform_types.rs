@@ -25,9 +25,13 @@ pub use std::os::raw::{c_char, c_int};
 macro_rules! platform_abi {
     () => {
         #[cfg(windows)]
-        { "stdcall" }
+        {
+            "stdcall"
+        }
         #[cfg(not(windows))]
-        { "C" }
+        {
+            "C"
+        }
     };
 }
 
@@ -46,4 +50,3 @@ macro_rules! export_fn {
         $vis extern "C" fn $name($($arg: $ty),*) -> $ret $body
     };
 }
-

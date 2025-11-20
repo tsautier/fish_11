@@ -16,7 +16,6 @@ pub const MIRC_RETURN_CONTINUE: i32 = 0;
 pub const MIRC_RETURN_DATA_COMMAND: i32 = 1;
 pub const MIRC_RETURN_DATA_RETURN: i32 = 2;
 
-
 // C API version - Engine <-> Inject DLL contract
 pub const FISH_INJECT_ENGINE_VERSION: u32 = 1;
 
@@ -93,3 +92,27 @@ pub const BUILD_TIME: &str = match option_env!("VERGEN_BUILD_TIME") {
     Some(time) => time,
     None => "13:37",
 };
+
+/// Unique build number based on timestamp (format: YYYYMMDDHHmmss)
+/// Example: 20251120143022 for 2025-11-20 14:30:22
+/// This is constructed at runtime from BUILD_DATE and BUILD_TIME
+pub fn get_build_number() -> String {
+    // Try to construct from date and time if available
+    if BUILD_DATE != "N/A" && BUILD_TIME != "13:37" {
+        // BUILD_DATE format: "YYYY-MM-DD"
+        // BUILD_TIME format: "HH:MM:SS"
+        let date_clean: String = BUILD_DATE.chars().filter(|c| c.is_numeric()).collect();
+        let time_clean: String = BUILD_TIME.chars().filter(|c| c.is_numeric()).collect();
+        
+        if date_clean.len() == 8 && time_clean.len() == 6 {
+            return format!("{}{}", date_clean, time_clean);
+        }
+    }
+    
+    // Fallback to a default value
+    String::from("00000000000000")
+}
+
+/// Static build number string for const contexts
+/// Uses a lazy static to cache the computed value
+pub static BUILD_NUMBER: Lazy<String> = Lazy::new(|| get_build_number());

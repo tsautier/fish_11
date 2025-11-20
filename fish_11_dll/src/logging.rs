@@ -1,14 +1,13 @@
 //! Logging module for FiSH_11
 
+use crate::{log_debug, log_info};
+use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION};
 use log::{LevelFilter, SetLoggerError};
 use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, Once};
 use std::time::Duration;
-use crate::{log_info, log_debug};
-use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION};
-
 
 // Ensure initialization happens only once
 static LOGGER_INIT: Once = Once::new();
@@ -23,10 +22,7 @@ pub struct FileLogger {
 impl FileLogger {
     /// Create a new file logger with the given log level
     pub fn new(level: LevelFilter, log_file: std::fs::File) -> Self {
-        FileLogger {
-            level,
-            file: Arc::new(Mutex::new(log_file)),
-        }
+        FileLogger { level, file: Arc::new(Mutex::new(log_file)) }
     }
 
     // Helper method to handle writing to the log file with timeout
@@ -47,12 +43,12 @@ impl FileLogger {
                         // Also ignore flush errors silently
                     }
                     return; // We're done, exit the loop
-                },
+                }
                 Err(_) => {
                     // Give other threads a chance and then retry
                     // Increase the sleep time to reduce CPU usage
                     std::thread::yield_now();
-                    std::thread::sleep(Duration::from_millis(20)); 
+                    std::thread::sleep(Duration::from_millis(20));
                 }
             }
         }
@@ -79,8 +75,6 @@ impl log::Log for FileLogger {
                 record.args()
             );
 
-
-
             self.write_to_file(&log_message);
         }
     }
@@ -99,10 +93,7 @@ impl log::Log for FileLogger {
 /// The log file will be named fish_11_dll_YYYY-MM-DD.log where YYYY-MM-DD is the current date.
 pub fn get_log_file_path() -> io::Result<PathBuf> {
     // Create log filename with date
-    let log_filename = format!(
-        "fish_11_dll_{}.log",
-        chrono::Local::now().format("%Y-%m-%d")
-    );
+    let log_filename = format!("fish_11_dll_{}.log", chrono::Local::now().format("%Y-%m-%d"));
 
     // Always use the current directory for logs
     match std::env::current_dir() {
@@ -138,7 +129,7 @@ pub fn init_logger(level: LevelFilter) -> Result<(), SetLoggerError> {
                                 Ok(_) => {                                    log::set_max_level(level);                                    LOGGER_INITIALIZED = true;
                                     // If effective level differs from requested, set max level accordingly
                                     log::set_max_level(effective_level);
-                                    
+
                                     // Log to file only, no console output
                                     log_info!("*********** *********** FiSH_11 core DLL logger initialized *************** ***********");
 
@@ -147,7 +138,7 @@ pub fn init_logger(level: LevelFilter) -> Result<(), SetLoggerError> {
                                         "Logger initialized - writing to: {}",
                                         log_path.display()
                                     );
-                                    
+
                                     // Log current working directory in the log file too
                                     if let Ok(cwd) = std::env::current_dir() {
                                         log_info!("Current working directory: {}", cwd.display());

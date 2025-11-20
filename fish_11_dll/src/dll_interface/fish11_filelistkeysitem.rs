@@ -7,8 +7,8 @@ use crate::platform_types::HWND;
 use crate::buffer_utils;
 use crate::config;
 use crate::dll_function_identifier;
-use crate::unified_error::DllError;
 use crate::log_debug;
+use crate::unified_error::DllError;
 
 dll_function_identifier!(FiSH11_FileListKeysItem, data, {
     // Parse input to get the index

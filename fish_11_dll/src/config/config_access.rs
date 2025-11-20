@@ -6,7 +6,7 @@ use crate::config::CONFIG;
 use crate::config::file_storage::save_config;
 use crate::config::models::FishConfig;
 use crate::error::{FishError, Result};
-use crate::{log_debug, log_warn, log_info, log_error};
+use crate::{log_debug, log_error, log_info, log_warn};
 
 /// A read-only guard for the configuration
 pub struct ConfigReadGuard<'a> {
@@ -105,10 +105,7 @@ where
     while attempts < MAX_ATTEMPTS {
         #[cfg(debug_assertions)]
         if attempts == 0 {
-            log_info!(
-                "with_config: Attempt {} - About to call CONFIG.try_lock()...",
-                attempts + 1
-            );
+            log_info!("with_config: Attempt {} - About to call CONFIG.try_lock()...", attempts + 1);
         }
 
         // Check if we've already timed out

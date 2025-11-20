@@ -8,7 +8,7 @@ use crate::config;
 use crate::dll_function_identifier;
 use crate::unified_error::DllError;
 
-dll_function_identifier!(FiSH11_FileListKeys, _data, {
+dll_function_identifier!(FiSH11_FileListKeys, data, {
     log::info!("Starting key listing");
 
     let keys = config::list_keys()?;
