@@ -284,7 +284,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
                 return None;
             }
         };
-        let encrypted_data = &line[topic_start..].trim();
+        let encrypted_data = line[topic_start..].trim();
 
         log_debug!(
             "Engine: topic_key_identifier={}, encrypted_data_len={}",
