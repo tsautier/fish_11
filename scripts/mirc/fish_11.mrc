@@ -970,7 +970,7 @@ alias fish11_help {
 
 
 alias fish11_version {
-  var %core_version = $dll(%Fish11DllFile, FiSH11_GetVersion, $null)
+  var %core_version = $dll(%Fish11DllFile, FiSH11_CoreVersion, $null)
   echo -ts *** %core_version ***
 }
 
