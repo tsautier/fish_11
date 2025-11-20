@@ -252,7 +252,7 @@ on ^*:NOTICE:X25519_FINISH*:?:{
   var %their_pub = $2-
 
   ; Use regex to validate the key format from the peer.
-  if ($regex(%their_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{43}=$/)) {
+  if ($regex(%their_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{43}(=|==)?$/)) {
     ; Process the received public key. The DLL computes and stores the shared secret.
     var %process_result = $dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $nick %their_pub)
     
