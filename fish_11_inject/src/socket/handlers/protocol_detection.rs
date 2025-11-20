@@ -1,4 +1,3 @@
-
 use crate::socket::info::SocketInfo;
 use crate::socket::state::{SocketError, SocketState};
 use log::{debug, info, trace};

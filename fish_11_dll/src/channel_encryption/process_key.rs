@@ -2,11 +2,11 @@ use crate::buffer_utils;
 use crate::config;
 use crate::crypto;
 use crate::dll_function_identifier;
+use crate::platform_types::BOOL;
+use crate::platform_types::HWND;
 use crate::unified_error::DllError;
 use base64::{Engine as _, engine::general_purpose};
 use std::ffi::{c_char, c_int};
-use crate::platform_types::BOOL;
-use crate::platform_types::HWND;
 
 dll_function_identifier!(FiSH11_ProcessChannelKey, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
@@ -65,8 +65,5 @@ dll_function_identifier!(FiSH11_ProcessChannelKey, data, {
     // Initialize the ratchet state with this new key
     config::init_ratchet_state(channel_name, channel_key)?;
 
-    Ok(format!(
-        "Channel key for {} successfully received from {}",
-        channel_name, coordinator_nick
-    ))
+    Ok(format!("Channel key for {} successfully received from {}", channel_name, coordinator_nick))
 });

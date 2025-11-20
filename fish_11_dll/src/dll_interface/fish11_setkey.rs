@@ -16,7 +16,9 @@ dll_function_identifier!(FiSH11_SetKey, data, {
     if parts.len() < 3 {
         return Err(DllError::InvalidInput {
             param: "input".to_string(),
-            reason: "expected format: <network> <target> <base64_key> (target = nickname or channel)".to_string(),
+            reason:
+                "expected format: <network> <target> <base64_key> (target = nickname or channel)"
+                    .to_string(),
         });
     }
 

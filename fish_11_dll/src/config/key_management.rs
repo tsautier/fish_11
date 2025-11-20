@@ -156,7 +156,10 @@ pub fn set_key(
     #[cfg(debug_assertions)]
     log_debug!(
         "set_key: Called with nickname='{}', network={:?}, overwrite={}, is_exchange={}",
-        nickname, network, overwrite, is_exchange
+        nickname,
+        network,
+        overwrite,
+        is_exchange
     );
 
     let normalized_nick = normalize_nick(nickname);
@@ -321,7 +324,8 @@ pub fn get_key_ttl(nickname: &str, network: Option<&str>) -> DllResult<Option<i6
                         let elapsed_seconds = duration.num_seconds();
 
                         // Add grace period to account for clock drift
-                        let remaining_seconds = key_lifetime_seconds + KEY_EXPIRY_GRACE_PERIOD - elapsed_seconds;
+                        let remaining_seconds =
+                            key_lifetime_seconds + KEY_EXPIRY_GRACE_PERIOD - elapsed_seconds;
 
                         if remaining_seconds > 0 {
                             return Ok(Some(remaining_seconds));
@@ -396,7 +400,11 @@ pub fn get_configured_key_ttl() -> i64 {
         Ok(ttl) => {
             // Validate TTL is within acceptable range
             if ttl < MIN_TTL {
-                log_debug!("Configured TTL ({}) is below minimum ({}), using minimum", ttl, MIN_TTL);
+                log_debug!(
+                    "Configured TTL ({}) is below minimum ({}), using minimum",
+                    ttl,
+                    MIN_TTL
+                );
                 MIN_TTL
             } else if ttl > MAX_TTL {
                 log_debug!("Configured TTL ({}) exceeds maximum ({}), using maximum", ttl, MAX_TTL);
@@ -449,9 +457,13 @@ pub fn set_configured_key_ttl(ttl_seconds: i64) -> DllResult<()> {
             ),
         });
     }
-    
+
     if ttl_seconds > MAX_KEY_TTL {
-        log_debug!("Invalid TTL value: {}. Exceeds maximum of {} seconds.", ttl_seconds, MAX_KEY_TTL);
+        log_debug!(
+            "Invalid TTL value: {}. Exceeds maximum of {} seconds.",
+            ttl_seconds,
+            MAX_KEY_TTL
+        );
         return Err(DllError::InvalidInput {
             param: "ttl_seconds".to_string(),
             reason: format!(
@@ -486,11 +498,7 @@ pub fn is_key_about_to_expire(nickname: &str, network: Option<&str>) -> DllResul
     match ttl {
         Some(seconds) => {
             // If seconds is 0 or negative, the key is expired
-            if seconds <= WARNING_THRESHOLD_SECONDS {
-                Ok(true)
-            } else {
-                Ok(false)
-            }
+            if seconds <= WARNING_THRESHOLD_SECONDS { Ok(true) } else { Ok(false) }
         }
         None => Ok(false), // Not an exchange key, no TTL
     }
@@ -598,12 +606,7 @@ pub fn get_all_keys_with_ttl() -> DllResult<Vec<KeyInfo>> {
                 None
             };
 
-            keys_info.push(KeyInfo {
-                nickname,
-                network,
-                is_exchange,
-                ttl,
-            });
+            keys_info.push(KeyInfo { nickname, network, is_exchange, ttl });
         }
         Ok(())
     });
@@ -666,12 +669,20 @@ pub fn get_our_keypair() -> Result<([u8; 32], [u8; 32])> {
 /// List all stored keys in the configuration
 pub fn list_keys() -> Result<Vec<(String, String, Option<String>, Option<String>)>> {
     with_config(|config| {
+        log_debug!("list_keys: Starting to process {} total entries", config.entries.len());
         let mut result = Vec::new();
 
         // Process all entries in the new format: "nickname@network" or "#channel@network"
         for (entry_key, entry) in config.entries.iter() {
+            log_debug!(
+                "list_keys: Processing entry: '{}' with key present: {}",
+                entry_key,
+                entry.key.is_some()
+            );
+
             // Skip entries without keys
             if entry.key.is_none() {
+                log_debug!("list_keys: Skipping entry '{}' due to no key", entry_key);
                 continue;
             }
 
@@ -809,9 +820,7 @@ pub fn check_key_expiry(nickname: &str, network: Option<&str>) -> DllResult<()> 
     .map_err(DllError::from)?;
 
     if was_expired {
-        Err(DllError::KeyExpired {
-            nickname: normalized_nick.to_string(),
-        })
+        Err(DllError::KeyExpired { nickname: normalized_nick.to_string() })
     } else {
         Ok(())
     }
@@ -971,7 +980,8 @@ mod tests {
         assert!(status.is_valid);
 
         // Test human-readable status
-        let human_readable = get_key_status_human_readable(nickname, Some("testnet")).expect("Failed to get human-readable status");
+        let human_readable = get_key_status_human_readable(nickname, Some("testnet"))
+            .expect("Failed to get human-readable status");
         assert!(!human_readable.is_empty());
 
         // Cleanup

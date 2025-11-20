@@ -8,10 +8,12 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
-  build_and_test:
-    name: Build and Test
+  # Test sur Linux (rapide pour les checks de base)
+  test-linux:
+    name: Test on Linux
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,6 +22,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
+          components: rustfmt, clippy
 
       - name: Cache Cargo dependencies
         uses: actions/cache@v4
@@ -32,8 +35,111 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build and check
-        run: cargo check --workspace
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Build core library
+        run: cargo build --verbose -p fish_11_core
+
+      - name: Build CLI tool
+        run: cargo build --verbose -p fish_11_cli
 
       - name: Run tests
-        run: cargo test --workspace
+        run: cargo test --workspace --verbose
+
+  # Compilation Windows i686 (cible principale pour mIRC)
+  build-windows-i686:
+    name: Build Windows i686 (mIRC target)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: i686-pc-windows-msvc
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-i686-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build fish_11_core
+        run: cargo build --release --target i686-pc-windows-msvc -p fish_11_core
+
+      - name: Build fish_11_dll (core DLL)
+        run: cargo build --release --target i686-pc-windows-msvc -p fish_11_dll
+
+      - name: Build fish_11_inject (injection DLL)
+        run: cargo build --release --target i686-pc-windows-msvc -p fish_11_inject
+
+      - name: Build fish_11_cli (CLI tool)
+        run: cargo build --release --target i686-pc-windows-msvc -p fish_11_cli
+
+      - name: Verify DLL exports
+        shell: pwsh
+        run: |
+          Write-Host "Checking fish_11.dll exports..."
+          dumpbin /EXPORTS target/i686-pc-windows-msvc/release/fish_11.dll | Select-String "FiSH11"
+          
+          Write-Host "`nChecking fish_11_inject.dll exports..."
+          dumpbin /EXPORTS target/i686-pc-windows-msvc/release/fish_11_inject.dll | Select-String "FiSH11"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fish_11-windows-i686-ci
+          path: |
+            target/i686-pc-windows-msvc/release/fish_11.dll
+            target/i686-pc-windows-msvc/release/fish_11_inject.dll
+            target/i686-pc-windows-msvc/release/fish_11_cli.exe
+          retention-days: 3
+
+  # Tests de sécurité et qualité du code
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run security audit
+        uses: rustsec/audit-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  # Vérification que la documentation compile
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-doc-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build documentation
+        run: cargo doc --workspace --no-deps --document-private-items
