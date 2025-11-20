@@ -1397,6 +1397,9 @@ menu @iniviewer {
 ; === ALIAS SHORTCUTS FOR USER COMMANDS ===
 ; These provide simplified commands for users
 
+; Encrypted topic alias - transparently encrypts the topic via the injection hook
+alias etopic /topic $1-
+
 alias fish_genkey11 { fish11_setkey_safe $1 $2- }
 alias fish_setkey11 { fish11_setkey $1 $2- }
 alias fish_getkey11 { fish11_showkey $1 }

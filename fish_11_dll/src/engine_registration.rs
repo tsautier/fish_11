@@ -141,8 +141,8 @@ pub static FISH_INJECT_ENGINE: FishInjectEngine = FishInjectEngine {
 
 // Function to attempt encryption
 fn attempt_encryption(line: &str) -> Option<String> {
-    // Only encrypt outgoing PRIVMSG/NOTICE commands
-    if !line.contains(" PRIVMSG ") && !line.contains(" NOTICE ") {
+    // Only encrypt outgoing PRIVMSG/NOTICE/TOPIC commands
+    if !line.contains(" PRIVMSG ") && !line.contains(" NOTICE ") && !line.contains(" TOPIC ") {
         return None;
     }
 
@@ -163,10 +163,12 @@ fn attempt_encryption(line: &str) -> Option<String> {
 
     // Extract target from command part
     // Could be "PRIVMSG #channel" or ":prefix PRIVMSG #channel"
-    let target = if let Some(privmsg_pos) = cmd_part.find(" PRIVMSG ") {
-        cmd_part[privmsg_pos + 9..].trim()
+    let (target, is_topic) = if let Some(privmsg_pos) = cmd_part.find(" PRIVMSG ") {
+        (cmd_part[privmsg_pos + 9..].trim(), false)
     } else if let Some(notice_pos) = cmd_part.find(" NOTICE ") {
-        cmd_part[notice_pos + 8..].trim()
+        (cmd_part[notice_pos + 8..].trim(), false)
+    } else if let Some(topic_pos) = cmd_part.find(" TOPIC ") {
+        (cmd_part[topic_pos + 7..].trim(), true)
     } else {
         log_warn!("Engine: could not extract target from command part");
         return None;
@@ -204,9 +206,10 @@ fn attempt_encryption(line: &str) -> Option<String> {
     log_info!("Engine: successfully encrypted message to '{}'", target);
 
     // Reconstruct line with encrypted data
-    // Keep prefix if present, replace message with "+FiSH <encrypted>"
+    // Keep prefix if present, replace message with "+FiSH <encrypted>" or "+FCEP_TOPIC+ <encrypted>"
     // Add \r\n for IRC protocol compliance
-    let encrypted_line = format!("{} :+FiSH {}\n", cmd_part, encrypted);
+    let prefix = if is_topic { "+FCEP_TOPIC+" } else { "+FiSH" };
+    let encrypted_line = format!("{} :{} {}\r\n", cmd_part, prefix, encrypted);
 
     Some(encrypted_line)
 }
@@ -214,6 +217,74 @@ fn attempt_encryption(line: &str) -> Option<String> {
 // Function to attempt decryption
 fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
     log_debug!("Engine: attempt_decryption called for line: {}, network: {:?}", line, network);
+    
+    // Handle RPL_TOPIC (332) for encrypted channel topics
+    if line.contains(" 332 ") && line.contains(":+FCEP_TOPIC+") {
+        log_debug!("Engine: detected encrypted topic line: {}", line);
+
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 5 {
+            log_warn!("Engine: malformed encrypted topic line (not enough parts): {}", line);
+            return None;
+        }
+
+        let key_identifier = parts[3]; // Channel name is the key identifier
+        
+        let topic_marker = ":+FCEP_TOPIC+";
+        let topic_start = match line.find(topic_marker) {
+            Some(pos) => pos + topic_marker.len(),
+            None => {
+                log_warn!("Engine: FCEP_TOPIC marker not found in topic line");
+                return None;
+            }
+        };
+        let encrypted_data = &line[topic_start..].trim();
+        
+        log_debug!(
+            "Engine: topic_key_identifier={}, encrypted_data_len={}",
+            key_identifier,
+            encrypted_data.len()
+        );
+
+        let key = match crate::config::get_key(key_identifier, network) {
+            Ok(k) => k,
+            Err(e) => {
+                log_warn!("Engine: no key found for topic channel '{}': {}", key_identifier, e);
+                return None;
+            }
+        };
+        
+        let key_array: &[u8; 32] = match key.as_slice().try_into() {
+            Ok(arr) => arr,
+            Err(_) => {
+                log_error!("Engine: invalid key length for topic channel '{}'", key_identifier);
+                return None;
+            }
+        };
+
+        let decrypted = match decrypt_message(key_array, encrypted_data, Some(key_identifier)) {
+            Ok(msg) => msg,
+            Err(e) => {
+                log_error!("Engine: topic decryption failed for channel '{}': {}", key_identifier, e);
+                return None;
+            }
+        };
+
+        log_info!("Engine: successfully decrypted topic for channel '{}'", key_identifier);
+
+        let message_part_start = match line.find(" :+FCEP_TOPIC+") {
+            Some(pos) => pos,
+            None => {
+                log_error!("Engine: could not find topic part ' :+FCEP_TOPIC+' in line");
+                return None;
+            }
+        };
+
+        let prefix_and_command = &line[..message_part_start];
+        let reconstructed = format!("{} :{}\r\n", prefix_and_command, decrypted);
+        return Some(reconstructed);
+    }
+
 
     // Check if line contains FiSH encrypted data
     if !line.contains(":+FiSH ") {
