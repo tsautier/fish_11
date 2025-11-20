@@ -73,7 +73,7 @@ jobs:
           encrypt_action=false
           process_incoming=true
           process_outgoing=true
-          mark_encrypted= 12`$chr(183)
+          mark_encrypted= 12$$chr(183)
           no_fish10_legacy=false
           plain_prefix=+p 
           mark_position=1
