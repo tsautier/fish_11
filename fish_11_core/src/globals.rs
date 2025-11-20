@@ -4,16 +4,27 @@ use std::ffi::c_int;
 use std::sync::Mutex;
 use std::time::Duration;
 
+// mIRC DLL exports
 pub const MIRC_HALT: c_int = 0;
 pub const MIRC_CONTINUE: c_int = 1;
 pub const MIRC_COMMAND: c_int = 2;
 pub const MIRC_IDENTIFIER: c_int = 3;
 pub const MIRC_ERROR: c_int = 4;
 
+// Return codes for mIRC data functions
+pub const MIRC_RETURN_CONTINUE: i32 = 0;
+pub const MIRC_RETURN_DATA_COMMAND: i32 = 1;
+pub const MIRC_RETURN_DATA_RETURN: i32 = 2;
+
+
+// C API version - Engine <-> Inject DLL contract
+pub const FISH_INJECT_ENGINE_VERSION: u32 = 1;
+
 // Default maximum bytes that can be returned to mIRC
 // Default maximum bytes that can be returned to mIRC. We still cap
 // the runtime-reported buffer size to a safe maximum below.
 pub const DEFAULT_MIRC_BUFFER_SIZE: usize = 4096;
+
 // Maximum buffer size we will ever report to callers (including content, we'll
 // subtract one for the null terminator in get_buffer_size()). This prevents
 // accidentally writing too much to caller buffers; mIRC historically uses 900.

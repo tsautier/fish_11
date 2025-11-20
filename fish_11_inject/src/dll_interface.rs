@@ -2,6 +2,7 @@ use std::ffi::{CString, c_char};
 use std::sync::atomic::Ordering;
 
 use fish_11_core::buffer_utils::write_cstring_to_buffer;
+use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION, MIRC_RETURN_DATA_COMMAND};
 use log::{debug, error, info, warn};
 use winapi::shared::minwindef::BOOL;
 use windows::Win32::Foundation::{HMODULE, HWND};
@@ -9,10 +10,9 @@ use windows::Win32::UI::WindowsAndMessaging::{MB_ICONEXCLAMATION, MB_OK, Message
 
 use crate::helpers_inject::install_hooks;
 use crate::{
-    ACTIVE_SOCKETS, DISCARDED_SOCKETS, DLL_HANDLE_PTR, ENGINES, LOADED, MAX_MIRC_RETURN_BYTES, MIRC_COMMAND, MIRC_HALT,
-    MIRC_RET_DATA_COMMAND, VERSION_SHOWN, c_int, cleanup_hooks,
+    ACTIVE_SOCKETS, DISCARDED_SOCKETS, DLL_HANDLE_PTR, ENGINES, LOADED, MAX_MIRC_RETURN_BYTES,
+    MIRC_COMMAND, MIRC_HALT, MIRC_IDENTIFIER, VERSION_SHOWN, c_int, cleanup_hooks,
 };
-use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION};
 
 #[repr(C)]
 pub struct LOADINFO {
@@ -157,15 +157,24 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
         // Prepare version string as a command
         let version_cmd =
             format!("/echo -ts *** FiSH_11 inject v{} loaded successfully. ***", BUILD_VERSION);
+
         if let Ok(c_cmd) = CString::new(version_cmd) {
             let current_max_len = *MAX_MIRC_RETURN_BYTES.lock().unwrap();
+
             if c_cmd.as_bytes_with_nul().len() <= current_max_len {
                 unsafe {
-                    write_cstring_to_buffer(li.m_filename, current_max_len, &c_cmd);
+                    if let Err(e) = write_cstring_to_buffer(li.m_filename, current_max_len, &c_cmd)
+                    {
+                        error!("Failed to write version message to mIRC buffer: {}", e);
+                    } else {
+                        info!(
+                            "Success message written to mIRC buffer: {}",
+                            c_cmd.to_str().unwrap()
+                        );
+                        li.m_keep = 1;
+                        return MIRC_COMMAND;
+                    }
                 }
-                info!("Success message written to mIRC buffer: {}", c_cmd.to_str().unwrap());
-                li.m_keep = 1;
-                return MIRC_COMMAND;
             } else {
                 warn!("Version info command too long for mIRC buffer.");
                 #[cfg(debug_assertions)]
@@ -303,7 +312,7 @@ pub extern "C" fn FiSH11_InjectDebugInfo(
     }
 
     // Return as mIRC command to execute
-    MIRC_RET_DATA_COMMAND
+    MIRC_RETURN_DATA_COMMAND
 }
 
 #[no_mangle]
@@ -373,5 +382,5 @@ pub extern "system" fn FiSH11_InjectVersion(
         }
     }
 
-    MIRC_COMMAND
+    MIRC_IDENTIFIER
 }

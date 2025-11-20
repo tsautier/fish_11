@@ -6,7 +6,8 @@ use std::ffi::{CStr, CString};
 use log::{error, info, trace, warn};
 use parking_lot::{Mutex, RwLock};
 
-use crate::FISH_INJECT_ENGINE_VERSION;
+use fish_11_core::globals::FISH_INJECT_ENGINE_VERSION;
+
 // C structure definition provided by engines
 #[repr(C)]
 pub struct FishInjectEngine {

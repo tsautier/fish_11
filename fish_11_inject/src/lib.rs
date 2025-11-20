@@ -31,6 +31,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use engines::InjectEngines;
+use fish_11_core::globals::{MIRC_COMMAND, MIRC_HALT, MIRC_IDENTIFIER};
 use lazy_static::lazy_static;
 use log::{error, info};
 use socket::info::SocketInfo;
@@ -43,6 +44,7 @@ use crate::helpers_inject::{cleanup_hooks, init_logger};
 // Wrapper to make HMODULE Send + Sync
 #[derive(Clone, Copy)]
 struct SendHMODULE(HMODULE);
+
 unsafe impl Send for SendHMODULE {}
 unsafe impl Sync for SendHMODULE {}
 
@@ -55,19 +57,6 @@ lazy_static! {
     static ref SOCKETS: RwLock<HashMap<SOCKET, Arc<Mutex<SocketInfo>>>> =
         RwLock::new(HashMap::new());
 }
-
-// C API version - Engine <-> Inject DLL contract
-pub const FISH_INJECT_ENGINE_VERSION: u32 = 1;
-
-// mIRC DLL exports
-const _MIRC_RET_CONTINUE: i32 = 0;
-const MIRC_RET_DATA_COMMAND: i32 = 1;
-const _MIRC_RET_DATA_RETURN: i32 = 2;
-const MIRC_HALT: c_int = 0;
-#[allow(dead_code)]
-const MIRC_CONTINUE: c_int = 1;
-#[allow(dead_code)]
-const MIRC_COMMAND: c_int = 2;
 
 /// Global flags
 static LOADED: AtomicBool = AtomicBool::new(false);
