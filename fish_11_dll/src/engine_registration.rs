@@ -176,6 +176,9 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
 
     log_debug!("Engine: target={}, message_len={}", target, message.len());
 
+    // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan, etc.)
+    let target = crate::utils::normalize_target(target);
+
     // Try to get encryption key for target
     // Use network-aware key lookup instead of default
     let key = match crate::config::get_key(target, network_name.as_deref()) {
