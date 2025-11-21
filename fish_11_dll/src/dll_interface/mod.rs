@@ -3,6 +3,7 @@
 use std::ffi::CStr;
 use std::ptr;
 
+mod fish11_coreversion;
 mod fish11_decryptmsg;
 mod fish11_encryptmsg;
 mod fish11_filedelkey;
@@ -14,7 +15,6 @@ mod fish11_getconfigpath;
 mod fish11_getkeyttl;
 mod fish11_help;
 mod fish11_setnetwork;
-mod fish11_coreversion;
 mod key_management;
 mod utility;
 

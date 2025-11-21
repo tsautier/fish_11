@@ -2,7 +2,6 @@ use std::ffi::c_char;
 use std::os::raw::c_int;
 use std::time::Instant;
 
-use log::{info, warn};
 use rand::RngCore;
 use rand::rngs::OsRng;
 use secrecy::ExposeSecret;
@@ -14,11 +13,11 @@ use crate::dll_interface::KEY_EXCHANGE_TIMEOUT_SECONDS;
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::{DllError, DllResult};
 use crate::utils::normalize_nick;
-use crate::{buffer_utils, dll_function_identifier, log_debug};
+use crate::{buffer_utils, dll_function_identifier, log_debug, log_info, log_warn};
 
 dll_function_identifier!(FiSH11_ExchangeKey, data, {
     let overall_start = Instant::now();
-    info!("=== Key exchange initiated ===");
+    log_info!("=== Key exchange initiated ===");
 
     // This function is time-sensitive as it's part of an interactive user workflow.
     // A timeout ensures we don't block mIRC indefinitely if crypto operations hang.
@@ -39,9 +38,10 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
         return Err(DllError::MissingParameter("nickname".to_string()));
     }
 
-    info!(
+    log_debug!(
         "Key exchange initiated for nickname/channel: {} (original: {})",
-        nickname, input_trimmed
+        nickname,
+        input_trimmed
     );
 
     // Timeout check 1
@@ -66,7 +66,7 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
 
     #[cfg(debug_assertions)]
     if step1_duration.as_millis() > 500 {
-        warn!("Step 1 took more than 500ms: {:?}", step1_duration);
+        log_warn!("Step 1 took more than 500ms: {:?}", step1_duration);
     }
 
     // Timeout check 2
@@ -74,7 +74,9 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
 
     // Step 2: Get or generate keypair
     let step2_start = Instant::now();
+
     log_debug!("Starting get_or_generate_keypair_internal...");
+
     let (keypair, keypair_was_generated) = get_or_generate_keypair_internal()?;
     if keypair_was_generated {
         config_modified = true;
@@ -88,7 +90,7 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
 
     #[cfg(debug_assertions)]
     if step2_duration.as_millis() > 500 {
-        warn!("Step 2 took more than 500ms: {:?}", step2_duration);
+        log_warn!("Step 2 took more than 500ms: {:?}", step2_duration);
     }
 
     // Timeout check 3
@@ -96,14 +98,18 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
 
     // Step 3: Validate keypair
     let step3_start = Instant::now();
+
     log_debug!("Starting validate_keypair_safety...");
+
     validate_keypair_safety(&keypair)?;
+
     let step3_duration = step3_start.elapsed();
+
     log_debug!("Step 3 (validation) took {:?}", step3_duration);
 
     #[cfg(debug_assertions)]
     if step3_duration.as_millis() > 100 {
-        warn!("Step 3 took more than 100ms: {:?}", step3_duration);
+        log_warn!("Step 3 took more than 100ms: {:?}", step3_duration);
     }
 
     // Step 4: Format public key for sharing
@@ -124,7 +130,7 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     // Step 5: Save config ONCE if anything was modified
     if config_modified {
         let save_start = Instant::now();
-        info!("Saving configuration changes...");
+        log_info!("Saving configuration changes...");
 
         // Take a snapshot of the config and release the lock immediately
         let config_snapshot = {
@@ -136,10 +142,10 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
         save_config(&config_snapshot, None)?;
 
         let save_duration = save_start.elapsed();
-        info!("Configuration saved in {:?}", save_duration);
+        log_debug!("Configuration saved in {:?}", save_duration);
 
         if save_duration.as_secs() > 2 {
-            warn!("Config save took longer than 2 seconds! Check disk I/O performance.");
+            log_warn!("Config save took longer than 2 seconds! Check disk I/O performance.");
         }
     } else {
         log_debug!("No configuration changes to save");
@@ -150,19 +156,24 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     // message. Keep logging for UX and debugging.
     let total_duration = overall_start.elapsed();
     if key_was_generated {
-        info!(
+        log_debug!(
             "Key exchange setup completed for {} (generated new key) in {:?}",
-            nickname, total_duration
+            nickname,
+            total_duration
         );
     } else {
-        info!("Key exchange setup completed successfully for {} in {:?}", nickname, total_duration);
+        log_debug!(
+            "Key exchange setup completed successfully for {} in {:?}",
+            nickname,
+            total_duration
+        );
     }
 
     if total_duration.as_secs() > 3 {
-        warn!("Key exchange took longer than 3 seconds! Duration: {:?}", total_duration);
+        log_warn!("Key exchange took longer than 3 seconds! Duration: {:?}", total_duration);
     }
 
-    info!("=== Key exchange completed ===");
+    log_info!("=== Key exchange completed ===");
 
     // Return only the token, e.g. "FiSH11-PubKey:BASE64..."
     Ok(formatted_key)
@@ -179,11 +190,11 @@ fn ensure_key_exists(nickname: &str) -> DllResult<bool> {
 
     match existing_key {
         Ok(_) => {
-            info!("Found existing key for {}", nickname);
+            log_debug!("Found existing key for {}", nickname);
             Ok(false) // Key already existed
         }
         Err(_) => {
-            info!("No existing key found for {}, generating new key", nickname);
+            log_debug!("No existing key found for {}, generating new key", nickname);
 
             let keygen_start = Instant::now();
             log_debug!("Starting RNG for key generation...");
@@ -196,7 +207,7 @@ fn ensure_key_exists(nickname: &str) -> DllResult<bool> {
 
             #[cfg(debug_assertions)]
             if keygen_duration.as_millis() > 200 {
-                warn!(
+                log_warn!(
                     "RNG took more than 200ms: {:?} - this may indicate entropy pool issues",
                     keygen_duration
                 );
@@ -210,7 +221,7 @@ fn ensure_key_exists(nickname: &str) -> DllResult<bool> {
 
             log_debug!("set_key_default took {:?}", store_start.elapsed());
 
-            info!(
+            log_debug!(
                 "Successfully generated and stored new key for {} (not yet saved to disk)",
                 nickname
             );
@@ -232,22 +243,24 @@ fn get_or_generate_keypair_internal() -> DllResult<(KeyPair, bool)> {
             Ok((kp, false))
         }
         Err(_) => {
-            info!("No keypair found, generating new one");
+            log_debug!("No keypair found, generating new one");
 
             let keygen_start = Instant::now();
+
             log_debug!("Starting keypair generation...");
 
             let new_keypair = generate_keypair();
-
             let keygen_duration = keygen_start.elapsed();
+
             log_debug!("Keypair generation took {:?}", keygen_duration);
 
             #[cfg(debug_assertions)]
             if keygen_duration.as_millis() > 200 {
-                warn!("Keypair generation took more than 200ms: {:?}", keygen_duration);
+                log_warn!("Keypair generation took more than 200ms: {:?}", keygen_duration);
             }
 
             let store_start = Instant::now();
+
             log_debug!("Storing keypair in config...");
 
             // Store the new keypair (in-memory only, no disk I/O yet)
@@ -255,7 +268,7 @@ fn get_or_generate_keypair_internal() -> DllResult<(KeyPair, bool)> {
 
             log_debug!("store_keypair took {:?}", store_start.elapsed());
 
-            info!("Successfully generated and stored new keypair (not yet saved to disk)");
+            log_info!("Successfully generated and stored new keypair (not yet saved to disk)");
             Ok((new_keypair, true))
         }
     }
@@ -324,13 +337,13 @@ fn generate_secure_random_key() -> DllResult<[u8; 32]> {
 
                 #[cfg(debug_assertions)]
                 if duration.as_millis() > 100 {
-                    warn!("RNG took longer than 100ms: {:?}", duration);
+                    log_warn!("RNG took longer than 100ms: {:?}", duration);
                 }
 
                 return Ok(key_bytes);
             }
             Err(_) => {
-                warn!("RNG failed on attempt {}/3", attempt);
+                log_warn!("RNG failed on attempt {}/3", attempt);
                 if attempt < 3 {
                     // Use a very short sleep to avoid blocking mIRC
                     std::thread::sleep(std::time::Duration::from_millis(5));

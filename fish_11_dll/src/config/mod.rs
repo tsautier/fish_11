@@ -42,7 +42,7 @@ pub static CONFIG: Lazy<Mutex<FishConfig>> = Lazy::new(|| {
                 Err(e) => {
                     #[cfg(debug_assertions)]
                     log::error!("CONFIG: Failed to load config from {}: {}", path.display(), e);
-                    
+
                     log::warn!("CONFIG: Using default configuration due to load error");
                     Mutex::new(FishConfig::new())
                 }
@@ -53,26 +53,26 @@ pub static CONFIG: Lazy<Mutex<FishConfig>> = Lazy::new(|| {
             log::error!("CONFIG: Failed to get config path: {}", e);
 
             log::warn!("CONFIG: Using default configuration (MIRCDIR not set)");
-            
+
             #[cfg(debug_assertions)]
             log::info!("CONFIG: Creating new FishConfig...");
-            
+
             let new_config = FishConfig::new();
-            
+
             #[cfg(debug_assertions)]
             log::info!("CONFIG: FishConfig created successfully");
-            
+
             #[cfg(debug_assertions)]
             log::info!("CONFIG: Creating Mutex wrapper...");
-            
+
             let mutex = Mutex::new(new_config);
-            
+
             #[cfg(debug_assertions)]
             log::info!("CONFIG: Mutex created successfully");
-            
+
             #[cfg(debug_assertions)]
             log::info!("CONFIG: Returning from Lazy::new...");
-            
+
             mutex
         }
     }
@@ -83,10 +83,10 @@ pub static CONFIG: Lazy<Mutex<FishConfig>> = Lazy::new(|| {
 pub fn init_config() {
     #[cfg(debug_assertions)]
     log::info!("init_config: Forcing CONFIG initialization...");
-    
+
     // Just access CONFIG to trigger Lazy initialization
     let _ = &*CONFIG;
-    
+
     #[cfg(debug_assertions)]
     log::info!("init_config: CONFIG initialized successfully");
 }
@@ -136,11 +136,11 @@ where
 
 pub use config_access::{read_config, with_config, with_config_mut, write_config};
 // Re-export key functions from submodules for easier access
+pub use channel_keys::{get_channel_key, set_channel_key};
 pub use entries::{
     get_channel_data, get_user_data, list_channel_entries, list_user_entries, set_channel_data,
     set_user_data,
 };
-pub use channel_keys::{get_channel_key, set_channel_key};
 pub use file_storage::{get_config_path, init_config_file, load_config, save_config};
 pub use key_management::{
     delete_key, delete_key_default, get_key, get_key_default, get_keypair, get_our_keypair,

@@ -42,8 +42,8 @@ pub fn fish_main_version() -> String {
     format!(
         "*** FiSH_11 core v{} - Compiled {} at {} - Written by [GuY], licensed under the GPL-v3. ***",
         fish_11_core::globals::BUILD_VERSION,
-        fish_11_core::globals::BUILD_DATE,
-        fish_11_core::globals::BUILD_TIME
+        fish_11_core::globals::BUILD_DATE.as_str(),
+        fish_11_core::globals::BUILD_TIME.as_str()
     )
 }
 

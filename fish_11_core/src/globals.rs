@@ -16,7 +16,6 @@ pub const MIRC_RETURN_CONTINUE: i32 = 0;
 pub const MIRC_RETURN_DATA_COMMAND: i32 = 1;
 pub const MIRC_RETURN_DATA_RETURN: i32 = 2;
 
-
 // C API version - Engine <-> Inject DLL contract
 pub const FISH_INJECT_ENGINE_VERSION: u32 = 1;
 
@@ -82,9 +81,10 @@ pub const BUILD_VERSION: &str = match option_env!("VERGEN_GIT_DESCRIBE") {
     None => env!("CARGO_PKG_VERSION"),
 };
 
-/// Build date, e.g. "2024-08-01"
-pub const BUILD_DATE: &str = match option_env!("VERGEN_BUILD_DATE") {
-    Some(date) => date,
+/// Build timestamp from vergen (ISO 8601 format)
+/// Example: "2025-11-20T14:30:22.123456789Z"
+pub const BUILD_TIMESTAMP: &str = match option_env!("VERGEN_BUILD_TIMESTAMP") {
+    Some(timestamp) => timestamp,
     None => "N/A",
 };
 
@@ -117,7 +117,8 @@ pub static BUILD_TIME: Lazy<String> = Lazy::new(|| {
 /// Example: 20251120143022 for 2025-11-20 14:30:22
 /// This is constructed at runtime from BUILD_TIMESTAMP
 pub fn get_build_number() -> String {
-    if let Some(timestamp) = option_env!("VERGEN_BUILD_TIMESTAMP") {
+    let timestamp = BUILD_TIMESTAMP;
+    if timestamp != "N/A" {
         // Parse ISO 8601: "2025-11-20T14:30:22.123456789Z"
         if let Some((date_part, time_part)) = timestamp.split_once('T') {
             // Extract YYYYMMDD from "2025-11-20"
@@ -137,9 +138,9 @@ pub fn get_build_number() -> String {
     }
 
     // Fallback to a default value
-    String::from("666555000013337")
+    String::from("00000000000000")
 }
 
 /// Static build number string for const contexts
 /// Uses a lazy static to cache the computed value
-pub static BUILD_NUMBER: Lazy<String> = Lazy::new(|| get_build_number());
+pub static BUILD_NUMBER: Lazy<String> = Lazy::new(get_build_number);

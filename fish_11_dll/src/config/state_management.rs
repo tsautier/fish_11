@@ -1,11 +1,11 @@
 //! Functions for managing channel ratchet state and nonce caches.
 
-use crate::unified_error::FishError;
 use super::{
     config_access::{with_config, with_config_mut},
     models::{NonceCache, RatchetState},
 };
 use crate::unified_error::DllResult;
+use crate::unified_error::FishError;
 
 /// Initializes the ratchet state for a channel if it doesn't exist.
 pub fn init_ratchet_state(channel: &str, initial_key: [u8; 32]) -> DllResult<()> {
@@ -30,7 +30,10 @@ where
         if let Some(state) = config.channel_ratchet_states.get_mut(&channel_name) {
             action(state).map_err(|e| FishError::ConfigError(e.to_string()))
         } else {
-            Err(FishError::ConfigError(format!("Ratchet state not found for channel {}", &channel_name)))
+            Err(FishError::ConfigError(format!(
+                "Ratchet state not found for channel {}",
+                &channel_name
+            )))
         }
     });
 
@@ -58,10 +61,7 @@ pub fn check_nonce(channel: &str, nonce: &[u8; 12]) -> DllResult<bool> {
 pub fn add_nonce(channel: &str, nonce: [u8; 12]) -> DllResult<()> {
     let channel_name = channel.to_lowercase();
     with_config_mut(|config| {
-        let cache = config
-            .channel_nonce_caches
-            .entry(channel_name)
-            .or_insert_with(NonceCache::new);
+        let cache = config.channel_nonce_caches.entry(channel_name).or_insert_with(NonceCache::new);
         cache.check_and_add(nonce); // The model's check_and_add now just adds
         Ok(())
     })?;

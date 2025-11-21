@@ -755,13 +755,13 @@ alias fish11_file_list_keys {
   var %keys
   
   ; Call DLL function using proper syntax for data return
-  ; The .dll command executes the function and puts output in the specified buffer
+  ; Using $dll command to directly capture return value
   echo $color(Mode text) -at *** FiSH: about to call FiSH11_FileListKeys...
-  .dll %Fish11DllFile FiSH11_FileListKeys %keys
+  var %keys = $dll(%Fish11DllFile, FiSH11_FileListKeys, $null)
   echo $color(Mode text) -at *** FiSH: DLL call completed, result: %keys
-  
+
   ; If the function returns data, display it line by line
-  if (%keys != $null) {
+  if (%keys != $null && %keys != "") {
     fish11_display_multiline_result %keys
   }
   else {

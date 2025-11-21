@@ -3,50 +3,142 @@ name: Create Release
 on:
   push:
     tags:
-      - 'v*.*.*' # Se déclenche sur les tags comme v1.0.0
+      - 'v*.*.*' # Se déclenche sur les tags comme v1.0.0, v1.2.3, etc.
+  workflow_dispatch: # Permet de déclencher manuellement
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  # --- Job pour compiler sur Linux ---
-  build-linux:
-    name: Build for Linux (x86_64)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-      
-      - name: Build release binary
-        run: cargo build --release --workspace --bin fish_11_cli --target x86_64-unknown-linux-gnu
-
-      - name: Prepare release artifacts
-        run: |
-          strip target/x86_64-unknown-linux-gnu/release/fish_11_cli
-          tar -czvf fish_11_cli-linux-x86_64.tar.gz -C target/x86_64-unknown-linux-gnu/release fish_11_cli
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: fish_11_cli-linux-x86_64
-          path: fish_11_cli-linux-x86_64.tar.gz
-
-  # --- Job pour compiler sur Windows ---
-  build-windows:
-    name: Build for Windows (i686)
+  # --- Job pour compiler sur Windows (i686 pour mIRC 32-bit) ---
+  build-windows-i686:
+    name: Build Windows DLLs (i686)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
           targets: i686-pc-windows-msvc
 
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-i686-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build fish_11.dll (core)
+        run: cargo build --release --target i686-pc-windows-msvc -p fish_11_dll
+
+      - name: Build fish_11_inject.dll
+        run: cargo build --release --target i686-pc-windows-msvc -p fish_11_inject
+
+      - name: Build fish_11_cli.exe
+        run: cargo build --release --target i686-pc-windows-msvc -p fish_11_cli
+
+      - name: Prepare release package
+        shell: pwsh
+        run: |
+          # Create release directory
+          New-Item -ItemType Directory -Force -Path release
+
+          # Copy DLLs
+          Copy-Item target/i686-pc-windows-msvc/release/fish_11.dll release/
+          Copy-Item target/i686-pc-windows-msvc/release/fish_11_inject.dll release/
+
+          # Copy CLI tool
+          Copy-Item target/i686-pc-windows-msvc/release/fish_11_cli.exe release/
+
+          # Copy mIRC script
+          Copy-Item scripts/mirc/fish_11.mrc release/
+
+          # Copy documentation
+          Copy-Item README.md release/
+          Copy-Item LICENSE release/
+          if (Test-Path "docs/INSTALLATION.md") {
+            Copy-Item docs/INSTALLATION.md release/
+          }
+
+          # Create INI template
+          @"
+          [fish11]
+          encrypt_notice=false
+          encrypt_action=false
+          process_incoming=true
+          process_outgoing=true
+          mark_encrypted= 12$$chr(183)
+          no_fish10_legacy=false
+          plain_prefix=+p 
+          mark_position=1
+          "@ | Out-File -FilePath release/fish_11.ini -Encoding ASCII
+
+          # Create installation instructions
+          @"
+          FiSH_11 Installation Instructions
+          ==================================
+
+          1. Copy fish_11.dll and fish_11_inject.dll to your mIRC directory
+          2. Copy fish_11.mrc to your mIRC scripts folder
+          3. Load the script in mIRC: /load -rs fish_11.mrc
+          4. The DLLs will be loaded automatically on startup
+
+          For detailed documentation, see README.md and INSTALLATION.md
+
+          Files included:
+          - fish_11.dll (core cryptographic library)
+          - fish_11_inject.dll (network injection hooks)
+          - fish_11.mrc (mIRC script interface)
+          - fish_11_cli.exe (command-line testing tool)
+          - fish_11.ini (configuration template)
+
+          Version: ${{ github.ref_name }}
+          Build date: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
+          "@ | Out-File -FilePath release/INSTALL.txt -Encoding UTF8
+
+          # Create archive
+          Compress-Archive -Path release/* -DestinationPath fish_11-windows-i686.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fish_11-windows-i686
+          path: fish_11-windows-i686.zip
+          retention-days: 7
+
+  # --- Job pour compiler sur Linux (x86_64 pour CLI) ---
+  build-linux-x64:
+    name: Build Linux CLI (x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-x64-cargo-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Build fish_11_cli
         run: cargo build --release --target x86_64-unknown-linux-gnu -p fish_11_cli
 
-      - name: Prepare release artifacts
+      - name: Prepare release package
         run: |
           mkdir -p release
           cp target/x86_64-unknown-linux-gnu/release/fish_11_cli release/
@@ -73,16 +165,17 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: fish_11_cli-windows-i686
-          path: fish_11_cli-windows-i686.zip
+          name: fish_11_cli-linux-x86_64
+          path: fish_11_cli-linux-x86_64.tar.gz
+          retention-days: 7
 
-  # --- Job pour créer la Release ---
+  # --- Job pour créer la Release GitHub ---
   create-release:
     name: Create GitHub Release (Draft)
     runs-on: ubuntu-latest
     needs: [build-windows-i686, build-linux-x64]
     permissions:
-      contents: write # Nécessaire pour créer une release
+      contents: write
     steps:
       - uses: actions/checkout@v4
 

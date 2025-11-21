@@ -8,10 +8,12 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
-  build_and_test:
-    name: Build and Test
+  # Test sur Linux (rapide pour les checks de base)
+  test-linux:
+    name: Test on Linux
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,6 +22,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
+          components: rustfmt, clippy
 
       - name: Cache Cargo dependencies
         uses: actions/cache@v4
@@ -32,8 +35,17 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build and check
-        run: cargo check --workspace
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Build core library
+        run: cargo build --verbose -p fish_11_core
+
+      - name: Build CLI tool
+        run: cargo build --verbose -p fish_11_cli
 
       - name: Run tests
         run: cargo test --workspace --verbose
@@ -86,11 +98,10 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install cargo-audit
-        run: cargo install cargo-audit
-
       - name: Run security audit
-        run: cargo audit
+        uses: rustsec/audit-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   # Vérification que la documentation compile
   docs:
@@ -115,4 +126,3 @@ jobs:
 
       - name: Build documentation
         run: cargo doc --workspace --no-deps --document-private-items
-        run: cargo test --workspace

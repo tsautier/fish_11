@@ -2,7 +2,9 @@ use std::ffi::{CString, c_char};
 use std::sync::atomic::Ordering;
 
 use fish_11_core::buffer_utils::write_cstring_to_buffer;
-use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION, MIRC_RETURN_DATA_COMMAND};
+use fish_11_core::globals::{
+    BUILD_DATE, BUILD_NUMBER, BUILD_TIME, BUILD_VERSION, MIRC_RETURN_DATA_COMMAND,
+};
 use log::{debug, error, info, warn};
 use winapi::shared::minwindef::BOOL;
 use windows::Win32::Foundation::{HMODULE, HWND};
@@ -327,8 +329,11 @@ pub extern "system" fn FiSH11_InjectVersion(
 ) -> c_int {
     // Return raw version info (script handles display formatting)
     let version_info = format!(
-        "FiSH injection dll version {}. *** Compiled on {} at {} *** Written by [GuY], licensed under the GPL-v3",
-        BUILD_VERSION, BUILD_DATE, BUILD_TIME
+        "FiSH injection dll version {} (build {}). *** Compiled on {} at {} *** Written by [GuY], licensed under the GPL-v3",
+        BUILD_VERSION,
+        BUILD_NUMBER.as_str(),
+        BUILD_DATE.as_str(),
+        BUILD_TIME.as_str()
     );
 
     let data_str = match CString::new(version_info) {
