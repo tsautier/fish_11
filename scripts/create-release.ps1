@@ -225,7 +225,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Success "Tag poussé"
 
-# 11. Attendre que GitHub Actions crée la release draft
+# Attendre que GitHub Actions crée la release draft
+
 Write-Host ""
 Write-Success "Tag $TagName poussé avec succès!"
 Write-Host ""

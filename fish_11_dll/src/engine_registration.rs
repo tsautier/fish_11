@@ -179,32 +179,12 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
     // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan, etc.)
     let target = crate::utils::normalize_target(target);
 
-    // Try to get encryption key for target
-    // Use network-aware key lookup instead of default
-    let key = match crate::config::get_key(target, network_name.as_deref()) {
-        Ok(k) => k,
-        Err(_) => {
-            // No key = no encryption, pass through
-            log_debug!(
-                "Engine: no key for target '{}' on network '{:?}', not encrypting",
-                target,
-                network_name
-            );
-            return None;
-        }
-    };
-
-    let key_array: &[u8; 32] = match key.as_slice().try_into() {
-        Ok(arr) => arr,
-        Err(_) => {
-            log_error!("Engine: invalid key length for target '{}'", target);
-            return None;
-        }
-    };
-
+    // For channels (#, &), we handle encryption with ratchet advancement (like fish11_encryptmsg.rs)
+    // For private messages, we use standard key lookup
     let encrypted = if target.starts_with('#') || target.starts_with('&') {
-        // For channels, we need to handle ratchet advancement similar to fish11_encryptmsg.rs
-        // Atomically get the current key and advance the ratchet for the next message.
+        log_debug!("Engine: attempting channel encryption for '{}'", target);
+
+        // For channels, use ratchet state (handles FCEP-1 encryption with forward secrecy)
         match crate::config::with_ratchet_state_mut(target, |state| {
             let current_key = state.current_key;
 
@@ -242,14 +222,71 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
             }
         }
     } else {
-        // For private messages, use the simple encryption
-        match encrypt_message(key_array, &message, Some(target), None) {
-            Ok(enc) => enc,
-            Err(e) => {
-                log_error!("Engine: encryption failed for target '{}': {}", target, e);
+        // For private messages, use standard key lookup
+        log_debug!("Engine: attempting private message encryption for '{}'", target);
+
+        let key = match crate::config::get_key(target, network_name.as_deref()) {
+            Ok(k) => k,
+            Err(_) => {
+                // No key = no encryption, pass through
+                log_debug!(
+                    "Engine: no key for target '{}' on network '{:?}', not encrypting",
+                    target,
+                    network_name
+                );
                 return None;
             }
-        }
+        };
+
+        let key_array: &[u8; 32] = match key.as_slice().try_into() {
+            Ok(arr) => arr,
+            Err(_) => {
+                log_error!("Engine: invalid key length for target '{}'", target);
+                return None;
+            }
+        };
+
+        // Encrypt the message (no AD for private messages).
+        encrypt_message(key_array, &message, Some(target), None).map_err(|e| {
+            log_error!("Engine: encryption failed for target '{}': {}", target, e);
+            crate::unified_error::DllError::from(e)
+        }).unwrap_or_else(|_| {
+            log_error!("Engine: encryption failed for target '{}', not encrypting", target);
+            return None;
+        })
+    } else {
+        // For private messages, use standard key lookup
+        log_debug!("Engine: attempting private message encryption for '{}'", target);
+
+        let key = match crate::config::get_key(target, network_name.as_deref()) {
+            Ok(k) => k,
+            Err(_) => {
+                // No key = no encryption, pass through
+                log_debug!(
+                    "Engine: no key for target '{}' on network '{:?}', not encrypting",
+                    target,
+                    network_name
+                );
+                return None;
+            }
+        };
+
+        let key_array: &[u8; 32] = match key.as_slice().try_into() {
+            Ok(arr) => arr,
+            Err(_) => {
+                log_error!("Engine: invalid key length for target '{}'", target);
+                return None;
+            }
+        };
+
+        // Encrypt the message (no AD for private messages).
+        encrypt_message(key_array, &message, Some(target), None).map_err(|e| {
+            log_error!("Engine: encryption failed for target '{}': {}", target, e);
+            crate::unified_error::DllError::from(e)
+        }).unwrap_or_else(|_| {
+            log_error!("Engine: encryption failed for target '{}', not encrypting", target);
+            return None;
+        })
     };
 
     log_info!("Engine: successfully encrypted message to '{}'", target);
@@ -471,7 +508,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
     let fish_start = match line.find(fish_marker) {
         Some(pos) => pos + fish_marker.len(),
         None => {
-            log_warn!("Engine: FiSH marker found but position parse failed");
+            log_warn!("Engine: FiSH11 marker found but position parse failed");
             return None;
         }
     };
