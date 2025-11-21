@@ -208,13 +208,14 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
         };
 
         // Encrypt the message with the channel name as Associated Data (to prevent cross-channel replay)
-        let encrypted = match encrypt_message(key_array, &message, Some(target), Some(target.as_bytes())) {
-            Ok(enc) => enc,
-            Err(e) => {
-                log_error!("Engine: topic encryption failed for channel '{}': {}", target, e);
-                return None;
-            }
-        };
+        let encrypted =
+            match encrypt_message(key_array, &message, Some(target), Some(target.as_bytes())) {
+                Ok(enc) => enc,
+                Err(e) => {
+                    log_error!("Engine: topic encryption failed for channel '{}': {}", target, e);
+                    return None;
+                }
+            };
 
         encrypted
     } else if target.starts_with('#') || target.starts_with('&') {
@@ -294,7 +295,13 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
         encrypted
     };
 
-    let msg_type = if is_topic { "topic" } else if target.starts_with('#') || target.starts_with('&') { "channel message" } else { "private message" };
+    let msg_type = if is_topic {
+        "topic"
+    } else if target.starts_with('#') || target.starts_with('&') {
+        "channel message"
+    } else {
+        "private message"
+    };
     log_info!("Engine: successfully encrypted {} to '{}'", msg_type, target);
 
     // Reconstruct line with encrypted data
@@ -321,7 +328,11 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
         }
 
         let key_identifier = parts[3]; // Channel name is the key identifier
-        log_debug!("Engine: RPL_TOPIC detected - channel: {}, parts count: {}", key_identifier, parts.len());
+        log_debug!(
+            "Engine: RPL_TOPIC detected - channel: {}, parts count: {}",
+            key_identifier,
+            parts.len()
+        );
 
         let topic_marker = ":+FCEP_TOPIC+";
         let topic_start = match line.find(topic_marker) {
@@ -342,9 +353,13 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
 
         let key = match crate::config::get_key(key_identifier, network) {
             Ok(k) => {
-                log_debug!("Engine: found key for topic channel '{}', length: {}", key_identifier, k.len());
+                log_debug!(
+                    "Engine: found key for topic channel '{}', length: {}",
+                    key_identifier,
+                    k.len()
+                );
                 k
-            },
+            }
             Err(e) => {
                 log_warn!("Engine: no key found for topic channel '{}': {}", key_identifier, e);
                 return None;
@@ -362,9 +377,13 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
         let decrypted =
             match decrypt_message(key_array, encrypted_data, Some(key_identifier.as_bytes())) {
                 Ok(msg) => {
-                    log_debug!("Engine: successfully decrypted topic for channel '{}', length: {}", key_identifier, msg.len());
+                    log_debug!(
+                        "Engine: successfully decrypted topic for channel '{}', length: {}",
+                        key_identifier,
+                        msg.len()
+                    );
                     msg
-                },
+                }
                 Err(e) => {
                     log_error!(
                         "Engine: topic decryption failed for channel '{}': {}",
@@ -435,9 +454,13 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
 
         let key = match crate::config::get_key(key_identifier, network) {
             Ok(k) => {
-                log_debug!("Engine: found key for topic channel '{}', length: {}", key_identifier, k.len());
+                log_debug!(
+                    "Engine: found key for topic channel '{}', length: {}",
+                    key_identifier,
+                    k.len()
+                );
                 k
-            },
+            }
             Err(e) => {
                 log_warn!(
                     "Engine: no key found for incoming topic channel '{}': {}",
@@ -459,21 +482,28 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
             }
         };
 
-        let decrypted =
-            match decrypt_message(key_array, encrypted_data, Some(key_identifier.as_bytes())) {
-                Ok(msg) => {
-                    log_debug!("Engine: successfully decrypted incoming topic for channel '{}', length: {}", key_identifier, msg.len());
-                    msg
-                },
-                Err(e) => {
-                    log_error!(
-                        "Engine: incoming topic decryption failed for channel '{}': {}",
-                        key_identifier,
-                        e
-                    );
-                    return None;
-                }
-            };
+        let decrypted = match decrypt_message(
+            key_array,
+            encrypted_data,
+            Some(key_identifier.as_bytes()),
+        ) {
+            Ok(msg) => {
+                log_debug!(
+                    "Engine: successfully decrypted incoming topic for channel '{}', length: {}",
+                    key_identifier,
+                    msg.len()
+                );
+                msg
+            }
+            Err(e) => {
+                log_error!(
+                    "Engine: incoming topic decryption failed for channel '{}': {}",
+                    key_identifier,
+                    e
+                );
+                return None;
+            }
+        };
 
         log_info!("Engine: successfully decrypted incoming topic for channel '{}'", key_identifier);
 
