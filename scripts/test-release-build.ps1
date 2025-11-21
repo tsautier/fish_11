@@ -62,10 +62,10 @@ Write-Host ""
 # 3. Clippy
 Write-Info "Analyse statique avec Clippy..."
 $ClippyStart = Get-Date
-cargo clippy --workspace --all-targets -- -D warnings 2>&1 | Out-Null
+$Output = cargo clippy --workspace --all-targets -- -D warnings 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Clippy a trouvé des problèmes"
-    Write-Host "Pour voir les détails : cargo clippy --workspace --all-targets" -ForegroundColor Yellow
+    Write-Host $Output -ForegroundColor Red
     exit 1
 }
 $ClippyTime = (Get-Date) - $ClippyStart
@@ -79,30 +79,34 @@ Write-Host "  Ceci peut prendre plusieurs minutes..." -ForegroundColor Gray
 $BuildStart = Get-Date
 
 Write-Host "  - fish_11_core..." -ForegroundColor Gray
-cargo build --release --target i686-pc-windows-msvc -p fish_11_core 2>&1 | Out-Null
+$Output = cargo build --release --target i686-pc-windows-msvc -p fish_11_core 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Échec de compilation de fish_11_core"
+    Write-Host $Output -ForegroundColor Red
     exit 1
 }
 
 Write-Host "  - fish_11_dll..." -ForegroundColor Gray
-cargo build --release --target i686-pc-windows-msvc -p fish_11_dll 2>&1 | Out-Null
+$Output = cargo build --release --target i686-pc-windows-msvc -p fish_11_dll 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Échec de compilation de fish_11_dll"
+    Write-Host $Output -ForegroundColor Red
     exit 1
 }
 
 Write-Host "  - fish_11_inject..." -ForegroundColor Gray
-cargo build --release --target i686-pc-windows-msvc -p fish_11_inject 2>&1 | Out-Null
+$Output = cargo build --release --target i686-pc-windows-msvc -p fish_11_inject 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Échec de compilation de fish_11_inject"
+    Write-Host $Output -ForegroundColor Red
     exit 1
 }
 
 Write-Host "  - fish_11_cli..." -ForegroundColor Gray
-cargo build --release --target i686-pc-windows-msvc -p fish_11_cli 2>&1 | Out-Null
+$Output = cargo build --release --target i686-pc-windows-msvc -p fish_11_cli 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Échec de compilation de fish_11_cli"
+    Write-Host $Output -ForegroundColor Red
     exit 1
 }
 
