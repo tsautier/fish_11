@@ -117,7 +117,8 @@ pub static BUILD_TIME: Lazy<String> = Lazy::new(|| {
 /// Example: 20251120143022 for 2025-11-20 14:30:22
 /// This is constructed at runtime from BUILD_TIMESTAMP
 pub fn get_build_number() -> String {
-    if let Some(timestamp) = option_env!("VERGEN_BUILD_TIMESTAMP") {
+    let timestamp = BUILD_TIMESTAMP;
+    if timestamp != "N/A" {
         // Parse ISO 8601: "2025-11-20T14:30:22.123456789Z"
         if let Some((date_part, time_part)) = timestamp.split_once('T') {
             // Extract YYYYMMDD from "2025-11-20"
@@ -142,4 +143,4 @@ pub fn get_build_number() -> String {
 
 /// Static build number string for const contexts
 /// Uses a lazy static to cache the computed value
-pub static BUILD_NUMBER: Lazy<String> = Lazy::new(|| get_build_number());
+pub static BUILD_NUMBER: Lazy<String> = Lazy::new(get_build_number);
