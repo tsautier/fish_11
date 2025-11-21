@@ -1,7 +1,11 @@
-use crate::config::with_config;
-use crate::{dll_function_identifier, dll_interface::core::parse_input};
-use crate::unified_error::DllError;
-use log;
+use std::ffi::c_char;
+use std::os::raw::c_int;
+
+use crate::platform_types::{BOOL, HWND};
+use crate::{
+    buffer_utils, config::with_config, dll_function_identifier, log_debug, log_info, log_warn,
+    unified_error::DllError,
+};
 
 /// Gets ratchet state information for a channel
 ///
@@ -9,18 +13,18 @@ use log;
 ///
 /// Output: Returns a formatted string with ratchet state information or an error message
 dll_function_identifier!(FiSH11_GetRatchetState, data, {
-    let input = unsafe { parse_input(data)? };
+    let input = unsafe { buffer_utils::parse_buffer_input(data)? };
     let parts: Vec<&str> = input.split_whitespace().collect();
 
     if parts.is_empty() {
-        return Err(crate::unified_error::DllError::InvalidInput {
+        return Err(DllError::InvalidInput {
             param: "channel".to_string(),
             reason: "Channel name is required".to_string(),
         });
     }
 
     let channel = parts[0];
-    log::debug!("FiSH11_GetRatchetState: retrieving ratchet state for channel '{}'", channel);
+    log_debug!("FiSH11_GetRatchetState: retrieving ratchet state for channel '{}'", channel);
 
     let result = with_config(|config| {
         let channel_name = channel.to_lowercase();
@@ -39,28 +43,26 @@ dll_function_identifier!(FiSH11_GetRatchetState, data, {
 
         // Get nonce cache info if it exists
         let nonce_cache_info = if let Some(cache) = config.channel_nonce_caches.get(&channel_name) {
-            format!(
-                "Nonce cache: {} entries",
-                cache.recent_nonces.len()
-            )
+            format!("Nonce cache: {} entries", cache.recent_nonces.len())
         } else {
             "No nonce cache found".to_string()
         };
 
-        Ok(format!(
-            "{} | {}",
-            ratchet_info, nonce_cache_info
-        ))
+        Ok(format!("{} | {}", ratchet_info, nonce_cache_info))
     });
 
     match result {
         Ok(info) => {
-            log::info!("FiSH11_GetRatchetState: retrieved state for channel '{}'", channel);
+            log_info!("FiSH11_GetRatchetState: retrieved state for channel '{}'", channel);
             Ok(info)
-        },
+        }
         Err(e) => {
-            log::warn!("FiSH11_GetRatchetState: error retrieving state for channel '{}': {}", channel, e);
-            Err(DllError::from(e))
+            log_warn!(
+                "FiSH11_GetRatchetState: error retrieving state for channel '{}': {}",
+                channel,
+                e
+            );
+            Err(e.into())
         }
     }
 });
