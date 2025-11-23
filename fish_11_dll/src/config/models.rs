@@ -44,6 +44,12 @@ pub struct Fish11Section {
     /// Time-to-live for exchange keys in seconds (default: 86400 = 24 hours)
     /// Valid range: 3600 (1 hour) to 604800 (7 days)
     pub key_ttl: Option<i64>,
+    /// Prefix to use for encrypted messages (default: "+FiSH")
+    pub encryption_prefix: String,
+    /// Default fish pattern for encrypted messages (default: "FiSH ")
+    pub default_fish_pattern: String,
+    /// Whether to use fish prefix (default: false/0)
+    pub fish_prefix: bool,
 }
 
 impl Default for Fish11Section {
@@ -59,6 +65,9 @@ impl Default for Fish11Section {
             mark_encrypted: " 12$chr(183)".to_string(),
             no_fish10_legacy: false,
             key_ttl: None, // None means use default (86400 seconds)
+            encryption_prefix: "+FiSH".to_string(),
+            default_fish_pattern: "FiSH ".to_string(),
+            fish_prefix: false,
         }
     }
 }

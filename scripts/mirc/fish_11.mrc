@@ -492,7 +492,7 @@ alias fish11_writekey {
   ; Comprehensive network sanitization - remove all special characters
   var %network = $regsubex($network, /[^\w\d]/g, _)
 
-  if ($dll(%Fish11DllFile, FiSH11_SetKey, $+(%network," ",%cur_contact," ",$3-))) {      
+  if ($dll(%Fish11DllFile, FiSH11_SetKey, $+(%network," ",%cur_contact," ",$3-))) {
     var %info = *** FiSH_11: key for %cur_contact set to *censored*
 
     if ($window(%cur_contact) == $null) echo $color(Mode text) -at %info

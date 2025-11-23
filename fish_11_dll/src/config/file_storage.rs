@@ -23,6 +23,9 @@ pub fn init_config_file() -> Result<()> {
     let mut ini = Ini::new();
     ini.set("FiSH11", "process_incoming", Some("true".to_string()));
     ini.set("FiSH11", "plain_prefix", Some("+p ".to_string()));
+    ini.set("FiSH11", "encryption_prefix", Some("+FiSH".to_string()));
+    ini.set("FiSH11", "default_fish_pattern", Some("FiSH ".to_string()));
+    ini.set("FiSH11", "fish_prefix", Some("0".to_string()));
 
     if let Some(parent) = config_path.parent() {
         fs::create_dir_all(parent)?;
@@ -284,6 +287,18 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
                 config.fish11.key_ttl = Some(ttl);
             }
         }
+
+        if let Some(value) = ini.get(section_name, "encryption_prefix") {
+            config.fish11.encryption_prefix = value.to_string();
+        }
+
+        if let Some(value) = ini.get(section_name, "default_fish_pattern") {
+            config.fish11.default_fish_pattern = value.to_string();
+        }
+
+        if let Some(value) = ini.get(section_name, "fish_prefix") {
+            config.fish11.fish_prefix = value.eq_ignore_ascii_case("true") || value == "1";
+        }
     }
     log_warn!("load_config: [FiSH11] processed in {:?}", fish11_start.elapsed());
     let startup_start = std::time::Instant::now();
@@ -390,6 +405,9 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
     if let Some(ttl) = config.fish11.key_ttl {
         ini.set("FiSH11", "key_ttl", Some(ttl.to_string()));
     }
+    ini.set("FiSH11", "encryption_prefix", Some(config.fish11.encryption_prefix.clone()));
+    ini.set("FiSH11", "default_fish_pattern", Some(config.fish11.default_fish_pattern.clone()));
+    ini.set("FiSH11", "fish_prefix", Some(config.fish11.fish_prefix.to_string()));
 
     // Save [Startup] section
     if let Some(date) = config.startup_data.date {

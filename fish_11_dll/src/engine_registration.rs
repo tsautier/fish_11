@@ -9,6 +9,7 @@ use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
 
 use crate::crypto::{decrypt_message, encrypt_message};
 use crate::{log_debug, log_error, log_info, log_warn};
+use crate::config::settings::get_encryption_prefix;
 
 type GetNetworkNameFn = unsafe extern "C" fn(u32) -> *mut c_char;
 static mut GET_NETWORK_NAME_FN: Option<GetNetworkNameFn> = None;
@@ -304,10 +305,17 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
     };
     log_info!("Engine: successfully encrypted {} to '{}'", msg_type, target);
 
+    // Get the encryption prefix from config (defaults to "+FiSH")
+    let encryption_prefix = get_encryption_prefix().unwrap_or_else(|_| "+FiSH".to_string());
+
     // Reconstruct line with encrypted data
-    // Keep prefix if present, replace message with "+FiSH <encrypted>" or "+FCEP_TOPIC+ <encrypted>"
+    // Keep prefix if present, replace message with configurable prefix + encrypted data or "+FCEP_TOPIC+ <encrypted>"
     // Add \r\n for IRC protocol compliance
-    let prefix = if is_topic { "+FCEP_TOPIC+" } else { "+FiSH" };
+    let prefix = if is_topic {
+        "+FCEP_TOPIC+"
+    } else {
+        encryption_prefix.as_str()
+    };
     let encrypted_line = format!("{} :{} {}\r\n", cmd_part, prefix, encrypted);
 
     Some(encrypted_line)
@@ -521,9 +529,13 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
         return Some(reconstructed);
     }
 
-    // Check if line contains FiSH encrypted data
-    if !line.contains(":+FiSH ") {
-        log_debug!("Engine: line does not contain ':+FiSH ', skipping");
+    // Get the encryption prefix from config (defaults to "+FiSH")
+    let encryption_prefix = get_encryption_prefix().unwrap_or_else(|_| "+FiSH".to_string());
+
+    // Check if line contains FiSH encrypted data with the configured prefix
+    let fish_marker = format!(":{}", encryption_prefix);
+    if !line.contains(&fish_marker) {
+        log_debug!("Engine: line does not contain '{} ', skipping", fish_marker);
         return None;
     }
 
@@ -557,10 +569,10 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
     // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan..)
     let target = crate::utils::normalize_target(target_raw);
 
-    // Find the encrypted data after ":+FiSH "
-    let fish_marker = ":+FiSH ";
-    let fish_start = match line.find(fish_marker) {
-        Some(pos) => pos + fish_marker.len(),
+    // Find the encrypted data after the configured prefix (e.g., ":+FiSH ")
+    let fish_marker_search = format!(":{}", encryption_prefix);
+    let fish_start = match line.find(&fish_marker_search) {
+        Some(pos) => pos + fish_marker_search.len(),
         None => {
             log_warn!("Engine: FiSH11 marker found but position parse failed");
             return None;
@@ -614,11 +626,12 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
     // Format: ":nick!user@host COMMAND target :decrypted_message\r\n"
     // CRITICAL: IRC protocol requires \r\n at the end of each line!
 
-    // Find the start of the message part (":+FiSH ...")
-    let message_part_start = match line.find(" :+FiSH ") {
+    // Find the start of the message part (the configured prefix, e.g., " :+FiSH ...")
+    let prefix_search = format!(" :{}", encryption_prefix);
+    let message_part_start = match line.find(&prefix_search) {
         Some(pos) => pos,
         None => {
-            log_error!("Engine: could not find message part ' :+FiSH ' in line");
+            log_error!("Engine: could not find message part ' {} ' in line", prefix_search);
             return None;
         }
     };

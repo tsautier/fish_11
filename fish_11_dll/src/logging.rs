@@ -199,8 +199,12 @@ pub fn log_module_shutdown(module_name: &str) {
 pub fn log_function_entry<T: std::fmt::Debug>(function_name: &str, params: Option<T>) {
     if is_logger_initialized() {
         match params {
-            Some(p) => log_debug!("ENTER: {} - params: {:?}", function_name, p),
-            None => log_debug!("ENTER: {}", function_name),
+            Some(p) => {
+                log_debug!("ENTER: {} - params: {:?}", function_name, p);
+            },
+            None => {
+                log_debug!("ENTER: {}", function_name);
+            },
         }
     }
 }
@@ -209,8 +213,12 @@ pub fn log_function_entry<T: std::fmt::Debug>(function_name: &str, params: Optio
 pub fn log_function_exit<T: std::fmt::Debug>(function_name: &str, return_value: Option<T>) {
     if is_logger_initialized() {
         match return_value {
-            Some(r) => log_debug!("EXIT: {} - returned: {:?}", function_name, r),
-            None => log_debug!("EXIT: {}", function_name),
+            Some(r) => {
+                log_debug!("EXIT: {} - returned: {:?}", function_name, r);
+            },
+            None => {
+                log_debug!("EXIT: {}", function_name);
+            },
         }
     }
 }
