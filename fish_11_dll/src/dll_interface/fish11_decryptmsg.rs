@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     fn test_decryptmsg_channel_ratchet_with_out_of_order() {
-        let _channel = "#ratchetchan";
+        let channel = "#ratchetchan";
 
         // Verify the ratchet structure is set up for out-of-order testing
         assert!(channel.starts_with('#'));
