@@ -12,6 +12,7 @@ use x25519_dalek::PublicKey;
 use crate::dll_function_identifier;
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
+use crate::config::key_management::check_key_expiry;
 use crate::{buffer_utils, config};
 
 dll_function_identifier!(FiSH11_GetKeyFingerprint, data, {
@@ -52,6 +53,64 @@ dll_function_identifier!(FiSH11_GetKeyFingerprint, data, {
     // Return the fingerprint string as data (no /echo)
     Ok(format!("Key fingerprint for {}: {}", nickname, formatted_fp))
 });
+
+/// Parsed input from the DLL interface.
+pub struct ParsedInput<'a> {
+    pub target: &'a str,
+    pub message: &'a str,
+}
+
+/// Parses the input string into target and message parts.
+///
+/// Expected format: `<target> <message>`
+pub fn parse_input(input: &str) -> Result<ParsedInput, DllError> {
+    let parts: Vec<&str> = input.splitn(2, ' ').collect();
+
+    if parts.len() < 2 {
+        return Err(DllError::InvalidInput {
+            param: "input".to_string(),
+            reason: "expected format: <target> <message>".to_string(),
+        });
+    }
+
+    let target_raw = parts[0];
+    let message = parts[1];
+
+    // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan, etc.)
+    let target = crate::utils::normalize_target(target_raw);
+
+    if target.is_empty() {
+        return Err(DllError::MissingParameter("target".to_string()));
+    }
+    if message.is_empty() {
+        return Err(DllError::MissingParameter("message".to_string()));
+    }
+
+    Ok(ParsedInput { target, message })
+}
+
+/// Retrieves and validates the private key for a given nickname.
+pub fn get_private_key(nickname: &str) -> Result<[u8; 32], DllError> {
+    // Check for key expiration before attempting to use it.
+    check_key_expiry(nickname, None)?;
+
+    let key_vec = config::get_key(nickname, None)?;
+    let key: [u8; 32] = key_vec.as_slice().try_into().map_err(|_| DllError::InvalidInput {
+        param: "key".to_string(),
+        reason: format!("Key for {} must be exactly 32 bytes, got {}", nickname, key_vec.len()),
+    })?;
+
+    Ok(key)
+}
+
+/// Normalizes a nickname for private message operations.
+pub fn normalize_private_target(target: &str) -> Result<String, DllError> {
+    let nickname = normalize_nick(target);
+    if nickname.is_empty() {
+        return Err(DllError::MissingParameter("nickname".to_string()));
+    }
+    Ok(nickname)
+}
 
 /// Validates that a public key is a valid Curve25519 point
 #[allow(dead_code)]

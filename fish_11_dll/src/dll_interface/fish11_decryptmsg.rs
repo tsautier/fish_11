@@ -6,12 +6,11 @@ use crate::platform_types::HWND;
 
 use crate::buffer_utils;
 use crate::config;
-use crate::config::key_management::check_key_expiry;
 use crate::crypto;
 use crate::dll_function_identifier;
+use crate::dll_interface::utility;
 use crate::log_debug;
 use crate::unified_error::DllError;
-use crate::utils::normalize_nick;
 
 /* list of stuff we possibly need to decrypt:
         :nick!ident@host PRIVMSG #chan :+FISH 2T5zD0mPgMn
@@ -35,28 +34,11 @@ use crate::utils::normalize_nick;
 
 dll_function_identifier!(FiSH11_DecryptMsg, data, {
     // 1. Parse input: <target> <encrypted_message>
-    let input = unsafe { buffer_utils::parse_buffer_input(data)? };
-    let parts: Vec<&str> = input.splitn(2, ' ').collect();
-
-    if parts.len() < 2 {
-        return Err(DllError::InvalidInput {
-            param: "input".to_string(),
-            reason: "expected format: <target> <encrypted_message>".to_string(),
-        });
-    }
-
-    let target_raw = parts[0];
-    let mut encrypted_message = parts[1].trim();
-
-    // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan, etc.)
-    let target = crate::utils::normalize_target(target_raw);
-
-    if target.is_empty() {
-        return Err(DllError::MissingParameter("target".to_string()));
-    }
-    if encrypted_message.is_empty() {
-        return Err(DllError::MissingParameter("encrypted_message".to_string()));
-    }
+    let input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
+    let parsed = utility::parse_input(&input_str)?;
+    
+    let target = parsed.target;
+    let mut encrypted_message = parsed.message.trim();
 
     // 2. Strip the "+FiSH " prefix if present.
     if let Some(stripped) = encrypted_message.strip_prefix("+FiSH ") {
@@ -132,22 +114,16 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
     }
 
     // --- Private Message Decryption Logic ---
-    let nickname = normalize_nick(target);
+    let nickname = utility::normalize_private_target(target)?;
     log_debug!("Decrypting for nickname: {}", nickname);
 
-    // Check for key expiration before attempting to use it.
-    check_key_expiry(&nickname, None)?;
-
-    let key_vec = config::get_key(&nickname, None)?;
-    let key: &[u8; 32] = key_vec.as_slice().try_into().map_err(|_| DllError::InvalidInput {
-        param: "key".to_string(),
-        reason: format!("Key for {} must be exactly 32 bytes, got {}", nickname, key_vec.len()),
-    })?;
+    let key = utility::get_private_key(&nickname)?;
+    let key_ref = &key;
 
     log_debug!("Successfully retrieved decryption key");
 
     // Decrypt the message (no AD for private messages).
-    let decrypted = crypto::decrypt_message(key, encrypted_message, None).map_err(|e| {
+    let decrypted = crypto::decrypt_message(key_ref, encrypted_message, None).map_err(|e| {
         DllError::DecryptionFailed {
             context: format!("decrypting for {}", nickname),
             cause: e.to_string(),
@@ -217,7 +193,7 @@ mod tests {
 
     #[test]
     fn test_decryptmsg_channel_ratchet_with_out_of_order() {
-        let channel = "#ratchetchan";
+        let _channel = "#ratchetchan";
 
         // Verify the ratchet structure is set up for out-of-order testing
         assert!(channel.starts_with('#'));

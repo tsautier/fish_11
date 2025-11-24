@@ -4,13 +4,12 @@ use std::os::raw::c_int;
 
 use crate::buffer_utils;
 use crate::config;
-use crate::config::key_management::check_key_expiry;
 use crate::crypto;
 use crate::dll_function_identifier;
+use crate::dll_interface::utility;
 use crate::log_debug;
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
-use crate::utils::normalize_nick;
 
 // Encrypts a message for a specific nickname or channel.
 //
@@ -22,28 +21,11 @@ use crate::utils::normalize_nick;
 //
 dll_function_identifier!(FiSH11_EncryptMsg, data, {
     // 1. Parse input: <target> <message>
-    let input = unsafe { buffer_utils::parse_buffer_input(data)? };
-    let parts: Vec<&str> = input.splitn(2, ' ').collect();
+    let input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
+    let parsed = utility::parse_input(&input_str)?;
 
-    if parts.len() < 2 {
-        return Err(DllError::InvalidInput {
-            param: "input".to_string(),
-            reason: "expected format: <target> <message>".to_string(),
-        });
-    }
-
-    let target_raw = parts[0];
-    let message = parts[1];
-
-    // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan, etc.)
-    let target = crate::utils::normalize_target(target_raw);
-
-    if target.is_empty() {
-        return Err(DllError::MissingParameter("target".to_string()));
-    }
-    if message.is_empty() {
-        return Err(DllError::MissingParameter("message".to_string()));
-    }
+    let target = parsed.target;
+    let message = parsed.message;
 
     // Channel encryption logic here
     if target.starts_with('#') || target.starts_with('&') {
@@ -88,29 +70,19 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
     }
 
     // --- Private message encryption logic
-    let nickname = normalize_nick(target);
-
-    if nickname.is_empty() {
-        return Err(DllError::MissingParameter("nickname".to_string()));
-    }
+    let nickname = utility::normalize_private_target(target)?;
 
     log_debug!("Encrypting for nickname: {}", nickname);
 
-    // Check for key expiration before attempting to use it.
-    check_key_expiry(&nickname, None)?;
-
     // 2. Retrieve the encryption key for the target.
-    let key_vec = config::get_key(&nickname, None)?;
-    let key: &[u8; 32] = key_vec.as_slice().try_into().map_err(|_| DllError::InvalidInput {
-        param: "key".to_string(),
-        reason: format!("Key for {} must be exactly 32 bytes, got {}", nickname, key_vec.len()),
-    })?;
+    let key = utility::get_private_key(&nickname)?;
+    let key_ref = &key;
 
     log_debug!("Successfully retrieved encryption key");
 
     // 3. Encrypt the message using the retrieved key (no AD for private messages).
     let encrypted_base64 =
-        crypto::encrypt_message(key, message, Some(&nickname), None).map_err(|e| {
+        crypto::encrypt_message(key_ref, message, Some(&nickname), None).map_err(|e| {
             DllError::EncryptionFailed {
                 context: format!("encrypting for {}", nickname),
                 cause: e.to_string(),
@@ -250,7 +222,7 @@ mod tests {
 
         let nickname = "testuser_network";
         let message = "Test message for network resolution";
-        let key = [7u8; 32];
+        let _key = [7u8; 32];
 
         // The function should be able to handle network resolution properly
         // This is tested by ensuring the function calls get_key instead of get_key_default
