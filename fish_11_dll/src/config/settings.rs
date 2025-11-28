@@ -68,9 +68,9 @@ pub fn get_encryption_mark() -> Result<(u8, String)> {
 /// Get the encryption prefix to use in messages based on configuration
 pub fn get_encryption_prefix() -> Result<String> {
     with_config(|config| {
-        // If fish_prefix is enabled, use the default_fish_pattern; otherwise use encryption_prefix
+        // If fish_prefix is enabled, use the fixed "FiSH " pattern; otherwise use encryption_prefix
         if config.fish11.fish_prefix {
-            Ok(format!("+{}", config.fish11.default_fish_pattern.trim()))
+            Ok("+FiSH ".to_string())
         } else {
             Ok(config.fish11.encryption_prefix.clone())
         }

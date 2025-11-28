@@ -133,6 +133,8 @@ mod tests {
             no_fish10_legacy: true,
             nickname: "".to_string(),
             key_ttl: Some(0),
+            encryption_prefix: "+FiSH".to_string(),
+            fish_prefix: false,
         };
         update_fish11_config(config).unwrap();
     }

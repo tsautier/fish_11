@@ -46,8 +46,6 @@ pub struct Fish11Section {
     pub key_ttl: Option<i64>,
     /// Prefix to use for encrypted messages (default: "+FiSH")
     pub encryption_prefix: String,
-    /// Default fish pattern for encrypted messages (default: "FiSH ")
-    pub default_fish_pattern: String,
     /// Whether to use fish prefix (default: false/0)
     pub fish_prefix: bool,
 }
@@ -66,7 +64,6 @@ impl Default for Fish11Section {
             no_fish10_legacy: false,
             key_ttl: None, // None means use default (86400 seconds)
             encryption_prefix: "+FiSH".to_string(),
-            default_fish_pattern: "FiSH ".to_string(),
             fish_prefix: false,
         }
     }

@@ -22,7 +22,6 @@ mod tests {
             encrypt_action: false,
             mark_position: 5,
             mark_encrypted: "[encrypted]".to_string(),
-            default_fish_pattern: "".to_string(),
             encryption_prefix: "".to_string(),
             fish_prefix: false,
             no_fish10_legacy: true,
