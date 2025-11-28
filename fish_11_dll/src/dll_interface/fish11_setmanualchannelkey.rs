@@ -1,0 +1,136 @@
+use std::ffi::c_char;
+use std::os::raw::c_int;
+
+use crate::buffer_utils;
+use crate::config;
+use crate::dll_function_identifier;
+use crate::log_debug;
+use crate::platform_types::BOOL;
+use crate::platform_types::HWND;
+use crate::unified_error::DllError;
+use crate::utils::base64_decode;
+
+dll_function_identifier!(FiSH11_SetManualChannelKey, data, {
+    let input = unsafe { buffer_utils::parse_buffer_input(data)? };
+    let parts: Vec<&str> = input.splitn(2, ' ').collect();
+
+    if parts.len() < 2 {
+        return Err(DllError::InvalidInput {
+            param: "input".to_string(),
+            reason: "Usage: <#channel> <base64_encoded_key>".to_string(),
+        });
+    }
+
+    let channel_name = parts[0];
+    let key_b64 = parts[1];
+
+    // Validate channel name format
+    if !channel_name.starts_with('#') && !channel_name.starts_with('&') {
+        return Err(DllError::InvalidInput {
+            param: "channel".to_string(),
+            reason: "Channel name must start with # or &".to_string(),
+        });
+    }
+
+    // Decode the base64-encoded key
+    let key_bytes = base64_decode(key_b64).map_err(|e| DllError::InvalidInput {
+        param: "key".to_string(),
+        reason: format!("Invalid base64 format: {}", e),
+    })?;
+
+    // Validate key length (must be 32 bytes for ChaCha20-Poly1305)
+    if key_bytes.len() != 32 {
+        return Err(DllError::InvalidInput {
+            param: "key".to_string(),
+            reason: format!("Key must be 32 bytes, got {} bytes", key_bytes.len()),
+        });
+    }
+
+    // Convert to fixed-size array
+    let mut key_array = [0u8; 32];
+    key_array.copy_from_slice(&key_bytes);
+
+    // Set the manual channel key (this will encrypt it and store it in the config file)
+    config::set_manual_channel_key(channel_name, &key_array, true)?;
+
+    log_debug!("Successfully set manual channel key for {}", channel_name);
+
+    Ok(format!("Manual channel key set for {}", channel_name))
+});
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config;
+    use crate::dll_interface::MIRC_COMMAND;
+    use std::ffi::CStr;
+    use std::ptr;
+
+    fn call_set_manual_channel_key(input: &str, buffer_size: usize) -> (c_int, String) {
+        let mut buffer = vec![0i8; buffer_size];
+
+        // Copy the input into the data buffer (mIRC style: data is input/output)
+        if !input.is_empty() {
+            let bytes = input.as_bytes();
+            let copy_len = std::cmp::min(bytes.len(), buffer.len());
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    bytes.as_ptr(),
+                    buffer.as_mut_ptr() as *mut u8,
+                    copy_len,
+                );
+            }
+        }
+
+        // Override buffer size for this test to prevent heap corruption
+        let prev_size = crate::dll_interface::override_buffer_size_for_test(buffer_size);
+
+        let result = FiSH11_SetManualChannelKey(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            buffer.as_mut_ptr(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+        );
+
+        // Restore previous buffer size
+        crate::dll_interface::restore_buffer_size_for_test(prev_size);
+
+        let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
+        (result, c_str.to_string_lossy().to_string())
+    }
+
+    #[test]
+    fn test_set_manual_channel_key_normal() {
+        let key = [42u8; 32];
+        let key_b64 = crate::utils::base64_encode(&key);
+        let input = format!("#test {}", key_b64);
+        
+        let (code, msg) = call_set_manual_channel_key(&input, 256);
+        assert_eq!(code, MIRC_COMMAND);
+        assert!(msg.contains("Manual channel key set"));
+    }
+
+    #[test]
+    fn test_set_manual_channel_key_invalid_channel() {
+        let key = [42u8; 32];
+        let key_b64 = crate::utils::base64_encode(&key);
+        let input = format!("invalid {}", key_b64);
+        
+        let (code, msg) = call_set_manual_channel_key(&input, 256);
+        assert_eq!(code, MIRC_COMMAND);
+        assert!(msg.to_lowercase().contains("channel name must start with"));
+    }
+
+    #[test]
+    fn test_set_manual_channel_key_invalid_key_length() {
+        let short_key = [42u8; 16]; // Wrong length
+        let key_b64 = crate::utils::base64_encode(&short_key);
+        let input = format!("#test {}", key_b64);
+        
+        let (code, msg) = call_set_manual_channel_key(&input, 256);
+        assert_eq!(code, MIRC_COMMAND);
+        assert!(msg.to_lowercase().contains("key must be 32 bytes"));
+    }
+}

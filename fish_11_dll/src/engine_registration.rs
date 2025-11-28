@@ -187,16 +187,23 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
         // Handle topic encryption using the channel key but without ratchet advancement
         log_debug!("Engine: attempting topic encryption for '{}'", target);
 
-        let key = match crate::config::get_key(target, network_name.as_deref()) {
-            Ok(k) => k,
+        // First try to get a channel key (either manual or ratchet-based)
+        let key = match crate::config::get_channel_key_with_fallback(target) {
+            Ok(k) => k.to_vec(),  // Convert to vec for compatibility with existing code
             Err(_) => {
-                // No key = no encryption, pass through
-                log_debug!(
-                    "Engine: no key for topic on channel '{}' on network '{:?}', not encrypting",
-                    target,
-                    network_name
-                );
-                return None;
+                // If no channel key exists, try the regular key lookup (for backward compatibility)
+                match crate::config::get_key(target, network_name.as_deref()) {
+                    Ok(k) => k,
+                    Err(_) => {
+                        // No key = no encryption, pass through
+                        log_debug!(
+                            "Engine: no key for topic on channel '{}' on network '{:?}', not encrypting",
+                            target,
+                            network_name
+                        );
+                        return None;
+                    }
+                }
             }
         };
 
@@ -222,41 +229,64 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
     } else if target.starts_with('#') || target.starts_with('&') {
         log_debug!("Engine: attempting channel message encryption for '{}'", target);
 
-        // For channels, use ratchet state (handles FCEP-1 encryption with forward secrecy)
-        match crate::config::with_ratchet_state_mut(target, |state| {
-            let current_key = state.current_key;
-
-            // Encrypt with the current key, using the channel name as Associated Data.
-            let encrypted_b64 =
-                encrypt_message(&current_key, &message, Some(target), Some(target.as_bytes()))
-                    .map_err(crate::unified_error::DllError::from)?;
-
-            // Extract the nonce from the encrypted payload to derive the next key.
-            let encrypted_bytes = crate::utils::base64_decode(&encrypted_b64)
-                .map_err(crate::unified_error::DllError::from)?;
-            if encrypted_bytes.len() < 12 {
-                return Err(crate::unified_error::DllError::EncryptionFailed {
-                    context: "payload validation".to_string(),
-                    cause: "Encrypted payload too short to contain a nonce".to_string(),
-                });
-            }
-            let nonce: [u8; 12] = encrypted_bytes[..12].try_into().map_err(|_| {
-                crate::unified_error::DllError::EncryptionFailed {
-                    context: "nonce extraction".to_string(),
-                    cause: "Could not convert slice to 12-byte nonce array".to_string(),
+        // For channels, first check if we have a manual key. If so, use it for simple encryption (no ratchet)
+        // If not, use the ratchet state (handles FCEP-1 encryption with forward secrecy)
+        if crate::config::has_channel_key(target) {
+            // Use the channel key (manual or ratchet-based) but without ratchet advancement
+            // This is for when we want to use a fixed key for a channel without forward secrecy
+            match crate::config::get_channel_key_with_fallback(target) {
+                Ok(key) => {
+                    // Encrypt with the fixed key, using the channel name as Associated Data.
+                    match encrypt_message(&key, &message, Some(target), Some(target.as_bytes())) {
+                        Ok(encrypted_b64) => encrypted_b64,
+                        Err(e) => {
+                            log_error!("Engine: channel encryption failed for '{}' (manual key): {}", target, e);
+                            return None;
+                        }
+                    }
                 }
-            })?;
+                Err(e) => {
+                    log_error!("Engine: failed to get channel key for '{}': {}", target, e);
+                    return None;
+                }
+            }
+        } else {
+            // Use ratchet-based encryption (FCEP-1 with forward secrecy)
+            match crate::config::with_ratchet_state_mut(target, |state| {
+                let current_key = state.current_key;
 
-            // Advance the ratchet to the next key.
-            let next_key = crate::crypto::advance_ratchet_key(&current_key, &nonce, target)?;
-            state.advance(next_key);
+                // Encrypt with the current key, using the channel name as Associated Data.
+                let encrypted_b64 =
+                    encrypt_message(&current_key, &message, Some(target), Some(target.as_bytes()))
+                        .map_err(crate::unified_error::DllError::from)?;
 
-            Ok(encrypted_b64)
-        }) {
-            Ok(encrypted_b64) => encrypted_b64,
-            Err(e) => {
-                log_error!("Engine: channel encryption failed for '{}': {}", target, e);
-                return None;
+                // Extract the nonce from the encrypted payload to derive the next key.
+                let encrypted_bytes = crate::utils::base64_decode(&encrypted_b64)
+                    .map_err(crate::unified_error::DllError::from)?;
+                if encrypted_bytes.len() < 12 {
+                    return Err(crate::unified_error::DllError::EncryptionFailed {
+                        context: "payload validation".to_string(),
+                        cause: "Encrypted payload too short to contain a nonce".to_string(),
+                    });
+                }
+                let nonce: [u8; 12] = encrypted_bytes[..12].try_into().map_err(|_| {
+                    crate::unified_error::DllError::EncryptionFailed {
+                        context: "nonce extraction".to_string(),
+                        cause: "Could not convert slice to 12-byte nonce array".to_string(),
+                    }
+                })?;
+
+                // Advance the ratchet to the next key.
+                let next_key = crate::crypto::advance_ratchet_key(&current_key, &nonce, target)?;
+                state.advance(next_key);
+
+                Ok(encrypted_b64)
+            }) {
+                Ok(encrypted_b64) => encrypted_b64,
+                Err(e) => {
+                    log_error!("Engine: channel encryption failed for '{}': {}", target, e);
+                    return None;
+                }
             }
         }
     } else {
@@ -359,18 +389,32 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
             encrypted_data
         );
 
-        let key = match crate::config::get_key(key_identifier, network) {
+        // Try to get a channel key (either manual or ratchet-based) first
+        let key = match crate::config::get_channel_key_with_fallback(key_identifier) {
             Ok(k) => {
                 log_debug!(
-                    "Engine: found key for topic channel '{}', length: {}",
+                    "Engine: found channel key for topic channel '{}', length: {}",
                     key_identifier,
                     k.len()
                 );
-                k
+                k.to_vec()  // Convert to vec for compatibility with existing code
             }
-            Err(e) => {
-                log_warn!("Engine: no key found for topic channel '{}': {}", key_identifier, e);
-                return None;
+            Err(_) => {
+                // If no channel key exists, try the regular key lookup (for backward compatibility)
+                match crate::config::get_key(key_identifier, network) {
+                    Ok(k) => {
+                        log_debug!(
+                            "Engine: found regular key for topic channel '{}', length: {}",
+                            key_identifier,
+                            k.len()
+                        );
+                        k
+                    }
+                    Err(e) => {
+                        log_warn!("Engine: no key found for topic channel '{}': {}", key_identifier, e);
+                        return None;
+                    }
+                }
             }
         };
 
@@ -460,22 +504,36 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
             encrypted_data
         );
 
-        let key = match crate::config::get_key(key_identifier, network) {
+        // Try to get a channel key (either manual or ratchet-based) first
+        let key = match crate::config::get_channel_key_with_fallback(key_identifier) {
             Ok(k) => {
                 log_debug!(
-                    "Engine: found key for topic channel '{}', length: {}",
+                    "Engine: found channel key for incoming topic channel '{}', length: {}",
                     key_identifier,
                     k.len()
                 );
-                k
+                k.to_vec()  // Convert to vec for compatibility with existing code
             }
-            Err(e) => {
-                log_warn!(
-                    "Engine: no key found for incoming topic channel '{}': {}",
-                    key_identifier,
-                    e
-                );
-                return None;
+            Err(_) => {
+                // If no channel key exists, try the regular key lookup (for backward compatibility)
+                match crate::config::get_key(key_identifier, network) {
+                    Ok(k) => {
+                        log_debug!(
+                            "Engine: found regular key for incoming topic channel '{}', length: {}",
+                            key_identifier,
+                            k.len()
+                        );
+                        k
+                    }
+                    Err(e) => {
+                        log_warn!(
+                            "Engine: no key found for incoming topic channel '{}': {}",
+                            key_identifier,
+                            e
+                        );
+                        return None;
+                    }
+                }
             }
         };
 
@@ -595,18 +653,45 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
     );
 
     // Try to get the decryption key
-    let key = match crate::config::get_key(key_identifier, network) {
-        Ok(k) => k,
-        Err(e) => {
-            log_warn!("Engine: no key found for '{}': {}", key_identifier, e);
-            return None;
+    let key = if key_identifier.starts_with('#') || key_identifier.starts_with('&') {
+        // For channel messages, try channel key (manual or ratchet-based) first
+        match crate::config::get_channel_key_with_fallback(key_identifier) {
+            Ok(k) => {
+                log_debug!("Engine: using channel key for '{}'", key_identifier);
+                k.to_vec()  // Convert to vec for compatibility with existing code
+            }
+            Err(_) => {
+                // If no channel key, try the regular key lookup
+                match crate::config::get_key(key_identifier, network) {
+                    Ok(k) => {
+                        log_debug!("Engine: using regular key for '{}'", key_identifier);
+                        k
+                    }
+                    Err(e) => {
+                        log_warn!("Engine: no key found for '{}': {}", key_identifier, e);
+                        return None;
+                    }
+                }
+            }
+        }
+    } else {
+        // For private messages, use regular key lookup
+        match crate::config::get_key(key_identifier, network) {
+            Ok(k) => {
+                log_debug!("Engine: using private key for '{}'", key_identifier);
+                k
+            }
+            Err(e) => {
+                log_warn!("Engine: no key found for '{}': {}", key_identifier, e);
+                return None;
+            }
         }
     };
 
     let key_array: &[u8; 32] = match key.as_slice().try_into() {
         Ok(arr) => arr,
         Err(_) => {
-            log_error!("Engine: invalid key length for sender '{}'", sender);
+            log_error!("Engine: invalid key length for identifier '{}'", key_identifier);
             return None;
         }
     };

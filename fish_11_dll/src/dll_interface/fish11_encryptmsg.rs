@@ -31,42 +31,65 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
     if target.starts_with('#') || target.starts_with('&') {
         log_debug!("Encrypting for channel: {}", target);
 
-        // Atomically get the current key and advance the ratchet for the next message.
-        let encrypted_base64 = config::with_ratchet_state_mut(target, |state| {
-            let current_key = state.current_key;
+        // Check if we have a manual channel key set. If so, use it with simple encryption (no ratchet).
+        if config::has_channel_key(target) {
+            let key = config::get_channel_key_with_fallback(target)?;
 
-            // Encrypt with the current key, using the channel name as Associated Data.
+            // Encrypt with the fixed key, using the channel name as Associated Data.
             let encrypted_b64 = crypto::encrypt_message(
-                &current_key,
+                &key,
                 message,
                 Some(target),
                 Some(target.as_bytes()),
-            )?;
+            ).map_err(|e| {
+                DllError::EncryptionFailed {
+                    context: format!("encrypting for channel {}", target),
+                    cause: e.to_string(),
+                }
+            })?;
 
-            // Extract the nonce from the encrypted payload to derive the next key.
-            let encrypted_bytes = crate::utils::base64_decode(&encrypted_b64)?;
-            if encrypted_bytes.len() < 12 {
-                return Err(DllError::EncryptionFailed {
-                    context: "payload validation".to_string(),
-                    cause: "Encrypted payload too short to contain a nonce".to_string(),
-                });
-            }
-            let nonce: [u8; 12] =
-                encrypted_bytes[..12].try_into().map_err(|_| DllError::EncryptionFailed {
-                    context: "nonce extraction".to_string(),
-                    cause: "Could not convert slice to 12-byte nonce array".to_string(),
-                })?;
+            let result = format!("+FiSH {}", encrypted_b64);
+            log::info!("Successfully encrypted message for channel {} using manual key", target);
+            return Ok(result);
+        } else {
+            // Use the ratchet-based encryption (FCEP-1 with forward secrecy)
+            // Atomically get the current key and advance the ratchet for the next message.
+            let encrypted_base64 = config::with_ratchet_state_mut(target, |state| {
+                let current_key = state.current_key;
 
-            // Advance the ratchet to the next key.
-            let next_key = crypto::advance_ratchet_key(&current_key, &nonce, target)?;
-            state.advance(next_key);
+                // Encrypt with the current key, using the channel name as Associated Data.
+                let encrypted_b64 = crypto::encrypt_message(
+                    &current_key,
+                    message,
+                    Some(target),
+                    Some(target.as_bytes()),
+                )?;
 
-            Ok(encrypted_b64)
-        })?;
+                // Extract the nonce from the encrypted payload to derive the next key.
+                let encrypted_bytes = crate::utils::base64_decode(&encrypted_b64)?;
+                if encrypted_bytes.len() < 12 {
+                    return Err(DllError::EncryptionFailed {
+                        context: "payload validation".to_string(),
+                        cause: "Encrypted payload too short to contain a nonce".to_string(),
+                    });
+                }
+                let nonce: [u8; 12] =
+                    encrypted_bytes[..12].try_into().map_err(|_| DllError::EncryptionFailed {
+                        context: "nonce extraction".to_string(),
+                        cause: "Could not convert slice to 12-byte nonce array".to_string(),
+                    })?;
 
-        let result = format!("+FiSH {}", encrypted_base64);
-        log::info!("Successfully encrypted ratchet message for {}", target);
-        return Ok(result);
+                // Advance the ratchet to the next key.
+                let next_key = crypto::advance_ratchet_key(&current_key, &nonce, target)?;
+                state.advance(next_key);
+
+                Ok(encrypted_b64)
+            })?;
+
+            let result = format!("+FiSH {}", encrypted_base64);
+            log::info!("Successfully encrypted ratchet message for {}", target);
+            return Ok(result);
+        }
     }
 
     // --- Private message encryption logic
