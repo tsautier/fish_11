@@ -138,6 +138,25 @@ fn get_key_internal(config: &FishConfig, nickname: &str, network: Option<&str>) 
         }
     }
 
+    // Additional targeted fallback: when looking for default network specifically,
+    // if the key isn't found in default, search for any network for this nickname
+    if network_name == "default" {
+        // Search for keys in any network for this specific nickname
+        for (entry_key_full, entry_data) in &config.entries {
+            // Check if this entry key has the correct nickname regardless of network
+            if entry_key_full.starts_with(&format!("{}@", normalized_nick)) {
+                if let Some(ref key_str) = entry_data.key {
+                    log_debug!(
+                        "Key found with network fallback for '{}' (found in '{}')",
+                        normalized_nick,
+                        entry_key_full
+                    );
+                    return base64_decode(key_str).map_err(FishError::from);
+                }
+            }
+        }
+    }
+
     Err(FishError::KeyNotFound(normalized_nick))
 }
 
