@@ -224,7 +224,7 @@ on ^*:NOTICE:X25519_INIT*:?:{
   ; Check if processing was successful (no error message)
   if (%process_result && $left(%process_result, 6) != Error:) {
     ; 3. If successful, send our public key back to them so they can complete the exchange.
-    if ($regex(%our_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/=]{44}/i)) {
+    if ($regex(%our_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{43}(=|==)?$/)) {
       .notice $nick X25519_FINISH %our_pub
       echo $color(Mode text) -tm $nick *** FiSH_11: sent X25519_FINISH to $nick
     }
@@ -252,7 +252,7 @@ on ^*:NOTICE:X25519_FINISH*:?:{
   var %their_pub = $2-
 
   ; Use regex to validate the key format from the peer.
-  if ($regex(%their_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{43}=$/)) {
+  if ($regex(%their_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{43}(=|==)?$/)) {
     ; Process the received public key. The DLL computes and stores the shared secret.
     var %process_result = $dll(%Fish11DllFile, FiSH11_ProcessPublicKey, $nick %their_pub)
     
@@ -507,7 +507,7 @@ alias fish11_X25519_INIT {
 
   ; Use regex to validate the entire key format. This is more robust against
   ; hidden characters or whitespace returned by the DLL.
-  if ($regex(%pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{43}=$/)) {
+  if ($regex(%pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{43}(=|==)?$/)) {
     .notice %cur_contact X25519_INIT %pub
     echo $color(Mode text) -tm %cur_contact *** FiSH_11: sent X25519_INIT to %cur_contact $+ , waiting for reply...
   }
