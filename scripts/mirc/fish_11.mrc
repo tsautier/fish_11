@@ -156,15 +156,15 @@ on *:INPUT:*: {
     if (%mark_outgoing == [On]) {
       if (%mark_style == 1) {
         ; Suffix style
-        echo $color(own text) -t $active < $+ $me $+ > %message 12$chr(183)
+        echo $color(own text) -t $active < $+ $me $+ > %message $+ $chr(183)
       }
       else if (%mark_style == 2) {
         ; Prefix style
-        echo $color(own text) -t $active 12$chr(183) < $+ $me $+ > %message
+        echo $color(own text) -t $active $chr(183) $+ < $+ $me $+ > %message
       }
       else if (%mark_style == 3) {
         ; Colored brackets style
-        echo $color(own text) -t $active 12[+]3 < $+ $me $+ > %message
+        echo $color(own text) -t $active $chr(91) $+ $chr(43) $+ $chr(93) < $+ $me $+ > %message
       }
     }
     else {
