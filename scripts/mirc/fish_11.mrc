@@ -15,8 +15,8 @@ on *:START: {
 }
 
 alias fish11_startup {
-  echo 4 -a *** FiSH_11 SECURITY NOTICE *** This script relies on two external DLL files. Only use trusted, signed versions from official sources.  ***
-  echo 4 -a *** FiSH_11 SECURITY NOTICE *** Never run this script if you suspect your system has been compromised.                                  ***
+  echo 4 -a *** FiSH_11 SECURITY NOTICE *** This script relies on 2 external DLL files. Only use trusted, signed versions from official sources.  ***
+  echo 4 -a *** FiSH_11 SECURITY NOTICE *** Never run this script if you suspect your system has been compromised.                                ***
 
   var %exe_dir = $nofile($mircexe)
 
@@ -79,6 +79,7 @@ alias fish11_startup {
   if (%NickTrack == $null) { set %NickTrack [Off] }
   ; Key exchange timeout (seconds) - keep in sync with DLL constant; can be overridden by user
   if (%KEY_EXCHANGE_TIMEOUT_SECONDS == $null) { set %KEY_EXCHANGE_TIMEOUT_SECONDS 10 }
+
 }
 
 
@@ -90,8 +91,6 @@ on *:ACTIVE:*: {
   }
 }
 
-
-
 ; === AUTO KEY EXCHANGE ===
 on *:OPEN:?:{
   if (%autokeyx == [On]) {
@@ -102,8 +101,6 @@ on *:OPEN:?:{
     unset %tmp1
   }
 }
-
-
 
 ; === OUTGOING MESSAGE HANDLING ===
 on *:INPUT:*: {
@@ -159,15 +156,15 @@ on *:INPUT:*: {
     if (%mark_outgoing == [On]) {
       if (%mark_style == 1) {
         ; Suffix style
-        echo $color(own text) -t $active < $+ $me $+ > %message 12$chr(183)
+        echo $color(own text) -t $active < $+ $me $+ > %message $+ $chr(183)
       }
       else if (%mark_style == 2) {
         ; Prefix style
-        echo $color(own text) -t $active 12$chr(183) < $+ $me $+ > %message
+        echo $color(own text) -t $active $chr(183) $+ < $+ $me $+ > %message
       }
       else if (%mark_style == 3) {
         ; Colored brackets style
-        echo $color(own text) -t $active 12[+]3 < $+ $me $+ > %message
+        echo $color(own text) -t $active $chr(91) $+ $chr(43) $+ $chr(93) < $+ $me $+ > %message
       }
     }
     else {
@@ -210,7 +207,7 @@ on ^*:NOTICE:X25519_INIT*:?:{
   var %their_pub = $2-
 
   ; Validate incoming key format using regex for robustness.
-  if (!$regex(%their_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{42,43}={0,2}$/)) {
+  if (!$regex(%their_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{43}=$/)) {
     echo $color(Mode text) -tm $nick *** FiSH_11: received invalid INIT key format from $nick
     halt
   }
@@ -227,7 +224,7 @@ on ^*:NOTICE:X25519_INIT*:?:{
   ; Check if processing was successful (no error message)
   if (%process_result && $left(%process_result, 6) != Error:) {
     ; 3. If successful, send our public key back to them so they can complete the exchange.
-    if ($regex(%our_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/=]{44}/i)) {
+    if ($regex(%our_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{43}(=|==)?$/)) {
       .notice $nick X25519_FINISH %our_pub
       echo $color(Mode text) -tm $nick *** FiSH_11: sent X25519_FINISH to $nick
     }
@@ -242,9 +239,6 @@ on ^*:NOTICE:X25519_INIT*:?:{
 
   halt
 }
-
-
-
 
 on ^*:NOTICE:X25519_FINISH*:?:{
   ; This event triggers when a peer responds to our key exchange initiation.
@@ -283,13 +277,11 @@ on ^*:NOTICE:X25519_FINISH*:?:{
   halt
 }
 
-
-
-
 ; === FCEP-1 CHANNEL ENCRYPTION PROTOCOL HANDLERS ===
 ; FCEP-1 (FiSH-11 Channel Encryption Protocol) enables secure multi-party
 ; channel encryption using a hub-and-spoke model where a coordinator distributes
 ; a shared channel key to all participants via their pre-established pairwise keys.
+
 on ^*:NOTICE:+FiSH-CEP-KEY*:?:{
   ; This event triggers when receiving a channel key distribution message.
   ; Format: +FiSH-CEP-KEY <#channel> <coordinator_nick> <base64_wrapped_key>
@@ -353,8 +345,6 @@ on ^*:NOTICE:+FiSH-CEP-KEY*:?:{
 
 
 
-
-
 ; Handle key exchange timeout
 alias fish11_timeout_keyexchange {
   if ($1 == $null) {
@@ -374,8 +364,6 @@ alias fish11_timeout_keyexchange {
     echo $color(Mode text) -at *** FiSH_11: to try again, use: /fish11_X25519_INIT %contact
   }
 }
-
-
 
 
 
@@ -411,8 +399,6 @@ on *:NICK:{
 
 
 
-
-
 ; === CHANNEL JOIN HANDLING ===
 on *:JOIN:#:{
   ; Only process our own joins
@@ -435,6 +421,7 @@ on *:JOIN:#:{
 
 
 ; === SIGNAL HANDLERS ===
+
 
 
 
@@ -520,7 +507,7 @@ alias fish11_X25519_INIT {
 
   ; Use regex to validate the entire key format. This is more robust against
   ; hidden characters or whitespace returned by the DLL.
-  if ($regex(%pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{43}={0,2}$/)) {
+  if ($regex(%pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{43}(=|==)?$/)) {
     .notice %cur_contact X25519_INIT %pub
     echo $color(Mode text) -tm %cur_contact *** FiSH_11: sent X25519_INIT to %cur_contact $+ , waiting for reply...
   }
@@ -631,8 +618,6 @@ alias fish11_initchannel {
     echo $color(Error) -at *** FiSH_11 FCEP-1 ERROR: No distribution commands generated
   }
 }
-
-
 
 ; Shorthand alias for channel encryption
 alias fcep { fish11_initchannel $1- }
@@ -755,13 +740,13 @@ alias fish11_file_list_keys {
   var %keys
   
   ; Call DLL function using proper syntax for data return
-  ; Using $dll command to directly capture return value
+  ; The .dll command executes the function and puts output in the specified buffer
   echo $color(Mode text) -at *** FiSH: about to call FiSH11_FileListKeys...
-  var %keys = $dll(%Fish11DllFile, FiSH11_FileListKeys, $null)
+  .dll %Fish11DllFile FiSH11_FileListKeys %keys
   echo $color(Mode text) -at *** FiSH: DLL call completed, result: %keys
-
+  
   ; If the function returns data, display it line by line
-  if (%keys != $null && %keys != "") {
+  if (%keys != $null) {
     fish11_display_multiline_result %keys
   }
   else {
@@ -1197,20 +1182,6 @@ menu channel {
       echo $color(Mode text) -at *** FiSH: encrypted message: %encrypted
     }
   }
-  .Set topic (encrypted) :{
-    var %topic = $?="Enter encrypted topic for " $+ $chan $+ ":"
-    if (%topic != $null) {
-      window -a $chan
-      etopic %topic
-    }
-  }
-  .Encrypt message :{
-    var %msg = $?="Enter message to encrypt:"
-    if (%msg) {
-      var %encrypted = $fish11_encrypt($chan,%msg)
-      echo $color(Mode text) -at *** FiSH: encrypted message: %encrypted
-    }
-  }
   .Decrypt message :{
     var %msg = $?="Enter message to decrypt:"
     if (%msg) {
@@ -1220,10 +1191,7 @@ menu channel {
   }
   .Set topic (encrypted) :{
     var %topic = $?="Enter encrypted topic for " $+ $chan $+ ":"
-    if (%topic != $null) {
-      window -a $chan
-      etopic %topic
-    }
+    if (%topic != $null) etopic %topic
   }
   .Misc config
   ..Encrypt TOPIC
@@ -1280,18 +1248,6 @@ menu nicklist {
   .Set new key (UTF-8) :{ var %key = $?="Enter new key for " $+ $1 $+ " (UTF-8):" | if (%key != $null) fish11_setkey_utf8 $1 %key }
   .Remove key :fish11_removekey $1
   .Use same key as $chan :fish11_usechankey $1 $chan
-  .Set topic (encrypted) :{
-    ; Only allow in channel windows
-    if ($chantype($active) != # && $chantype($active) != &) {
-      echo $color(Mode text) -at *** FiSH_11: etopic can only be used in channel windows
-      return
-    }
-    var %topic = $?="Enter encrypted topic for " $+ $active $+ ":"
-    if (%topic != $null) {
-      window -a $active
-      etopic %topic
-    }
-  }
   .Encrypt message :{
     var %msg = $?="Enter message to encrypt:"
     if (%msg) {
@@ -1315,6 +1271,15 @@ menu status,channel,nicklist,query {
   .Injection version : fish11_injection_version
   .Help :fish11_help
   .-
+  .Set topic (encrypted) :{
+    ; Only allow in channel windows
+    if ($chantype($active) != # && $chantype($active) != &) {
+      echo $color(Mode text) -at *** FiSH_11: etopic can only be used in channel windows
+      return
+    }
+    var %topic = $?="Enter encrypted topic for " $+ $active $+ ":"
+    if (%topic != $null) etopic %topic
+  }
   .List all keys :fish11_file_list_keys
   .Test encryption :fish11_test_crypt
   .-
@@ -1494,3 +1459,4 @@ alias fish_help11 { fish11_help }
 alias fish_version11 { fish11_version }
 alias fish_initchannel11 { fish11_initchannel $1- }
 alias fcep11 { fish11_initchannel $1- }
+

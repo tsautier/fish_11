@@ -13,7 +13,9 @@ mod fish11_filelistkeysitem;
 mod fish11_genkey;
 mod fish11_getconfigpath;
 mod fish11_getkeyttl;
+mod fish11_getratchetstate;
 mod fish11_help;
+mod fish11_setmanualchannelkey;
 mod fish11_setnetwork;
 mod key_management;
 mod utility;
@@ -92,3 +94,5 @@ pub use crate::channel_encryption::init_key::FiSH11_InitChannelKey;
 pub use crate::channel_encryption::process_key::FiSH11_ProcessChannelKey;
 
 pub use fish11_getkeyttl::FiSH11_GetKeyTTL;
+pub use fish11_getratchetstate::FiSH11_GetRatchetState;
+pub use fish11_setmanualchannelkey::FiSH11_SetManualChannelKey;

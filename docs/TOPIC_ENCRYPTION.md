@@ -129,6 +129,47 @@ date=date_de_création...
 - Le ratchet maintient une fenêtre de clés pour tolérer les messages hors ordre
 - La taille maximale des topics est limitée par les contraintes IRC (~400-500 chars)
 
+## Intégration avec Fish Inject Hook
+
+### Mécanisme d'Interception
+
+Le système de chiffrement de topic repose sur le module fish_inject.dll qui intercepte les appels réseau WinSock :
+
+1. **Hook recv/send** : Intercepte les données entrantes et sortantes
+2. **Détection des commandes IRC** : Identifie les commandes TOPIC, PRIVMSG, NOTICE
+3. **Gestion des moteurs** : Les DLL externes (comme fish_11.dll) peuvent s'inscrire comme moteurs de traitement
+4. **Mise à jour du contexte réseau** : Le réseau IRC est automatiquement détecté et mis à jour avant chaque traitement
+
+### Fonctionnement dans engine_registration.rs
+
+Le module `engine_registration.rs` dans fish_11_dll contient les fonctions de rappel pour le traitement des messages :
+
+- `on_incoming()` : Détecte et déchiffre les messages entrants (y compris les topics)
+- `on_outgoing()` : Chiffre les messages sortants avant envoi
+- Le contexte réseau est mis à jour automatiquement via la fonction `get_network_name_from_inject()`
+
+## Problèmes Connus et Améliorations Nécessaires
+
+### Problèmes Actuels
+
+1. **Manque de logs détaillés** : Le système actuel n'affiche pas suffisamment d'informations pour le débogage des problèmes de topic chiffré
+2. **Difficile à tester** : L'utilisateur n'a pas toujours de feedback clair sur l'état des opérations de chiffrement de topic
+3. **Gestion des erreurs** : Les erreurs de déchiffrement de topic ne sont pas toujours clairement signalées
+
+### Améliorations Proposées
+
+1. **Ajout de logs détaillés** : Ajouter des messages de log pour chaque étape du processus de chiffrement/déchiffrement de topic
+2. **Amélioration des messages d'erreur** : Fournir des messages plus explicites lors d'échecs
+3. **Commandes de diagnostic** : Ajouter des commandes pour vérifier l'état de la gestion des topics chiffrés
+4. **Gestion des clés de ratchet** : S'assurer que le mécanisme de ratchet fonctionne correctement pour les topics
+
+## Tests et Validation Nécessaires
+
+1. Tester l'envoi/reception entre plusieurs clients
+2. Vérifier la sécurité (authentification, forward secrecy)
+3. Valider la synchronisation du topic entre tous les membres
+4. Tester les cas d'erreurs (membres sans clé, mauvais format, etc.)
+
 ## API DLL
 
 Les fonctions importantes pour le chiffrement de topic sont :

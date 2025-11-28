@@ -6,12 +6,11 @@ use crate::platform_types::HWND;
 
 use crate::buffer_utils;
 use crate::config;
-use crate::config::key_management::check_key_expiry;
 use crate::crypto;
 use crate::dll_function_identifier;
+use crate::dll_interface::utility;
 use crate::log_debug;
 use crate::unified_error::DllError;
-use crate::utils::normalize_nick;
 
 /* list of stuff we possibly need to decrypt:
         :nick!ident@host PRIVMSG #chan :+FISH 2T5zD0mPgMn
@@ -35,28 +34,11 @@ use crate::utils::normalize_nick;
 
 dll_function_identifier!(FiSH11_DecryptMsg, data, {
     // 1. Parse input: <target> <encrypted_message>
-    let input = unsafe { buffer_utils::parse_buffer_input(data)? };
-    let parts: Vec<&str> = input.splitn(2, ' ').collect();
-
-    if parts.len() < 2 {
-        return Err(DllError::InvalidInput {
-            param: "input".to_string(),
-            reason: "expected format: <target> <encrypted_message>".to_string(),
-        });
-    }
-
-    let target_raw = parts[0];
-    let mut encrypted_message = parts[1].trim();
-
-    // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan, etc.)
-    let target = crate::utils::normalize_target(target_raw);
-
-    if target.is_empty() {
-        return Err(DllError::MissingParameter("target".to_string()));
-    }
-    if encrypted_message.is_empty() {
-        return Err(DllError::MissingParameter("encrypted_message".to_string()));
-    }
+    let input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
+    let parsed = utility::parse_input(&input_str)?;
+    
+    let target = parsed.target;
+    let mut encrypted_message = parsed.message.trim();
 
     // 2. Strip the "+FiSH " prefix if present.
     if let Some(stripped) = encrypted_message.strip_prefix("+FiSH ") {
@@ -68,86 +50,101 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
     if target.starts_with('#') || target.starts_with('&') {
         log_debug!("Decrypting for channel: {}", target);
 
-        let encrypted_bytes = crate::utils::base64_decode(encrypted_message)?;
-        if encrypted_bytes.len() < 12 {
-            return Err(DllError::DecryptionFailed {
-                context: "payload validation".to_string(),
-                cause: "Encrypted payload too short to contain a nonce".to_string(),
-            });
-        }
-        let nonce: [u8; 12] =
-            encrypted_bytes[..12].try_into().map_err(|_| DllError::DecryptionFailed {
-                context: "nonce extraction".to_string(),
-                cause: "Could not convert slice to 12-byte nonce array".to_string(),
-            })?;
+        // Check if we have a manual channel key set. If so, try it with simple decryption (no ratchet).
+        if config::has_channel_key(target) {
+            let key = config::get_channel_key_with_fallback(target)?;
 
-        // 1. Anti-replay check (read-only)
-        if config::check_nonce(target, &nonce)? {
-            return Err(DllError::ReplayAttackDetected { channel: target.to_string() });
-        }
-
-        // 2. Attempt decryption with ratchet state
-        let decrypted = config::with_ratchet_state_mut(target, |state| {
-            // Try current key first
-            if let Ok(plaintext) = crypto::decrypt_message(
-                &state.current_key,
+            // Decrypt with the fixed key, using the channel name as Associated Data.
+            let decrypted = crypto::decrypt_message(
+                &key,
                 encrypted_message,
                 Some(target.as_bytes()),
-            ) {
-                // Success with current key. Advance the ratchet.
-                let next_key = crypto::advance_ratchet_key(&state.current_key, &nonce, target)?;
-                state.advance(next_key);
-                return Ok(Some(plaintext)); // Return plaintext to outer scope
+            ).map_err(|e| {
+                DllError::DecryptionFailed {
+                    context: format!("decrypting for channel {} with manual key", target),
+                    cause: e.to_string(),
+                }
+            })?;
+
+            log::info!("Successfully decrypted message for channel {} using manual key", target);
+            return Ok(decrypted);
+        } else {
+            // Use the ratchet-based decryption (FCEP-1 with forward secrecy)
+            let encrypted_bytes = crate::utils::base64_decode(encrypted_message)?;
+            if encrypted_bytes.len() < 12 {
+                return Err(DllError::DecryptionFailed {
+                    context: "payload validation".to_string(),
+                    cause: "Encrypted payload too short to contain a nonce".to_string(),
+                });
+            }
+            let nonce: [u8; 12] =
+                encrypted_bytes[..12].try_into().map_err(|_| DllError::DecryptionFailed {
+                    context: "nonce extraction".to_string(),
+                    cause: "Could not convert slice to 12-byte nonce array".to_string(),
+                })?;
+
+            // 1. Anti-replay check (read-only)
+            if config::check_nonce(target, &nonce)? {
+                return Err(DllError::ReplayAttackDetected { channel: target.to_string() });
             }
 
-            // If current key fails, try previous keys for out-of-order messages
-            for old_key in state.previous_keys.iter().rev() {
-                // Check newest first
-                if let Ok(plaintext) =
-                    crypto::decrypt_message(old_key, encrypted_message, Some(target.as_bytes()))
-                {
-                    // Success with a previous key. DO NOT advance the ratchet.
-                    log::warn!(
-                        "Decrypted message for {} with a previous ratchet key (out-of-order message)",
-                        target
-                    );
+            // 2. Attempt decryption with ratchet state
+            let decrypted = config::with_ratchet_state_mut(target, |state| {
+                // Try current key first
+                if let Ok(plaintext) = crypto::decrypt_message(
+                    &state.current_key,
+                    encrypted_message,
+                    Some(target.as_bytes()),
+                ) {
+                    // Success with current key. Advance the ratchet.
+                    let next_key = crypto::advance_ratchet_key(&state.current_key, &nonce, target)?;
+                    state.advance(next_key);
                     return Ok(Some(plaintext)); // Return plaintext to outer scope
                 }
+
+                // If current key fails, try previous keys for out-of-order messages
+                for old_key in state.previous_keys.iter().rev() {
+                    // Check newest first
+                    if let Ok(plaintext) =
+                        crypto::decrypt_message(old_key, encrypted_message, Some(target.as_bytes()))
+                    {
+                        // Success with a previous key. DO NOT advance the ratchet.
+                        log::warn!(
+                            "Decrypted message for {} with a previous ratchet key (out-of-order message)",
+                            target
+                        );
+                        return Ok(Some(plaintext)); // Return plaintext to outer scope
+                    }
+                }
+
+                Ok(None) // Indicate that decryption failed
+            })?;
+
+            if let Some(plaintext) = decrypted {
+                // 3. Add nonce to cache ONLY after successful decryption
+                config::add_nonce(target, nonce)?;
+                log::info!("Successfully decrypted ratchet message for {}", target);
+                return Ok(plaintext);
+            } else {
+                return Err(DllError::DecryptionFailed {
+                    context: format!("decrypting for channel {}", target),
+                    cause: "Invalid key or corrupted data (ratchet exhausted)".to_string(),
+                });
             }
-
-            Ok(None) // Indicate that decryption failed
-        })?;
-
-        if let Some(plaintext) = decrypted {
-            // 3. Add nonce to cache ONLY after successful decryption
-            config::add_nonce(target, nonce)?;
-            log::info!("Successfully decrypted ratchet message for {}", target);
-            return Ok(plaintext);
-        } else {
-            return Err(DllError::DecryptionFailed {
-                context: format!("decrypting for channel {}", target),
-                cause: "Invalid key or corrupted data (ratchet exhausted)".to_string(),
-            });
         }
     }
 
     // --- Private Message Decryption Logic ---
-    let nickname = normalize_nick(target);
+    let nickname = utility::normalize_private_target(target)?;
     log_debug!("Decrypting for nickname: {}", nickname);
 
-    // Check for key expiration before attempting to use it.
-    check_key_expiry(&nickname, None)?;
-
-    let key_vec = config::get_key(&nickname, None)?;
-    let key: &[u8; 32] = key_vec.as_slice().try_into().map_err(|_| DllError::InvalidInput {
-        param: "key".to_string(),
-        reason: format!("Key for {} must be exactly 32 bytes, got {}", nickname, key_vec.len()),
-    })?;
+    let key = utility::get_private_key(&nickname)?;
+    let key_ref = &key;
 
     log_debug!("Successfully retrieved decryption key");
 
     // Decrypt the message (no AD for private messages).
-    let decrypted = crypto::decrypt_message(key, encrypted_message, None).map_err(|e| {
+    let decrypted = crypto::decrypt_message(key_ref, encrypted_message, None).map_err(|e| {
         DllError::DecryptionFailed {
             context: format!("decrypting for {}", nickname),
             cause: e.to_string(),

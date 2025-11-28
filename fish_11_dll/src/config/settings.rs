@@ -65,6 +65,18 @@ pub fn get_encryption_mark() -> Result<(u8, String)> {
     with_config(|config| Ok((config.fish11.mark_position, config.fish11.mark_encrypted.clone())))
 }
 
+/// Get the encryption prefix to use in messages based on configuration
+pub fn get_encryption_prefix() -> Result<String> {
+    with_config(|config| {
+        // If fish_prefix is enabled, use the fixed "FiSH " pattern; otherwise use encryption_prefix
+        if config.fish11.fish_prefix {
+            Ok("+FiSH ".to_string())
+        } else {
+            Ok(config.fish11.encryption_prefix.clone())
+        }
+    })
+}
+
 /// Check if legacy Fish 10 compatibility is disabled
 pub fn is_fish10_legacy_disabled() -> Result<bool> {
     with_config(|config| Ok(config.fish11.no_fish10_legacy))
