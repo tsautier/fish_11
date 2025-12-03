@@ -36,11 +36,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Couleurs pour les messages
-function Write-Info { Write-Host "ℹ️  $args" -ForegroundColor Cyan }
-function Write-Success { Write-Host "✅ $args" -ForegroundColor Green }
-function Write-Warning { Write-Host "⚠️  $args" -ForegroundColor Yellow }
-function Write-Error { param($msg) Write-Host "❌ $msg" -ForegroundColor Red }
+# Couleurs pour les messages (ASCII safe pour compatibilité PS 5.1)
+function Write-Info { Write-Host "[INFO]  $args" -ForegroundColor Cyan }
+function Write-Success { Write-Host "[OK] $args" -ForegroundColor Green }
+function Write-Warning { Write-Host "[WARN]  $args" -ForegroundColor Yellow }
+function Write-Error { param($msg) Write-Host "[ERROR] $msg" -ForegroundColor Red }
 
 # Vérifier que la version est au bon format
 if ($Version -notmatch '^\d+\.\d+\.\d+$') {
