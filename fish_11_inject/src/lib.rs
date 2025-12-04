@@ -26,10 +26,9 @@ pub mod socket;
 mod ssl_detection;
 pub mod ssl_mapping;
 
-use std::collections::HashMap;
 use std::ffi::{c_int, c_void};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
@@ -40,7 +39,6 @@ use lazy_static::lazy_static;
 use log::{error, info};
 use socket::info::SocketInfo;
 use windows::Win32::Foundation::HMODULE;
-use windows::Win32::Networking::WinSock::SOCKET;
 use windows::Win32::System::Threading::GetCurrentThreadId;
 
 use crate::helpers_inject::{cleanup_hooks, init_logger};
@@ -60,9 +58,6 @@ lazy_static! {
     static ref ENGINES: Mutex<Option<Arc<InjectEngines>>> = Mutex::new(None);
     static ref DLL_HANDLE_PTR: Mutex<Option<SendHMODULE>> = Mutex::new(None);
     static ref MAX_MIRC_RETURN_BYTES: Mutex<usize> = Mutex::new(4096);
-    // Note: SOCKETS is redundant with ACTIVE_SOCKETS and should be removed in future cleanup
-    static ref SOCKETS: RwLock<HashMap<SOCKET, Arc<Mutex<SocketInfo>>>> =
-        RwLock::new(HashMap::new());
 }
 
 /// Global flags
