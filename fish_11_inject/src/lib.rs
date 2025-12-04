@@ -22,6 +22,7 @@ mod engines;
 mod helpers_inject;
 mod hook_socket;
 mod hook_ssl;
+pub mod lock_utils;
 pub mod socket;
 mod ssl_detection;
 pub mod ssl_mapping;
