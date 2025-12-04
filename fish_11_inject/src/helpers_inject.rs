@@ -92,22 +92,48 @@ pub fn install_hooks() -> Result<(), io::Error> {
         #[cfg(debug_assertions)]
         info!("install_hooks: resolving Winsock functions...");
 
-        // Dynamically resolve Winsock functions
-        let recv_fn = std::mem::transmute::<FARPROC, RecvFn>(get_winsock_function("recv\0"));
+        // Dynamically resolve Winsock functions with null checks
+        let recv_ptr = get_winsock_function("recv\0");
+        if recv_ptr.is_null() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "Failed to resolve recv() function from ws2_32.dll",
+            ));
+        }
+        let recv_fn = std::mem::transmute::<FARPROC, RecvFn>(recv_ptr);
         #[cfg(debug_assertions)]
         info!("install_hooks: recv function resolved at {:?}", recv_fn as *const ());
 
-        let send_fn = std::mem::transmute::<FARPROC, SendFn>(get_winsock_function("send\0"));
+        let send_ptr = get_winsock_function("send\0");
+        if send_ptr.is_null() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "Failed to resolve send() function from ws2_32.dll",
+            ));
+        }
+        let send_fn = std::mem::transmute::<FARPROC, SendFn>(send_ptr);
         #[cfg(debug_assertions)]
         info!("install_hooks: send function resolved at {:?}", send_fn as *const ());
 
-        let connect_fn =
-            std::mem::transmute::<FARPROC, ConnectFn>(get_winsock_function("connect\0"));
+        let connect_ptr = get_winsock_function("connect\0");
+        if connect_ptr.is_null() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "Failed to resolve connect() function from ws2_32.dll",
+            ));
+        }
+        let connect_fn = std::mem::transmute::<FARPROC, ConnectFn>(connect_ptr);
         #[cfg(debug_assertions)]
         info!("install_hooks: connect function resolved at {:?}", connect_fn as *const ());
 
-        let closesocket_fn =
-            std::mem::transmute::<FARPROC, ClosesocketFn>(get_winsock_function("closesocket\0"));
+        let closesocket_ptr = get_winsock_function("closesocket\0");
+        if closesocket_ptr.is_null() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "Failed to resolve closesocket() function from ws2_32.dll",
+            ));
+        }
+        let closesocket_fn = std::mem::transmute::<FARPROC, ClosesocketFn>(closesocket_ptr);
         #[cfg(debug_assertions)]
         info!("install_hooks: closesocket function resolved at {:?}", closesocket_fn as *const ());
 

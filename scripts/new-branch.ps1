@@ -83,11 +83,11 @@ catch {
 # --- Sélection du type de branche ---
 $branchTypes = @("feature", "fix", "refactor", "docs", "style", "test", "ci", "chore")
 $selectedType = Show-Menu -Options $branchTypes
-Write-Host "✅ Selected branch type: $selectedType`n"
+Write-Host "[OK] Selected branch type: $selectedType`n"
 
 # --- Obtenir la description de la branche ---
 if ([string]::IsNullOrWhiteSpace($Description)) {
-    $Description = Read-Host "📝 Please enter a short description for the new branch (e.g., add-user-profile-page)"
+    $Description = Read-Host "Please enter a short description for the new branch (e.g., add-user-profile-page)"
 }
 
 if ([string]::IsNullOrWhiteSpace($Description)) {
@@ -114,18 +114,18 @@ git branch --all | ForEach-Object {
 }
 
 $newVersion = $highestVersion + 1
-Write-Host "✅ Highest version for '$selectedType' is $highestVersion. New version will be $newVersion."
+Write-Host "[OK] Highest version for '$selectedType' is $highestVersion. New version will be $newVersion."
 
 # --- Préparer le nom final de la branche ---
 # Convert to lowercase, replace spaces/punctuation with hyphens, remove invalid characters
 $slug = $Description.ToLower().Trim() -replace '\s+', '-' -replace '[^a-z0-9-]', ''
 $branchName = "$selectedType/$newVersion-$slug"
 
-Write-Host "`n✨ Proposed new branch name: " -NoNewline
+Write-Host "`nProposed new branch name: " -NoNewline
 Write-Host "$branchName" -ForegroundColor Green
 
 # --- Confirmation ---
-$confirm = Read-Host "❓ Do you want to create this branch? (y/n)"
+$confirm = Read-Host "Do you want to create this branch? (y/n)"
 if ($confirm -notmatch "^[yY]$") {
     Write-Host "Operation cancelled by user."
     exit 0
@@ -134,7 +134,7 @@ if ($confirm -notmatch "^[yY]$") {
 # --- Création de la branche ---
 try {
     git checkout -b $branchName
-    Write-Host "`n🎉 Success! You are now on branch '$branchName'."
+    Write-Host "`nSuccess! You are now on branch '$branchName'."
 }
 catch {
     Write-Error "ERROR: Failed to create branch '$branchName'. A branch with this name might already exist or another Git error occurred."
