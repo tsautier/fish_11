@@ -440,8 +440,8 @@ pub extern "C" fn UnregisterEngine(engine: *const FishInjectEngine) -> i32 {
 #[no_mangle]
 pub unsafe extern "C" fn GetNetworkName(socket_id: u32) -> *mut std::ffi::c_char {
     use crate::ACTIVE_SOCKETS;
-    let sockets = ACTIVE_SOCKETS.lock().unwrap();
-    if let Some(socket_info) = sockets.get(&socket_id) {
+    // DashMap - no lock needed, just get() returns a Ref guard
+    if let Some(socket_info) = ACTIVE_SOCKETS.get(&socket_id) {
         let network_name_guard = socket_info.network_name.read();
         if let Some(network_name) = &*network_name_guard {
             if let Ok(c_string) = CString::new(network_name.clone()) {
