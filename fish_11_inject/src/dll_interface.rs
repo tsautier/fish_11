@@ -240,18 +240,16 @@ pub extern "C" fn FiSH11_InjectDebugInfo(
 ) -> i32 {
     let max_bytes = *MAX_MIRC_RETURN_BYTES.lock().unwrap();
 
-    // Collect socket statistics
-    let sockets = ACTIVE_SOCKETS.lock().unwrap();
-
-    let num_sockets = sockets.len();
+    // Collect socket statistics (DashMap - thread-safe iteration)
+    let num_sockets = ACTIVE_SOCKETS.len();
 
     //let discarded = DISCARDED_SOCKETS.load(Ordering::Relaxed);
     let discarded = DISCARDED_SOCKETS.lock().unwrap().len();
 
-    // Get statistics from all sockets
+    // Get statistics from all sockets (DashMap iter is thread-safe)
     let mut stats = String::new();
-    for (_, socket) in sockets.iter() {
-        stats.push_str(&socket.get_stats());
+    for entry in ACTIVE_SOCKETS.iter() {
+        stats.push_str(&entry.value().get_stats());
         stats.push(' ');
 
         // Limit size to avoid buffer issues

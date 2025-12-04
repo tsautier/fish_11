@@ -13,7 +13,6 @@ use sha2::{Digest, Sha256};
 use winapi::shared::ws2def::SOCKADDR;
 use winapi::um::winsock2::{SOCKET, SOCKET_ERROR, WSAEINTR};
 
-use crate::hook_ssl::{SOCKET_TO_SSL, SSL_TO_SOCKET};
 use crate::socket::handlers::protocol_detection;
 use crate::socket::info::SocketInfo;
 use crate::socket::state::SocketState;
@@ -46,15 +45,30 @@ pub unsafe extern "system" fn hooked_recv(
 
     let socket_info = get_or_create_socket(s as u32, true);
 
+    // Acquire the hook lock with timeout to avoid deadlocks during hook uninstall
+    let hook_guard = match crate::lock_utils::try_lock_timeout(
+        &RECV_HOOK,
+        crate::lock_utils::DEFAULT_LOCK_TIMEOUT,
+    ) {
+        Ok(guard) => guard,
+        Err(e) => {
+            error!("Failed to acquire RECV_HOOK lock: {}", e);
+            return -1;
+        }
+    };
+    let original = match hook_guard.as_ref() {
+        Some(hook) => hook,
+        None => {
+            error!("Original recv() function not available!");
+            return -1;
+        }
+    };
+
     if socket_info.is_ssl() {
         // For SSL sockets, skip processing here; SSL_read will handle it.
-        let binding = RECV_HOOK.lock().unwrap();
-        let original = binding.as_ref().unwrap();
         return original.call(s, buf, len, flags);
     }
 
-    let binding = RECV_HOOK.lock().unwrap();
-    let original = binding.as_ref().unwrap();
     let bytes_received = original.call(s, buf, len, flags);
 
     if bytes_received > 0 {
@@ -185,7 +199,16 @@ pub unsafe extern "system" fn hooked_send(
     let socket_info = get_or_create_socket(s as u32, false);
     if socket_info.is_ssl() {
         // For SSL sockets, skip processing here; SSL_write will handle it.
-        let hook_guard = SEND_HOOK.lock().unwrap();
+        let hook_guard = match crate::lock_utils::try_lock_timeout(
+            &SEND_HOOK,
+            crate::lock_utils::DEFAULT_LOCK_TIMEOUT,
+        ) {
+            Ok(guard) => guard,
+            Err(e) => {
+                error!("Failed to acquire SEND_HOOK lock: {}", e);
+                return -1;
+            }
+        };
         let original = match hook_guard.as_ref() {
             Some(hook) => hook,
             None => {
@@ -321,7 +344,16 @@ pub unsafe extern "system" fn hooked_send(
 
     // Call the original function
     let result = {
-        let hook_guard = SEND_HOOK.lock().unwrap();
+        let hook_guard = match crate::lock_utils::try_lock_timeout(
+            &SEND_HOOK,
+            crate::lock_utils::DEFAULT_LOCK_TIMEOUT,
+        ) {
+            Ok(guard) => guard,
+            Err(e) => {
+                error!("Failed to acquire SEND_HOOK lock: {}", e);
+                return -1;
+            }
+        };
         let original = match hook_guard.as_ref() {
             Some(hook) => hook,
             None => {
@@ -346,9 +378,26 @@ pub unsafe extern "system" fn hooked_connect(
     // Get or create socket info
     let _socket_info = get_or_create_socket(s as u32, true);
 
+    // Acquire the hook lock with timeout to avoid deadlocks during hook uninstall
+    let hook_guard = match crate::lock_utils::try_lock_timeout(
+        &CONNECT_HOOK,
+        crate::lock_utils::EXTENDED_LOCK_TIMEOUT, // Connection may take longer
+    ) {
+        Ok(guard) => guard,
+        Err(e) => {
+            error!("Failed to acquire CONNECT_HOOK lock: {}", e);
+            return -1;
+        }
+    };
+    let original = match hook_guard.as_ref() {
+        Some(hook) => hook,
+        None => {
+            error!("Original connect() function not available!");
+            return -1;
+        }
+    };
+
     // Call original
-    let binding = CONNECT_HOOK.lock().unwrap();
-    let original = binding.as_ref().unwrap();
     let result = original.call(s, name, namelen);
 
     // Process result
@@ -386,69 +435,28 @@ pub unsafe extern "system" fn hooked_closesocket(s: SOCKET) -> c_int {
     info!("* hooked_closesocket() called for socket {}", s);
     let socket_id = s as u32;
 
-    // Notify engines about the closure
-    {
-        let active_sockets = match ACTIVE_SOCKETS.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                error!("ACTIVE_SOCKETS mutex poisoned in hooked_closesocket()");
-                poisoned.into_inner()
-            }
-        };
-        if let Some(socket_info) = active_sockets.get(&socket_id) {
-            let engines = Arc::clone(&socket_info.engines);
-            engines.on_socket_closed(socket_id);
-        }
+    // Notify engines about the closure (using DashMap - no mutex needed)
+    if let Some(socket_info) = ACTIVE_SOCKETS.get(&socket_id) {
+        let engines = Arc::clone(&socket_info.engines);
+        engines.on_socket_closed(socket_id);
     }
 
-    {
-        let mut socket_to_ssl = match SOCKET_TO_SSL.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                error!("SOCKET_TO_SSL mutex poisoned in hooked_closesocket()");
-                poisoned.into_inner()
-            }
-        };
-
-        if let Some(wrapper) = socket_to_ssl.remove(&socket_id) {
-            let mut ssl_to_socket = match SSL_TO_SOCKET.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    error!("SSL_TO_SOCKET mutex poisoned in hooked_closesocket()");
-                    poisoned.into_inner()
-                }
-            };
-            // Remove the corresponding SSL* to socket mapping as well
-            let ssl_ptr = wrapper.ssl as usize;
-            if ssl_to_socket.remove(&ssl_ptr).is_some() {
-                debug!(
-                    "Removed SSL mapping for SSL context {:p} associated with socket {}",
-                    wrapper.ssl, socket_id
-                );
-            }
-        }
-    }
-
-    {
-        let mut active_sockets = match ACTIVE_SOCKETS.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                error!("ACTIVE_SOCKETS mutex poisoned (removal) in hooked_closesocket()");
-                poisoned.into_inner()
-            }
-        };
-        if active_sockets.remove(&socket_id).is_some() {
-            debug!("Socket {} removed from tracking", socket_id);
-        }
+    // SSL mappings cleanup is handled by the hook_ssl module
+    // Remove from DashMap (thread-safe, no mutex needed)
+    if ACTIVE_SOCKETS.remove(&socket_id).is_some() {
+        debug!("Socket {} removed from tracking", socket_id);
     }
 
     // Call the original closesocket function
     let result = {
-        let hook_guard = match CLOSESOCKET_HOOK.lock() {
+        let hook_guard = match crate::lock_utils::try_lock_timeout(
+            &CLOSESOCKET_HOOK,
+            crate::lock_utils::DEFAULT_LOCK_TIMEOUT,
+        ) {
             Ok(guard) => guard,
-            Err(poisoned) => {
-                error!("CLOSESOCKET_HOOK mutex poisoned in hooked_closesocket()");
-                poisoned.into_inner()
+            Err(e) => {
+                error!("Failed to acquire CLOSESOCKET_HOOK lock: {}", e);
+                return -1;
             }
         };
         let original = match hook_guard.as_ref() {
@@ -464,13 +472,16 @@ pub unsafe extern "system" fn hooked_closesocket(s: SOCKET) -> c_int {
     result
 }
 
-/// Get the socket info
+/// Get the socket info (thread-safe with DashMap)
 pub fn get_or_create_socket(socket_id: u32, _is_ssl: bool) -> Arc<SocketInfo> {
-    let mut sockets = ACTIVE_SOCKETS.lock().unwrap();
+    // Fast path: check if socket already exists
+    if let Some(socket_info) = ACTIVE_SOCKETS.get(&socket_id) {
+        return socket_info.clone();
+    }
 
-    if let Some(socket_info) = sockets.get(&socket_id) {
-        socket_info.clone()
-    } else {
+    // Slow path: create new socket info
+    // Use entry API to avoid race conditions
+    ACTIVE_SOCKETS.entry(socket_id).or_insert_with(|| {
         // Create engines if needed
         let engines = {
             let mut engines_guard = ENGINES.lock().unwrap();
@@ -480,17 +491,14 @@ pub fn get_or_create_socket(socket_id: u32, _is_ssl: bool) -> Arc<SocketInfo> {
             engines_guard.as_ref().unwrap().clone()
         };
 
-        // Create new socket info
-        let socket_info = Arc::new(SocketInfo::new(socket_id, engines));
-        sockets.insert(socket_id, socket_info.clone());
-        socket_info
-    }
+        Arc::new(SocketInfo::new(socket_id, engines))
+    }).clone()
 }
 
 /// Get the socket info for a given socket ID
 pub(crate) fn _remove_socket(socket_id: u32) {
-    let mut sockets = ACTIVE_SOCKETS.lock().unwrap();
-    sockets.remove(&socket_id);
+    // DashMap - no lock needed
+    ACTIVE_SOCKETS.remove(&socket_id);
 
     let mut discarded = DISCARDED_SOCKETS.lock().unwrap();
     discarded.push(socket_id);
