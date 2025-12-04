@@ -199,7 +199,16 @@ pub unsafe extern "system" fn hooked_send(
     let socket_info = get_or_create_socket(s as u32, false);
     if socket_info.is_ssl() {
         // For SSL sockets, skip processing here; SSL_write will handle it.
-        let hook_guard = SEND_HOOK.lock().unwrap();
+        let hook_guard = match crate::lock_utils::try_lock_timeout(
+            &SEND_HOOK,
+            crate::lock_utils::DEFAULT_LOCK_TIMEOUT,
+        ) {
+            Ok(guard) => guard,
+            Err(e) => {
+                error!("Failed to acquire SEND_HOOK lock: {}", e);
+                return -1;
+            }
+        };
         let original = match hook_guard.as_ref() {
             Some(hook) => hook,
             None => {
@@ -335,7 +344,16 @@ pub unsafe extern "system" fn hooked_send(
 
     // Call the original function
     let result = {
-        let hook_guard = SEND_HOOK.lock().unwrap();
+        let hook_guard = match crate::lock_utils::try_lock_timeout(
+            &SEND_HOOK,
+            crate::lock_utils::DEFAULT_LOCK_TIMEOUT,
+        ) {
+            Ok(guard) => guard,
+            Err(e) => {
+                error!("Failed to acquire SEND_HOOK lock: {}", e);
+                return -1;
+            }
+        };
         let original = match hook_guard.as_ref() {
             Some(hook) => hook,
             None => {
@@ -431,11 +449,14 @@ pub unsafe extern "system" fn hooked_closesocket(s: SOCKET) -> c_int {
 
     // Call the original closesocket function
     let result = {
-        let hook_guard = match CLOSESOCKET_HOOK.lock() {
+        let hook_guard = match crate::lock_utils::try_lock_timeout(
+            &CLOSESOCKET_HOOK,
+            crate::lock_utils::DEFAULT_LOCK_TIMEOUT,
+        ) {
             Ok(guard) => guard,
-            Err(poisoned) => {
-                error!("CLOSESOCKET_HOOK mutex poisoned in hooked_closesocket()");
-                poisoned.into_inner()
+            Err(e) => {
+                error!("Failed to acquire CLOSESOCKET_HOOK lock: {}", e);
+                return -1;
             }
         };
         let original = match hook_guard.as_ref() {

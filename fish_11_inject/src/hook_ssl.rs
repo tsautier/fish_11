@@ -372,7 +372,17 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
     }
 
     // Check TLS handshake completion
-    if let Some(ssl_init_fn) = *SSL_IS_INIT_FINISHED.lock().unwrap_or_else(handle_poison) {
+    let ssl_init_fn = match crate::lock_utils::try_lock_timeout(
+        &SSL_IS_INIT_FINISHED,
+        crate::lock_utils::DEFAULT_LOCK_TIMEOUT,
+    ) {
+        Ok(guard) => *guard,
+        Err(e) => {
+            warn!("Failed to acquire SSL_IS_INIT_FINISHED lock: {}", e);
+            None
+        }
+    };
+    if let Some(ssl_init_fn) = ssl_init_fn {
         let handshake_status = ssl_init_fn(ssl);
         debug!("[HANDSHAKE] SSL_is_init_finished({:p}) = {}", ssl, handshake_status);
         if handshake_status != 0 {
@@ -564,14 +574,17 @@ unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int)
 
     // --- Post-handshake state detection ---
     {
-        let ssl_is_init_finished = match SSL_IS_INIT_FINISHED.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                error!("SSL_IS_INIT_FINISHED mutex poisoned in hooked_ssl_write()");
-                poisoned.into_inner()
+        let ssl_is_init_finished_fn = match crate::lock_utils::try_lock_timeout(
+            &SSL_IS_INIT_FINISHED,
+            crate::lock_utils::DEFAULT_LOCK_TIMEOUT,
+        ) {
+            Ok(guard) => *guard,
+            Err(e) => {
+                warn!("Failed to acquire SSL_IS_INIT_FINISHED lock: {}", e);
+                None
             }
         };
-        if let Some(ssl_is_init_finished_fn) = *ssl_is_init_finished {
+        if let Some(ssl_is_init_finished_fn) = ssl_is_init_finished_fn {
             let handshake_status = ssl_is_init_finished_fn(ssl);
             debug!("[HANDSHAKE] SSL_is_init_finished({:p}) = {}", ssl, handshake_status);
             if handshake_status != 0 {
