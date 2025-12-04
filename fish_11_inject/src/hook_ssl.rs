@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::ffi::{CString, c_int, c_void};
 use std::sync::Mutex as StdMutex;
 
@@ -16,6 +15,7 @@ use crate::SOCKET;
 use crate::helpers_inject::handle_poison;
 use crate::hook_socket::get_or_create_socket;
 use crate::socket::state::SocketState;
+use crate::ssl_mapping::SslSocketMapping;
 // SSL structure (opaque)
 #[repr(C)]
 pub struct SSL {
@@ -50,9 +50,8 @@ lazy_static! {
 }
 
 lazy_static! {
-    pub static ref SOCKET_TO_SSL: StdMutex<HashMap<u32, SSLWrapper>> =
-        StdMutex::new(HashMap::new());
-    pub static ref SSL_TO_SOCKET: StdMutex<HashMap<usize, u32>> = StdMutex::new(HashMap::new());
+    // Note: SOCKET_TO_SSL and SSL_TO_SOCKET have been moved to ssl_mapping.rs
+    // using DashMap for better thread-safety and performance
     pub static ref SSL_READ_HOOK: StdMutex<Option<GenericDetour<SslReadFn>>> = StdMutex::new(None);
     pub static ref SSL_WRITE_HOOK: StdMutex<Option<GenericDetour<SslWriteFn>>> =
         StdMutex::new(None);
@@ -102,31 +101,10 @@ unsafe extern "C" fn hooked_ssl_set_fd(ssl: *mut SSL, fd: c_int) -> c_int {
 
     // 2. Only proceed with tracking if original call succeeded and pointer valid
     if result > 0 && !ssl.is_null() {
-        {
-            // Map SSL* to fd
-            let mut ssl_to_socket = match SSL_TO_SOCKET.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    error!("SSL_TO_SOCKET mutex poisoned in hooked_ssl_set_fd()");
-                    poisoned.into_inner()
-                }
-            };
-            ssl_to_socket.insert(ssl as usize, fd as u32);
+        // Use the new thread-safe SslSocketMapping
+        SslSocketMapping::associate(ssl, fd as u32);
 
-            // Map fd to SSL* wrapped as your SSLWrapper
-            let mut socket_to_ssl = match SOCKET_TO_SSL.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    error!("SOCKET_TO_SSL mutex poisoned in hooked_ssl_set_fd()");
-                    poisoned.into_inner()
-                }
-            };
-            socket_to_ssl.insert(fd as u32, SSLWrapper { ssl });
-
-            trace!("Mapped SSL {:p} to socket {}", ssl, fd);
-        }
-
-        // Optionally set a flag in your socket info struct
+        // Set a flag in socket info struct
         let socket_info = get_or_create_socket(fd as u32, true);
         socket_info.set_ssl(true);
 
@@ -256,8 +234,8 @@ pub fn find_ssl_function(function_name: &str) -> FARPROC {
 pub unsafe fn store_ssl_mapping(ssl: *mut SSL, socket: SOCKET) {
     if let Some(fd_fn) = *SSL_GET_FD.lock().unwrap_or_else(handle_poison) {
         let fd = fd_fn(ssl);
-        SSL_TO_SOCKET.lock().unwrap().insert(ssl as usize, socket.0 as u32);
-        SOCKET_TO_SSL.lock().unwrap().insert(socket.0 as u32, SSLWrapper { ssl });
+        // Use the new thread-safe SslSocketMapping
+        SslSocketMapping::associate(ssl, socket.0 as u32);
         debug!("Mapped SSL {:p} to socket {:?} (fd={})", ssl, socket, fd);
     }
 }
@@ -426,39 +404,29 @@ unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int)
         let data_slice = std::slice::from_raw_parts(buf, std::cmp::min(num as usize, 32));
         trace!("[h00k] hooked_ssl_write() plaintext data ({} bytes): {:02X?}", num, data_slice);
     }
-    // Find socket ID associated with this SSL pointer.
-    let socket_id = {
-        let ssl_to_socket = match SSL_TO_SOCKET.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                error!("SSL_TO_SOCKET mutex poisoned in hooked_ssl_write()");
-                poisoned.into_inner()
-            }
-        };
-
-        match ssl_to_socket.get(&ssl_to_id(ssl)) {
-            Some(socket_id) => *socket_id,
-            None => {
-                trace!("SSL_write(): no socket ID found for SSL {:p}", ssl);
-                // Fallback: Call original with no further processing.
-                let original_fn: SslWriteFn = {
-                    let lock = match ORIGINAL_SSL_WRITE.lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => {
-                            error!("ORIGINAL_SSL_WRITE mutex poisoned in hooked_ssl_write()");
-                            poisoned.into_inner()
-                        }
-                    };
-                    match *lock {
-                        Some(fn_ptr) => fn_ptr,
-                        None => {
-                            error!("Original SSL_write() function is not available");
-                            return -1;
-                        }
+    // Find socket ID associated with this SSL pointer using thread-safe mapping
+    let socket_id = match SslSocketMapping::get_socket(ssl) {
+        Some(socket_id) => socket_id,
+        None => {
+            trace!("SSL_write(): no socket ID found for SSL {:p}", ssl);
+            // Fallback: Call original with no further processing.
+            let original_fn: SslWriteFn = {
+                let lock = match ORIGINAL_SSL_WRITE.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => {
+                        error!("ORIGINAL_SSL_WRITE mutex poisoned in hooked_ssl_write()");
+                        poisoned.into_inner()
                     }
                 };
-                return original_fn(ssl, buf, num);
-            }
+                match *lock {
+                    Some(fn_ptr) => fn_ptr,
+                    None => {
+                        error!("Original SSL_write() function is not available");
+                        return -1;
+                    }
+                }
+            };
+            return original_fn(ssl, buf, num);
         }
     };
 
@@ -715,30 +683,9 @@ unsafe extern "C" fn hooked_ssl_new(ctx: *mut c_void) -> *mut SSL {
 unsafe extern "C" fn hooked_ssl_free(ssl: *mut SSL) {
     trace!("hooked_ssl_free(): ssl={:p}", ssl);
 
-    // 1. Remove SSL <-> socket mapping(s)
-    {
-        // Remove SSL -> socket mapping
-        let mut ssl_to_socket = match SSL_TO_SOCKET.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                error!("SSL_TO_SOCKET mutex poisoned in hooked_ssl_free()");
-                poisoned.into_inner()
-            }
-        };
-
-        if let Some(fd) = ssl_to_socket.remove(&(ssl as usize)) {
-            trace!("Removed SSL mapping for socket {}", fd);
-
-            // Remove socket -> SSL mapping if present
-            let mut socket_to_ssl = match SOCKET_TO_SSL.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    error!("SOCKET_TO_SSL mutex poisoned in hooked_ssl_free()");
-                    poisoned.into_inner()
-                }
-            };
-            socket_to_ssl.remove(&fd);
-        }
+    // 1. Remove SSL <-> socket mapping(s) using thread-safe mapping
+    if let Some(socket_id) = SslSocketMapping::remove_ssl(ssl) {
+        trace!("Removed SSL mapping for socket {}", socket_id);
     }
 
     // 2. Call the original function
@@ -762,15 +709,7 @@ unsafe extern "C" fn hooked_ssl_free(ssl: *mut SSL) {
 
 /// Helper function to find a socket for an SSL pointer
 fn find_socket_for_ssl(ssl: *mut SSL) -> Option<u32> {
-    let ssl_to_socket = match SSL_TO_SOCKET.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            error!("SSL_TO_SOCKET mutex poisoned in find_socket_for_ssl()");
-            poisoned.into_inner()
-        }
-    };
-
-    ssl_to_socket.get(&ssl_to_id(ssl)).copied()
+    SslSocketMapping::get_socket(ssl)
 }
 
 /// Register the association between a socket and an SSL object
@@ -780,37 +719,12 @@ fn register_ssl_for_socket(socket_id: u32, ssl: *mut SSL) {
         return;
     }
 
-    let ssl_id = ssl_to_id(ssl);
-
-    // Update mappings
-    {
-        let mut socket_to_ssl = match SOCKET_TO_SSL.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                error!("SOCKET_TO_SSL mutex poisoned in register_ssl_for_socket()");
-                poisoned.into_inner()
-            }
-        };
-
-        socket_to_ssl.insert(socket_id, SSLWrapper { ssl });
-    }
-
-    {
-        let mut ssl_to_socket = match SSL_TO_SOCKET.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                error!("SSL_TO_SOCKET mutex poisoned in register_ssl_for_socket()");
-                poisoned.into_inner()
-            }
-        };
-
-        ssl_to_socket.insert(ssl_id, socket_id);
-    }
+    // Use the thread-safe SslSocketMapping
+    SslSocketMapping::associate(ssl, socket_id);
 
     debug!("Registered SSL {:p} for socket {}", ssl, socket_id);
 
     // Update socket state
-    //let _socket_info = get_or_create_socket(socket_id, false);
     let socket_info = get_or_create_socket(socket_id, true);
     socket_info.set_ssl(true);
 }
@@ -1063,34 +977,10 @@ pub fn uninstall_ssl_hooks() {
         }
     }
 
-    // Clear our mappings
-    {
-        let mut socket_to_ssl = match SOCKET_TO_SSL.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                error!("SOCKET_TO_SSL mutex poisoned during uninstall");
-                poisoned.into_inner()
-            }
-        };
-
-        let count = socket_to_ssl.len();
-        socket_to_ssl.clear();
-        debug!("Cleared {} entries from SOCKET_TO_SSL mapping", count);
-    }
-
-    {
-        let mut ssl_to_socket = match SSL_TO_SOCKET.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                error!("SSL_TO_SOCKET mutex poisoned during uninstall");
-                poisoned.into_inner()
-            }
-        };
-
-        let count = ssl_to_socket.len();
-        ssl_to_socket.clear();
-        debug!("Cleared {} entries from SSL_TO_SOCKET mapping", count);
-    }
+    // Clear SSL-socket mappings using the thread-safe SslSocketMapping
+    let count = SslSocketMapping::len();
+    SslSocketMapping::clear();
+    debug!("Cleared {} entries from SSL-socket mappings", count);
 
     // Clear original function pointers
     {
@@ -1136,16 +1026,5 @@ pub fn uninstall_ssl_hooks() {
 
 /// Get the socket ID associated with an SSL context
 unsafe fn get_socket_from_ssl_context(ssl: *mut SSL) -> Option<u32> {
-    let ssl_id = ssl_to_id(ssl);
-
-    // Lookup in the mapping
-    let ssl_to_socket = match SSL_TO_SOCKET.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            error!("SSL_TO_SOCKET mutex poisoned");
-            poisoned.into_inner()
-        }
-    };
-
-    ssl_to_socket.get(&ssl_id).copied()
+    SslSocketMapping::get_socket(ssl)
 }

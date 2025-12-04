@@ -24,6 +24,7 @@ mod hook_socket;
 mod hook_ssl;
 pub mod socket;
 mod ssl_detection;
+pub mod ssl_mapping;
 
 use std::collections::HashMap;
 use std::ffi::{c_int, c_void};
