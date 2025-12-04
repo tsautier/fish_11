@@ -260,20 +260,31 @@ pub unsafe fn store_ssl_mapping(ssl: *mut SSL, socket: SOCKET) {
 /// - ssl is a valid OpenSSL SSL* pointer
 pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int) -> c_int {
     trace!("[h00k] hooked_ssl_read() called: ssl={:p}, buf={:p}, num={}", ssl, buf, num);
-    let ssl_read_guard = SSL_READ_HOOK.lock().unwrap_or_else(handle_poison);
-    let original = ssl_read_guard.as_ref().expect("SSL_read hook not initialized");
+
+    // Copy the function pointer before the blocking call to avoid holding the lock
+    // during potentially long I/O operations (prevents deadlocks during hook uninstall)
+    let original_fn: SslReadFn = {
+        let ssl_read_guard = SSL_READ_HOOK.lock().unwrap_or_else(handle_poison);
+        match ssl_read_guard.as_ref() {
+            Some(hook) => hook.trampoline(),
+            None => {
+                error!("Original SSL_read() function not available!");
+                return -1;
+            }
+        }
+    };
 
     // Get socket associated with SSL context
     let socket_id = match get_socket_from_ssl_context(ssl) {
         Some(id) => id,
         None => {
             error!("SSL_read called on unknown SSL context {:p}", ssl);
-            return original.call(ssl, buf, num);
+            return original_fn(ssl, buf, num);
         }
     };
 
     // Call original SSL_read
-    let bytes_read = original.call(ssl, buf, num);
+    let bytes_read = original_fn(ssl, buf, num);
 
     // Log the decrypted data received (first 32 bytes)
     if bytes_read > 0 && !buf.is_null() {

@@ -45,16 +45,31 @@ pub unsafe extern "system" fn hooked_recv(
 
     let socket_info = get_or_create_socket(s as u32, true);
 
+    // Copy the function pointer before the blocking call to avoid holding the lock
+    // during potentially long I/O operations (prevents deadlocks during hook uninstall)
+    let original_fn = {
+        let hook_guard = match RECV_HOOK.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                error!("RECV_HOOK mutex poisoned in hooked_recv()");
+                poisoned.into_inner()
+            }
+        };
+        match hook_guard.as_ref() {
+            Some(hook) => hook.trampoline(),
+            None => {
+                error!("Original recv() function not available!");
+                return -1;
+            }
+        }
+    };
+
     if socket_info.is_ssl() {
         // For SSL sockets, skip processing here; SSL_read will handle it.
-        let binding = RECV_HOOK.lock().unwrap();
-        let original = binding.as_ref().unwrap();
-        return original.call(s, buf, len, flags);
+        return original_fn(s, buf, len, flags);
     }
 
-    let binding = RECV_HOOK.lock().unwrap();
-    let original = binding.as_ref().unwrap();
-    let bytes_received = original.call(s, buf, len, flags);
+    let bytes_received = original_fn(s, buf, len, flags);
 
     if bytes_received > 0 {
         let data_slice = std::slice::from_raw_parts(buf as *mut u8, bytes_received as usize); // Write raw data to buffer and process through engines
@@ -345,10 +360,27 @@ pub unsafe extern "system" fn hooked_connect(
     // Get or create socket info
     let _socket_info = get_or_create_socket(s as u32, true);
 
+    // Copy the function pointer before the blocking call to avoid holding the lock
+    // during potentially long connection operations (prevents deadlocks during hook uninstall)
+    let original_fn = {
+        let hook_guard = match CONNECT_HOOK.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                error!("CONNECT_HOOK mutex poisoned in hooked_connect()");
+                poisoned.into_inner()
+            }
+        };
+        match hook_guard.as_ref() {
+            Some(hook) => hook.trampoline(),
+            None => {
+                error!("Original connect() function not available!");
+                return -1;
+            }
+        }
+    };
+
     // Call original
-    let binding = CONNECT_HOOK.lock().unwrap();
-    let original = binding.as_ref().unwrap();
-    let result = original.call(s, name, namelen);
+    let result = original_fn(s, name, namelen);
 
     // Process result
     let socket_info = get_or_create_socket(s as u32, false);
