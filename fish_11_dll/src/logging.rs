@@ -201,10 +201,10 @@ pub fn log_function_entry<T: std::fmt::Debug>(function_name: &str, params: Optio
         match params {
             Some(p) => {
                 log_debug!("ENTER: {} - params: {:?}", function_name, p);
-            },
+            }
             None => {
                 log_debug!("ENTER: {}", function_name);
-            },
+            }
         }
     }
 }
@@ -215,10 +215,10 @@ pub fn log_function_exit<T: std::fmt::Debug>(function_name: &str, return_value: 
         match return_value {
             Some(r) => {
                 log_debug!("EXIT: {} - returned: {:?}", function_name, r);
-            },
+            }
             None => {
                 log_debug!("EXIT: {}", function_name);
-            },
+            }
         }
     }
 }

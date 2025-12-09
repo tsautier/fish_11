@@ -57,14 +57,12 @@ pub fn set_manual_channel_key(
     }
 
     // Check for invalid characters per RFC 2812 Section 2.3.1
-    if normalized_channel
-        .chars()
-        .any(|c| c.is_control() || c == ' ' || c == ',' || c == '\x07')
-    {
+    if normalized_channel.chars().any(|c| c.is_control() || c == ' ' || c == ',' || c == '\x07') {
         return Err(DllError::InvalidInput {
             param: "channel_name".to_string(),
-            reason: "channel_name contains invalid characters (control chars, spaces, commas, or BEL)"
-                .to_string(),
+            reason:
+                "channel_name contains invalid characters (control chars, spaces, commas, or BEL)"
+                    .to_string(),
         });
     }
 
@@ -122,15 +120,15 @@ pub fn get_manual_channel_key(channel_name: &str) -> DllResult<[u8; 32]> {
         let entry_key = format!("channel_key_{}", normalized_channel);
 
         let entry = config.entries.get(&entry_key).ok_or_else(|| {
-            FishError::KeyNotFound(format!("No manual key found for channel: {}", normalized_channel))
+            FishError::KeyNotFound(format!(
+                "No manual key found for channel: {}",
+                normalized_channel
+            ))
         })?;
 
-        let encrypted_key_b64 = entry
-            .key
-            .as_ref()
-            .ok_or_else(|| {
-                FishError::ConfigError(format!("No key data found for channel: {}", normalized_channel))
-            })?;
+        let encrypted_key_b64 = entry.key.as_ref().ok_or_else(|| {
+            FishError::ConfigError(format!("No key data found for channel: {}", normalized_channel))
+        })?;
 
         // Decrypt the key
         decrypt_channel_key_from_storage(encrypted_key_b64, &normalized_channel)
@@ -156,7 +154,10 @@ fn encrypt_channel_key_for_storage(key: &[u8; 32], channel_name: &str) -> Result
     Ok(encrypted_key)
 }
 /// Helper function to decrypt a channel key from storage using the master key.
-fn decrypt_channel_key_from_storage(encrypted_key_b64: &str, channel_name: &str) -> Result<[u8; 32]> {
+fn decrypt_channel_key_from_storage(
+    encrypted_key_b64: &str,
+    channel_name: &str,
+) -> Result<[u8; 32]> {
     // Derive the same master encryption key from the user's private key
     let master_key = derive_master_storage_key()?;
 

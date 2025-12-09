@@ -9,10 +9,10 @@ use subtle::ConstantTimeEq;
 
 use x25519_dalek::PublicKey;
 
+use crate::config::key_management::check_key_expiry;
 use crate::dll_function_identifier;
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
-use crate::config::key_management::check_key_expiry;
 use crate::{buffer_utils, config};
 
 dll_function_identifier!(FiSH11_GetKeyFingerprint, data, {

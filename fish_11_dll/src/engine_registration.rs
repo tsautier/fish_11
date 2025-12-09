@@ -7,9 +7,9 @@ use std::ptr;
 use winapi::shared::minwindef::{FARPROC, HMODULE};
 use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
 
+use crate::config::settings::get_encryption_prefix;
 use crate::crypto::{decrypt_message, encrypt_message};
 use crate::{log_debug, log_error, log_info, log_warn};
-use crate::config::settings::get_encryption_prefix;
 
 type GetNetworkNameFn = unsafe extern "C" fn(u32) -> *mut c_char;
 static mut GET_NETWORK_NAME_FN: Option<GetNetworkNameFn> = None;
@@ -189,7 +189,7 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
 
         // First try to get a channel key (either manual or ratchet-based)
         let key = match crate::config::get_channel_key_with_fallback(target) {
-            Ok(k) => k.to_vec(),  // Convert to vec for compatibility with existing code
+            Ok(k) => k.to_vec(), // Convert to vec for compatibility with existing code
             Err(_) => {
                 // If no channel key exists, try the regular key lookup (for backward compatibility)
                 match crate::config::get_key(target, network_name.as_deref()) {
@@ -240,7 +240,11 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
                     match encrypt_message(&key, &message, Some(target), Some(target.as_bytes())) {
                         Ok(encrypted_b64) => encrypted_b64,
                         Err(e) => {
-                            log_error!("Engine: channel encryption failed for '{}' (manual key): {}", target, e);
+                            log_error!(
+                                "Engine: channel encryption failed for '{}' (manual key): {}",
+                                target,
+                                e
+                            );
                             return None;
                         }
                     }
@@ -341,11 +345,7 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
     // Reconstruct line with encrypted data
     // Keep prefix if present, replace message with configurable prefix + encrypted data or "+FCEP_TOPIC+ <encrypted>"
     // Add \r\n for IRC protocol compliance
-    let prefix = if is_topic {
-        "+FCEP_TOPIC+"
-    } else {
-        encryption_prefix.as_str()
-    };
+    let prefix = if is_topic { "+FCEP_TOPIC+" } else { encryption_prefix.as_str() };
     let encrypted_line = format!("{} :{} {}\r\n", cmd_part, prefix, encrypted);
 
     Some(encrypted_line)
@@ -397,7 +397,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
                     key_identifier,
                     k.len()
                 );
-                k.to_vec()  // Convert to vec for compatibility with existing code
+                k.to_vec() // Convert to vec for compatibility with existing code
             }
             Err(_) => {
                 // If no channel key exists, try the regular key lookup (for backward compatibility)
@@ -411,7 +411,11 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
                         k
                     }
                     Err(e) => {
-                        log_warn!("Engine: no key found for topic channel '{}': {}", key_identifier, e);
+                        log_warn!(
+                            "Engine: no key found for topic channel '{}': {}",
+                            key_identifier,
+                            e
+                        );
                         return None;
                     }
                 }
@@ -512,7 +516,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
                     key_identifier,
                     k.len()
                 );
-                k.to_vec()  // Convert to vec for compatibility with existing code
+                k.to_vec() // Convert to vec for compatibility with existing code
             }
             Err(_) => {
                 // If no channel key exists, try the regular key lookup (for backward compatibility)
@@ -658,7 +662,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
         match crate::config::get_channel_key_with_fallback(key_identifier) {
             Ok(k) => {
                 log_debug!("Engine: using channel key for '{}'", key_identifier);
-                k.to_vec()  // Convert to vec for compatibility with existing code
+                k.to_vec() // Convert to vec for compatibility with existing code
             }
             Err(_) => {
                 // If no channel key, try the regular key lookup

@@ -106,7 +106,7 @@ mod tests {
         let key = [42u8; 32];
         let key_b64 = crate::utils::base64_encode(&key);
         let input = format!("#test {}", key_b64);
-        
+
         let (code, msg) = call_set_manual_channel_key(&input, 256);
         assert_eq!(code, MIRC_COMMAND);
         assert!(msg.contains("Manual channel key set"));
@@ -117,7 +117,7 @@ mod tests {
         let key = [42u8; 32];
         let key_b64 = crate::utils::base64_encode(&key);
         let input = format!("invalid {}", key_b64);
-        
+
         let (code, msg) = call_set_manual_channel_key(&input, 256);
         assert_eq!(code, MIRC_COMMAND);
         assert!(msg.to_lowercase().contains("channel name must start with"));
@@ -128,7 +128,7 @@ mod tests {
         let short_key = [42u8; 16]; // Wrong length
         let key_b64 = crate::utils::base64_encode(&short_key);
         let input = format!("#test {}", key_b64);
-        
+
         let (code, msg) = call_set_manual_channel_key(&input, 256);
         assert_eq!(code, MIRC_COMMAND);
         assert!(msg.to_lowercase().contains("key must be 32 bytes"));

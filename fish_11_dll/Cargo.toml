@@ -19,7 +19,7 @@ x25519-dalek = { version = "2", features = ["static_secrets", "getrandom"] }
 chacha20poly1305 = "0.10"
 crypto = "0.5.1"
 
-rand = "0.8.5"                                   #Hard to bump to 0.9.2 because x25519 is not compatible >v0.9
+rand = "0.8.5"                                   # Can't bump to 0.9.2 because x25519 is not compatible >v0.9
 sha2 = "0.10"
 base64 = "0.22.1"
 configparser = "3.1.0"
@@ -33,7 +33,6 @@ secrecy = "0.8"
 hkdf = "0.12"
 lru_time_cache = "0.11"
 zeroize = "1.6"
-#regex = "1.11.1"
 libc = "0.2.177"
 parking_lot = "0.12"
 thiserror = "2.0"

@@ -36,17 +36,12 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
             let key = config::get_channel_key_with_fallback(target)?;
 
             // Encrypt with the fixed key, using the channel name as Associated Data.
-            let encrypted_b64 = crypto::encrypt_message(
-                &key,
-                message,
-                Some(target),
-                Some(target.as_bytes()),
-            ).map_err(|e| {
-                DllError::EncryptionFailed {
-                    context: format!("encrypting for channel {}", target),
-                    cause: e.to_string(),
-                }
-            })?;
+            let encrypted_b64 =
+                crypto::encrypt_message(&key, message, Some(target), Some(target.as_bytes()))
+                    .map_err(|e| DllError::EncryptionFailed {
+                        context: format!("encrypting for channel {}", target),
+                        cause: e.to_string(),
+                    })?;
 
             let result = format!("+FiSH {}", encrypted_b64);
             log::info!("Successfully encrypted message for channel {} using manual key", target);
@@ -104,12 +99,10 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
     log_debug!("Successfully retrieved encryption key");
 
     // 3. Encrypt the message using the retrieved key (no AD for private messages).
-    let encrypted_base64 =
-        crypto::encrypt_message(key_ref, message, Some(&nickname), None).map_err(|e| {
-            DllError::EncryptionFailed {
-                context: format!("encrypting for {}", nickname),
-                cause: e.to_string(),
-            }
+    let encrypted_base64 = crypto::encrypt_message(key_ref, message, Some(&nickname), None)
+        .map_err(|e| DllError::EncryptionFailed {
+            context: format!("encrypting for {}", nickname),
+            cause: e.to_string(),
         })?;
 
     // 4. Format the result with the FiSH protocol prefix and return.

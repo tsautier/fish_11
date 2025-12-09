@@ -8,9 +8,9 @@ pub mod key_management;
 pub mod models;
 pub mod networks;
 
+pub mod channel_key_utils;
 pub mod channel_keys;
 pub mod manual_channel_keys;
-pub mod channel_key_utils;
 
 pub mod settings;
 
@@ -138,11 +138,8 @@ where
 
 pub use config_access::{read_config, with_config, with_config_mut, write_config};
 // Re-export key functions from submodules for easier access
+pub use channel_key_utils::{get_channel_key_type, get_channel_key_with_fallback, has_channel_key};
 pub use channel_keys::{get_channel_key, set_channel_key};
-pub use manual_channel_keys::{
-    get_manual_channel_key, list_manual_channel_keys, set_manual_channel_key,
-};
-pub use channel_key_utils::{get_channel_key_with_fallback, get_channel_key_type, has_channel_key};
 pub use entries::{
     get_channel_data, get_user_data, list_channel_entries, list_user_entries, set_channel_data,
     set_user_data,
@@ -151,6 +148,9 @@ pub use file_storage::{get_config_path, init_config_file, load_config, save_conf
 pub use key_management::{
     delete_key, delete_key_default, get_key, get_key_default, get_keypair, get_our_keypair,
     list_keys, set_key, set_key_default, store_keypair,
+};
+pub use manual_channel_keys::{
+    get_manual_channel_key, list_manual_channel_keys, set_manual_channel_key,
 };
 pub use networks::{
     count_network_mappings, count_unique_networks, delete_network, get_all_network_mappings,

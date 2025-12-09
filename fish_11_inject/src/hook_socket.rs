@@ -481,18 +481,21 @@ pub fn get_or_create_socket(socket_id: u32, _is_ssl: bool) -> Arc<SocketInfo> {
 
     // Slow path: create new socket info
     // Use entry API to avoid race conditions
-    ACTIVE_SOCKETS.entry(socket_id).or_insert_with(|| {
-        // Create engines if needed
-        let engines = {
-            let mut engines_guard = ENGINES.lock().unwrap();
-            if engines_guard.is_none() {
-                *engines_guard = Some(Arc::new(InjectEngines::new()));
-            }
-            engines_guard.as_ref().unwrap().clone()
-        };
+    ACTIVE_SOCKETS
+        .entry(socket_id)
+        .or_insert_with(|| {
+            // Create engines if needed
+            let engines = {
+                let mut engines_guard = ENGINES.lock().unwrap();
+                if engines_guard.is_none() {
+                    *engines_guard = Some(Arc::new(InjectEngines::new()));
+                }
+                engines_guard.as_ref().unwrap().clone()
+            };
 
-        Arc::new(SocketInfo::new(socket_id, engines))
-    }).clone()
+            Arc::new(SocketInfo::new(socket_id, engines))
+        })
+        .clone()
 }
 
 /// Get the socket info for a given socket ID

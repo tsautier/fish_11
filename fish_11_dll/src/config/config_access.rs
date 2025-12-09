@@ -67,10 +67,10 @@ impl<'a> Drop for ConfigWriteGuard<'a> {
             match save_config(&self.guard, None) {
                 Ok(_) => {
                     log_debug!("ConfigWriteGuard::drop - config saved successfully");
-                },
+                }
                 Err(e) => {
                     log_warn!("ConfigWriteGuard::drop - failed to save config: {}", e);
-                },
+                }
             }
         } else {
             log_debug!("ConfigWriteGuard::drop - config not modified, skipping save");

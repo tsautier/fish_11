@@ -8,7 +8,7 @@ use dashmap::DashMap;
 use log::{debug, trace, warn};
 use once_cell::sync::Lazy;
 
-use crate::hook_ssl::{SSLWrapper, SSL};
+use crate::hook_ssl::{SSL, SSLWrapper};
 
 /// Global thread-safe mapping from SSL pointer (as usize) to socket ID
 static SSL_TO_SOCKET: Lazy<DashMap<usize, u32>> = Lazy::new(DashMap::new);
@@ -47,9 +47,7 @@ impl SslSocketMapping {
 
         trace!(
             "SslSocketMapping: associated SSL {:p} (id={}) with socket {}",
-            ssl,
-            ssl_id,
-            socket_id
+            ssl, ssl_id, socket_id
         );
     }
 
@@ -105,10 +103,7 @@ impl SslSocketMapping {
             // Also remove from SOCKET_TO_SSL
             SOCKET_TO_SSL.remove(&socket_id);
 
-            debug!(
-                "SslSocketMapping: removed SSL {:p} (was mapped to socket {})",
-                ssl, socket_id
-            );
+            debug!("SslSocketMapping: removed SSL {:p} (was mapped to socket {})", ssl, socket_id);
 
             Some(socket_id)
         } else {
@@ -135,10 +130,7 @@ impl SslSocketMapping {
             // Also remove from SSL_TO_SOCKET
             SSL_TO_SOCKET.remove(&ssl_id);
 
-            debug!(
-                "SslSocketMapping: removed socket {} (was mapped to SSL {:p})",
-                socket_id, ssl
-            );
+            debug!("SslSocketMapping: removed socket {} (was mapped to SSL {:p})", socket_id, ssl);
 
             Some(ssl)
         } else {

@@ -36,7 +36,7 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
     // 1. Parse input: <target> <encrypted_message>
     let input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
     let parsed = utility::parse_input(&input_str)?;
-    
+
     let target = parsed.target;
     let mut encrypted_message = parsed.message.trim();
 
@@ -55,16 +55,13 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
             let key = config::get_channel_key_with_fallback(target)?;
 
             // Decrypt with the fixed key, using the channel name as Associated Data.
-            let decrypted = crypto::decrypt_message(
-                &key,
-                encrypted_message,
-                Some(target.as_bytes()),
-            ).map_err(|e| {
-                DllError::DecryptionFailed {
-                    context: format!("decrypting for channel {} with manual key", target),
-                    cause: e.to_string(),
-                }
-            })?;
+            let decrypted =
+                crypto::decrypt_message(&key, encrypted_message, Some(target.as_bytes())).map_err(
+                    |e| DllError::DecryptionFailed {
+                        context: format!("decrypting for channel {} with manual key", target),
+                        cause: e.to_string(),
+                    },
+                )?;
 
             log::info!("Successfully decrypted message for channel {} using manual key", target);
             return Ok(decrypted);
