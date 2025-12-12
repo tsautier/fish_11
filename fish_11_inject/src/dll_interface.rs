@@ -212,20 +212,38 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
 #[no_mangle]
 #[allow(non_snake_case)]
 pub extern "system" fn UnloadDll(action: c_int) -> c_int {
-    info!("UnloadDll() called with action: {}", action); // 0=Script unload, 1=mIRC exit, 2=DLL crash unload
+    info!("UnloadDll() called with action: {}", action); // 0=Script unload, 1=Not being used for 10 mins, 2=mIRC exit
 
-    // Perform cleanup regardless of action type
-    cleanup_hooks();
+    // CRITICAL: Handle the timeout scenario properly to prevent automatic DLL unloading
+    // The action value can be:
+    // 0: UnloadDll() is being called due to a DLL being unloaded with /dll -u
+    // 1: UnloadDll() is being called due to a DLL not being used for ten minutes.
+    //    The UnloadDll() routine can return 0 to keep the DLL loaded, or 1 to allow it to be unloaded.
+    // 2: UnloadDll() is being called due to a DLL being unloaded when mIRC exits.
+    //
+    // IMPORTANT: DO NOT change this logic, otherwise the DLL will unload automatically after 10 minutes
+    // of inactivity, which breaks the continuous hooking functionality for IRC connections.
+    if action == 1 {
+        // mIRC is asking if we should stay loaded when not used for 10 minutes
+        // We return 0 to keep the DLL loaded (same behavior as FiSH-10)
+        info!("UnloadDll: action=1, keeping DLL loaded to maintain socket hooks");
+        return 0; // Return 0 to keep DLL loaded
+    } else {
+        // Perform cleanup on explicit unload (0) or mIRC exit (2)
+        info!("UnloadDll: performing cleanup for action={}", action);
+        cleanup_hooks();
 
-    // Clear global state carefully
-    *ENGINES.lock().unwrap() = None;
-    *DLL_HANDLE_PTR.lock().unwrap() = None;
-    LOADED.store(false, Ordering::SeqCst);
-    VERSION_SHOWN.store(false, Ordering::Relaxed);
-    // HOOKS_INSTALLED should be false after cleanup_hooks
+        // Clear global state carefully
+        *ENGINES.lock().unwrap() = None;
+        *DLL_HANDLE_PTR.lock().unwrap() = None;
+        LOADED.store(false, Ordering::SeqCst);
+        VERSION_SHOWN.store(false, Ordering::Relaxed);
+        // HOOKS_INSTALLED should be false after cleanup_hooks
 
-    info!("UnloadDll() finished cleanup.");
-    MIRC_HALT // Return 0 for success
+        info!("UnloadDll() finished cleanup.");
+    }
+
+    MIRC_HALT // Return 0 for success when actually unloading
 }
 
 // Debug info function
