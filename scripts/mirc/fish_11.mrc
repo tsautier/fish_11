@@ -224,7 +224,8 @@ on ^*:NOTICE:X25519_INIT*:?:{
   ; Check if processing was successful (no error message)
   if (%process_result && $left(%process_result, 6) != Error:) {
     ; 3. If successful, send our public key back to them so they can complete the exchange.
-    if ($regex(%our_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{43}(=|==)?$/)) {
+    ; Use more flexible regex to validate public key format
+    if ($regex(%our_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/=]+$/)) {
       .notice $nick X25519_FINISH %our_pub
       echo $color(Mode text) -tm $nick *** FiSH_11: sent X25519_FINISH to $nick
     }
@@ -320,9 +321,16 @@ on ^*:NOTICE:+FiSH-CEP-KEY*:?:{
   
   ; Verify we have a pre-shared key with the coordinator
   var %existing_key = $dll(%Fish11DllFile, FiSH11_FileGetKey, %coordinator)
-  if ($len(%existing_key) < 4) {
-    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FiSH_11 : FCEP-1 ERROR: no pre-shared key found for coordinator %coordinator
-    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FiSH_11 : FCEP-1 : you must establish a key with %coordinator first using /fish11_X25519_INIT %coordinator
+  
+  ; Check for errors or empty/missing key
+  if ($left(%existing_key, 6) == Error: || $len(%existing_key) < 4) {
+    if ($left(%existing_key, 6) == Error:) {
+      echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FiSH_11 : FCEP-1 ERROR: $right(%existing_key, $calc($len(%existing_key) - 6))
+    }
+    else {
+      echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FiSH_11 : FCEP-1 ERROR: no pre-shared key found for coordinator %coordinator
+      echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FiSH_11 : FCEP-1 : you must establish a key with %coordinator first using /fish11_X25519_INIT %coordinator
+    }
     halt
   }
   
@@ -507,7 +515,8 @@ alias fish11_X25519_INIT {
 
   ; Use regex to validate the entire key format. This is more robust against
   ; hidden characters or whitespace returned by the DLL.
-  if ($regex(%pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{43}(=|==)?$/)) {
+  ; Use more flexible regex to accept any valid base64 format
+  if ($regex(%pub, /^FiSH11-PubKey:[A-Za-z0-9+\/=]+$/)) {
     .notice %cur_contact X25519_INIT %pub
     echo $color(Mode text) -tm %cur_contact *** FiSH_11: sent X25519_INIT to %cur_contact $+ , waiting for reply...
   }
@@ -740,17 +749,23 @@ alias fish11_file_list_keys {
   var %keys
   
   ; Call DLL function using proper syntax for data return
-  ; The .dll command executes the function and puts output in the specified buffer
+  ; Use $dll() to capture the result instead of .dll
   echo $color(Mode text) -at *** FiSH: about to call FiSH11_FileListKeys...
-  .dll %Fish11DllFile FiSH11_FileListKeys %keys
-  echo $color(Mode text) -at *** FiSH: DLL call completed, result: %keys
+  var %keys = $dll(%Fish11DllFile, FiSH11_FileListKeys)
+  echo $color(Mode text) -at *** FiSH: DLL call completed, result length: $len(%keys)
+  
+  ; Check for errors (DLL returns "Error: ..." for errors)
+  if ($left(%keys, 6) == Error:) {
+    echo $color(Error) -at *** FiSH ERROR: %keys
+    return
+  }
   
   ; If the function returns data, display it line by line
-  if (%keys != $null) {
+  if (%keys != $null && $len(%keys) > 0) {
     fish11_display_multiline_result %keys
   }
   else {
-    echo $color(Mode text) -at *** FiSH: no keys found or error occurred
+    echo $color(Mode text) -at *** FiSH: no keys found
   }
 }
 

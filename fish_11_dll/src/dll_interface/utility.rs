@@ -40,8 +40,8 @@ dll_function_identifier!(FiSH11_GetKeyFingerprint, data, {
     let fp_base64 = BASE64.encode(&hash[0..16]);
 
     // Format with spaces for readability (groups of 4 chars)
-    let mut formatted_fp = String::with_capacity(24); // 16 chars + 3 spaces
-    for (i, c) in fp_base64.chars().take(16).enumerate() {
+    let mut formatted_fp = String::with_capacity(28); // 22 chars + 3 spaces + 3 spaces
+    for (i, c) in fp_base64.chars().enumerate() {
         if i > 0 && i % 4 == 0 {
             formatted_fp.push(' ');
         }
