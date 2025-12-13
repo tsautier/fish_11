@@ -5,16 +5,16 @@ use regex::Regex;
 pub fn mask_sensitive_data(input: &str) -> String {
     // Use a single buffer to avoid multiple allocations
     // Process all patterns in one pass for better performance
-    
+
     // First pass: mask X25519 keys
     let mut result = mask_x25519_keys(input);
-    
+
     // Second pass: mask IP addresses
     result = mask_ip_addresses(&result);
-    
+
     // Third pass: mask potential keys
     result = mask_potential_keys(&result);
-    
+
     result
 }
 
@@ -47,11 +47,9 @@ fn is_valid_base64(input: &str) -> bool {
     if base64_chars.len() != 43 && base64_chars.len() != 44 {
         return false;
     }
-    
+
     // Check that all characters are valid base64
-    base64_chars.chars().all(|c| {
-        c.is_ascii_alphanumeric() || c == '+' || c == '/'
-    })
+    base64_chars.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/')
 }
 
 fn mask_ip_addresses(input: &str) -> String {

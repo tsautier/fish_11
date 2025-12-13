@@ -129,18 +129,22 @@ impl FileWriter {
         use std::time::Duration;
 
         let lock_file_path = self.path.with_extension("rotating.lock");
-        
+
         if lock_file_path.exists() {
             if let Ok(metadata) = fs::metadata(&lock_file_path) {
                 if let Ok(modified) = metadata.modified() {
                     if let Ok(elapsed) = modified.elapsed() {
-                        if elapsed > Duration::from_secs(300) { // 5 minutes
+                        if elapsed > Duration::from_secs(300) {
+                            // 5 minutes
                             // Stale lock file, remove it
                             fs::remove_file(&lock_file_path).map_err(|e| {
                                 LogError::IoError(std::io::Error::new(
                                     std::io::ErrorKind::Other,
-                                    format!("Failed to cleanup stale lock {}: {}", 
-                                        lock_file_path.display(), e)
+                                    format!(
+                                        "Failed to cleanup stale lock {}: {}",
+                                        lock_file_path.display(),
+                                        e
+                                    ),
                                 ))
                             })?;
                         }
@@ -148,7 +152,7 @@ impl FileWriter {
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -173,7 +177,8 @@ impl FileWriter {
                 if let Ok(metadata) = fs::metadata(&rotation_lock_path) {
                     if let Ok(modified) = metadata.modified() {
                         if let Ok(elapsed) = modified.elapsed() {
-                            if elapsed > Duration::from_secs(300) { // 5 minutes
+                            if elapsed > Duration::from_secs(300) {
+                                // 5 minutes
                                 // Stale lock, remove it and proceed
                                 let _ = fs::remove_file(&rotation_lock_path);
                                 rotation_lock = OpenOptions::new()
