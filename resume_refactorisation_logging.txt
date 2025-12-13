@@ -1,0 +1,47 @@
+# Résumé de la Refactorisation du Système de Journalisation
+
+## ✅ Travail Effectué et Corrigé
+
+1.  **Centralisation de la Logique de Formatage :**
+    *   Création d'un nouveau module `fish_11_core/src/logging/formatter.rs`.
+    *   Toute la logique de mise en forme des messages de log (ajout du timestamp, niveau, contexte, masquage) est maintenant centralisée à cet endroit.
+
+2.  **Correction du Bug Critique dans `UnifiedLogger` :**
+    *   Le problème majeur de double formatage des messages a été résolu.
+    *   `UnifiedLogger` ne recrée plus de `log::Record`. Il délègue maintenant la tâche de formatage directement aux "writers" (fichier et console).
+
+3.  **Refactorisation des "Writers" :**
+    *   `console_writer.rs` et `file_writer.rs` ont été modifiés pour utiliser le nouveau `formatter.rs`.
+    *   Le code dupliqué de formatage a été supprimé de ces deux modules.
+
+4.  **Correction du Bug de Verrouillage de la Rotation des Logs :**
+    *   Un bug dans `file_writer.rs` empêchait la suppression du fichier de verrouillage (`.rotating.lock`) si une rotation n'était finalement pas nécessaire.
+    *   J'ai corrigé cela en utilisant la crate `scopeguard` pour garantir que le fichier de verrouillage est supprimé à la fin de la fonction `rotate_files`, quel que soit le résultat.
+    *   La dépendance `scopeguard` a été ajoutée à `fish_11_core/Cargo.toml`.
+
+5.  **Amélioration de la Robustesse de l'Initialisation :**
+    *   La fonction `init_logging` dans `logging/mod.rs` a été modifiée pour ne plus utiliser `.expect()`.
+    *   Elle propage maintenant les erreurs `Result`, ce qui empêche le logger de faire paniquer l'application en cas d'échec d'initialisation (ex: problème de permissions de fichier).
+
+## ⏳ Travail en Cours et Prochaines Étapes
+
+L'opération précédente a été annulée par l'utilisateur. Elle visait à mettre en place une méthode plus idiomatique pour la journalisation contextuelle.
+
+Voici ce qu'il reste à faire pour finaliser une refactorisation complète et robuste :
+
+1.  **Finaliser la Gestion du Contexte (Thread-Local) :**
+    *   **Objectif :** Permettre de passer des informations de contexte (comme un ID de trace) aux logs de manière transparente, sans avoir à passer un objet `context` à chaque appel de log.
+    *   **Action :** Modifier `context.rs` pour utiliser une variable statique `thread_local!` qui stockera le contexte actuel pour chaque thread.
+    *   **Action :** Créer une fonction `with_context(ctx, || { ... })` qui permettra d'exécuter un bloc de code à l'intérieur d'un contexte de logging spécifique.
+
+2.  **Adapter les Macros de Log :**
+    *   **Objectif :** Rendre l'utilisation du contexte simple et ergonomique.
+    *   **Action :** Mettre à jour les macros dans `macros.rs` (comme `log_with_context!`) pour qu'elles utilisent la nouvelle fonction `with_context` en arrière-plan.
+
+3.  **Mettre à Jour `UnifiedLogger` :**
+    *   **Objectif :** Connecter la logique du logger au nouveau système de contexte.
+    *   **Action :** Modifier la méthode `log()` de `UnifiedLogger` pour qu'elle récupère automatiquement le contexte depuis la variable `thread_local!` avant de l'envoyer au formateur.
+
+4.  **Nettoyage Final de `init_logging` :**
+    *   **Objectif :** S'assurer que le niveau de log maximum est bien lu depuis la configuration.
+    *   **Action :** Corriger l'appel `log::set_max_level()` dans `init_logging` pour utiliser `config.level` au lieu d'une valeur codée en dur.

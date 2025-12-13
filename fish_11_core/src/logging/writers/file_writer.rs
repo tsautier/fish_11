@@ -1,6 +1,9 @@
+use crate::logging::context::LogContext;
 use crate::logging::errors::LogError;
+use crate::logging::formatter;
 use log::Record;
 use rand::Rng;
+use scopeguard;
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
 use std::path::Path;
@@ -33,7 +36,13 @@ impl FileWriter {
         OpenOptions::new().create(true).append(true).open(path).map_err(LogError::IoError)
     }
 
-    pub fn write_record(&self, record: &Record) -> Result<(), LogError> {
+    pub fn write_record(
+        &self,
+        record: &Record,
+        context: &LogContext,
+        mask_sensitive: bool,
+        context_enabled: bool,
+    ) -> Result<(), LogError> {
         // Create a timeout mechanism for write operations
         let start_time = std::time::Instant::now();
         let timeout = Duration::from_millis(100); // 100ms timeout
@@ -46,8 +55,9 @@ impl FileWriter {
         while start_time.elapsed() < timeout {
             match self.file.try_lock() {
                 Ok(mut guard) => {
-                    // Format the log record
-                    let formatted = self.format_record(record);
+                    // Format the log record using the centralized formatter
+                    let formatted =
+                        formatter::format_record(record, context, mask_sensitive, context_enabled);
 
                     // Check size before writing
                     let current_size = self.current_size.load(std::sync::atomic::Ordering::Relaxed);
@@ -113,35 +123,29 @@ impl FileWriter {
         Err(LogError::WriteTimeout)
     }
 
-    fn format_record(&self, record: &Record) -> String {
-        use chrono::Local;
-
-        let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string();
-        let level = record.level();
-        let target = record.target();
-        let args = record.args();
-
-        format!("[{}] {} [{}] {}\n", timestamp, level, target, args)
-    }
-
     fn rotate_files(&self) -> Result<(), LogError> {
         use std::fs;
         use std::io::Write;
-        use std::path::Path;
 
         // Create a rotation lock file to prevent concurrent rotations
         let rotation_lock_path = self.path.with_extension("rotating.lock");
-        let mut rotation_lock =
-            match OpenOptions::new().create_new(true).write(true).open(&rotation_lock_path) {
-                Ok(lock_file) => lock_file,
-                Err(_) => {
-                    // Rotation already in progress by another thread/process
-                    return Err(LogError::IoError(std::io::Error::new(
-                        std::io::ErrorKind::WouldBlock,
-                        "Rotation already in progress",
-                    )));
-                }
-            };
+        let lock_file_result =
+            OpenOptions::new().create_new(true).write(true).open(&rotation_lock_path);
+
+        let mut rotation_lock = match lock_file_result {
+            Ok(lock_file) => lock_file,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                // Another process or thread is rotating, wait a bit
+                std::thread::sleep(Duration::from_millis(50));
+                return Ok(());
+            }
+            Err(e) => return Err(LogError::IoError(e)),
+        };
+
+        // Use a guard to ensure the lock file is cleaned up
+        let _lock_guard = scopeguard::guard(rotation_lock_path.clone(), |p| {
+            let _ = fs::remove_file(p);
+        });
 
         // Write our process ID to the lock file for debugging
         let _ = writeln!(rotation_lock, "{}", std::process::id());
@@ -152,10 +156,12 @@ impl FileWriter {
         current_file.flush().map_err(|e| LogError::WriteError(e))?;
 
         // Check if we need to rotate
-        let metadata = fs::metadata(&self.path).map_err(|e| LogError::IoError(e))?;
+        let metadata = match fs::metadata(&self.path) {
+            Ok(m) => m,
+            Err(_) => return Ok(()), // File might not exist yet, so no rotation needed
+        };
+
         if metadata.len() <= self.max_size {
-            // Clean up lock file and return
-            let _ = fs::remove_file(&rotation_lock_path);
             return Ok(()); // No need to rotate
         }
 
@@ -223,15 +229,12 @@ impl FileWriter {
 
         // Reopen the file
         let new_file = Self::open_file(&self.path)?;
-        let mut new_writer = BufWriter::new(new_file);
+        let new_writer = BufWriter::new(new_file);
 
         // Update our internal state
         let mut guard = self.file.lock().map_err(|_| LogError::MutexPoisoned)?;
         *guard = new_writer;
         self.current_size.store(0, std::sync::atomic::Ordering::Relaxed);
-
-        // Clean up rotation lock file
-        let _ = fs::remove_file(&rotation_lock_path);
 
         Ok(())
     }

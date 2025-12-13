@@ -1,6 +1,9 @@
 use chrono::{DateTime, Local};
+use std::cell::RefCell;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
+
+thread_local!(static CONTEXT: RefCell<Option<LogContext>> = RefCell::new(None));
 
 // Global counter for unique trace IDs
 static TRACE_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -17,22 +20,21 @@ pub struct LogContext {
 }
 
 impl LogContext {
-    pub fn new(module: &'static str, function: &'static str) -> Self {
+    pub fn new(
+        module: &'static str,
+        function: &'static str,
+        file: &'static str,
+        line: u32,
+    ) -> Self {
         Self {
             module,
             function,
             trace_id: generate_trace_id(),
             timestamp: Local::now(),
             thread_id: get_thread_id(),
-            file: None,
-            line: None,
+            file: Some(file),
+            line: Some(line),
         }
-    }
-
-    pub fn with_location(mut self, file: &'static str, line: u32) -> Self {
-        self.file = Some(file);
-        self.line = Some(line);
-        self
     }
 
     pub fn with_trace_id(mut self, trace_id: String) -> Self {
@@ -53,6 +55,24 @@ impl Default for LogContext {
             line: None,
         }
     }
+}
+
+/// Executes a closure within a given logging context.
+pub fn with_context<F, R>(context: LogContext, f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    CONTEXT.with(|ctx| {
+        *ctx.borrow_mut() = Some(context);
+        let result = f();
+        *ctx.borrow_mut() = None;
+        result
+    })
+}
+
+/// Retrieves the current context for the thread.
+pub fn get_current_context() -> Option<LogContext> {
+    CONTEXT.with(|ctx| ctx.borrow().clone())
 }
 
 fn generate_trace_id() -> String {

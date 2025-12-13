@@ -382,7 +382,7 @@ pub fn decrypt_message(
 
         let cache_lock_result = NONCE_CACHE.lock();
         if cache_lock_result.is_err() {
-            return Err(FishError::InternalError("FAILED_TO_ACQUIRE_NONCE_CACHE_LOCK".to_string()));
+            return Err(FishError::CryptoError("Failed to acquire nonce cache lock".to_string()));
         }
         let mut cache = cache_lock_result.unwrap();
         if cache.contains_key(&nonce_array) {
@@ -1203,7 +1203,8 @@ mod fcep1_ratchet_tests {
             let encrypted_bytes = encrypted_bytes_result.unwrap();
 
             let nonce_slice = &encrypted_bytes[..NONCE_SIZE_BYTES];
-            let nonce_result: Result<[u8; NONCE_SIZE_BYTES], _> = nonce_slice.try_into();
+            let nonce_result: std::result::Result<[u8; NONCE_SIZE_BYTES], _> =
+                nonce_slice.try_into();
             if nonce_result.is_err() {
                 panic!("Ratchet test failed to convert slice to nonce: {:?}", nonce_result.err());
             }

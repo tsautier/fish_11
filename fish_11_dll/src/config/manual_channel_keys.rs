@@ -7,6 +7,7 @@ use crate::config::config_access::{with_config, with_config_mut};
 use crate::config::models::EntryData;
 use crate::crypto;
 use crate::error::{FishError, Result};
+use crate::log_debug;
 use crate::unified_error::{DllError, DllResult};
 use crate::utils::{base64_decode, base64_encode};
 use secrecy::ExposeSecret;

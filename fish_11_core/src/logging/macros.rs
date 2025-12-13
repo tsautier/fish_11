@@ -1,17 +1,21 @@
 /// Macro de log avec contexte - la plus importante
 #[macro_export]
 macro_rules! log_with_context {
-    ($level:expr, $ctx:expr, $($arg:tt)+) => {
+    ($level:expr, $function:expr, $($arg:tt)+) => {
         if log::log_enabled!($level) {
-            let record = log::Record::builder()
-                .level($level)
-                .target(module_path!())
-                .args(format_args!($($arg)+))
-                .file(file!())
-                .line(line!())
-                .build();
-                
-            $crate::logging::log_with_context(&record, $ctx);
+            let context = $crate::logging::context::LogContext::new(
+                module_path!(),
+                $function,
+                file!(),
+                line!(),
+            );
+            $crate::logging::context::with_context(context, || {
+                log::log!(
+                    target: module_path!(),
+                    $level,
+                    $($arg)+
+                );
+            });
         }
     };
 }
@@ -20,42 +24,40 @@ macro_rules! log_with_context {
 #[macro_export]
 macro_rules! log_simple {
     ($level:expr, $($arg:tt)+) => {
-        if log::log_enabled!($level) {
-            log::log!(
-                target: module_path!(),
-                $level,
-                $($arg)+
-            );
-        }
+        log::log!(
+            target: module_path!(),
+            $level,
+            $($arg)+
+        );
     };
 }
 
 /// Macros spécifiques avec contexte
 #[macro_export]
 macro_rules! log_debug_with_context {
-    ($ctx:expr, $($arg:tt)+) => {
-        $crate::log_with_context!(log::Level::Debug, $ctx, $($arg)+);
+    ($function:expr, $($arg:tt)+) => {
+        $crate::log_with_context!(log::Level::Debug, $function, $($arg)+);
     };
 }
 
 #[macro_export]
 macro_rules! log_info_with_context {
-    ($ctx:expr, $($arg:tt)+) => {
-        $crate::log_with_context!(log::Level::Info, $ctx, $($arg)+);
+    ($function:expr, $($arg:tt)+) => {
+        $crate::log_with_context!(log::Level::Info, $function, $($arg)+);
     };
 }
 
 #[macro_export]
 macro_rules! log_warn_with_context {
-    ($ctx:expr, $($arg:tt)+) => {
-        $crate::log_with_context!(log::Level::Warn, $ctx, $($arg)+);
+    ($function:expr, $($arg:tt)+) => {
+        $crate::log_with_context!(log::Level::Warn, $function, $($arg)+);
     };
 }
 
 #[macro_export]
 macro_rules! log_error_with_context {
-    ($ctx:expr, $($arg:tt)+) => {
-        $crate::log_with_context!(log::Level::Error, $ctx, $($arg)+);
+    ($function:expr, $($arg:tt)+) => {
+        $crate::log_with_context!(log::Level::Error, $function, $($arg)+);
     };
 }
 
