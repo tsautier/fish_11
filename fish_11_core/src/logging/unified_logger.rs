@@ -35,45 +35,39 @@ impl UnifiedLogger {
     }
 
     pub fn log_with_context(&self, record: &Record, context: &LogContext) -> Result<(), LogError> {
-        let mut formatted_record = record.clone();
+        let mut message = format!("{}", record.args());
 
         // Apply security filtering if enabled
         if self.mask_sensitive {
-            formatted_record = self.apply_security_filter(formatted_record);
+            message = self.apply_security_filter(&message);
         }
 
         // Add context if enabled
         if self.context_enabled {
-            formatted_record = self.add_context(formatted_record, context);
+            message = self.add_context(&message, context);
         }
 
         // Write to file
-        self.file_writer.write_record(&formatted_record)?;
+        self.file_writer.write_record(record)?;
 
         // Write to console if enabled
         if let Some(ref console_writer) = self.console_writer {
             if record.level() <= self.config.console_level {
-                console_writer.write_record(&formatted_record)?;
+                console_writer.write_record(record)?;
             }
         }
 
         Ok(())
     }
 
-    fn apply_security_filter(&self, mut record: Record) -> Record {
-        // This is a simplified version - in practice, you'd need to clone the record properly
-        // which requires some more complex implementation for the Record type
-        // For now, we'll just use the log function to apply the mask
-        let args = format!("{}", record.args());
-        let masked_args = security::mask_sensitive_data(&args);
-        // Note: In full implementation, would need to properly recreate the Record with masked args
-        record
+    fn apply_security_filter(&self, message: &str) -> String {
+        security::mask_sensitive_data(message)
     }
 
-    fn add_context(&self, mut record: Record, context: &LogContext) -> Record {
-        // In a full implementation, this would add context information to the record
+    fn add_context(&self, message: &str, context: &LogContext) -> String {
+        // In a full implementation, this would add context information to the message
         // For now, placeholder implementation
-        record
+        message.to_string()
     }
 
     pub fn flush_with_timeout(&self, timeout: Duration) -> Result<(), LogError> {

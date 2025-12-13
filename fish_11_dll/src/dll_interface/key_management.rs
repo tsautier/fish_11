@@ -123,6 +123,11 @@ dll_function_identifier!(FiSH11_TestCrypt, data, {
 
     log_debug!("Generated random test key: {:02x?}", &key[..8]); // Log first 8 bytes only
 
+    // Log message content if DEBUG flag is enabled for sensitive content
+    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
+        log_debug!("Key_Management: testing encryption input: '{}'", input);
+    }
+
     // Encrypt the message
     let encrypted = crypto::encrypt_message(&key, &input, None, None).map_err(|e| {
         DllError::EncryptionFailed { context: "test encryption".to_string(), cause: e.to_string() }
@@ -130,10 +135,25 @@ dll_function_identifier!(FiSH11_TestCrypt, data, {
 
     log_debug!("Successfully encrypted message");
 
+    // Log encrypted result if DEBUG flag is enabled for sensitive content
+    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
+        log_debug!("Key_Management: testing encrypted output: '{}'", &encrypted);
+    }
+
+    // Log encrypted content if DEBUG flag is enabled for sensitive content
+    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
+        log_debug!("Key_Management: testing decryption input: '{}'", &encrypted);
+    }
+
     // Decrypt the message to verify the cycle
     let decrypted = crypto::decrypt_message(&key, &encrypted, None).map_err(|e| {
         DllError::DecryptionFailed { context: "test decryption".to_string(), cause: e.to_string() }
     })?;
+
+    // Log decrypted result if DEBUG flag is enabled for sensitive content
+    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
+        log_debug!("Key_Management: testing decrypted output: '{}'", &decrypted);
+    }
 
     log_debug!("Successfully decrypted message");
 

@@ -1,5 +1,6 @@
 use std::ffi::CStr;
 use std::ptr;
+use std::sync::Mutex;
 
 mod fish11_coreversion;
 mod fish11_decryptmsg;
@@ -43,7 +44,12 @@ pub(crate) fn get_buffer_size() -> usize {
 
     // First try to get buffer size from mIRC information
     let buffer_size = {
-        let guard = LOAD_INFO.lock().expect("LOAD_INFO mutex should not be poisoned");
+        let guard_result = LOAD_INFO.lock();
+        if guard_result.is_err() {
+            log::error!("FATAL: Failed to acquire LOAD_INFO mutex lock in get_buffer_size. DLL may be in corrupted state. Returning default size.");
+            return DEFAULT_MIRC_BUFFER_SIZE as usize; // Return a default if mutex fails
+        }
+        let guard = guard_result.unwrap();
 
         guard.as_ref().map(|info| info.m_bytes as usize).unwrap_or_else(|| {
             // Fall back to our global buffer size

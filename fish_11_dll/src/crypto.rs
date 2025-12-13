@@ -40,7 +40,7 @@ lazy_static::lazy_static! {
         LruCache::with_expiry_duration_and_capacity(
             chrono::Duration::hours(1)
                 .to_std()
-                .expect("Duration of 1 hour should always be convertible to std::time::Duration"),
+                .unwrap_or_else(|_| std::time::Duration::from_secs(3600)), // 1 hour in seconds as fallback
             1000
         )
     );
@@ -380,7 +380,11 @@ pub fn decrypt_message(
         let mut nonce_array = [0u8; NONCE_SIZE_BYTES];
         nonce_array.copy_from_slice(nonce);
 
-        let mut cache = NONCE_CACHE.lock().expect("NONCE_CACHE mutex should not be poisoned");
+        let cache_lock_result = NONCE_CACHE.lock();
+        if cache_lock_result.is_err() {
+            return Err(FishError::InternalError("FAILED_TO_ACQUIRE_NONCE_CACHE_LOCK".to_string()));
+        }
+        let mut cache = cache_lock_result.unwrap();
         if cache.contains_key(&nonce_array) {
             return Err(FishError::CryptoError("Potential replay attack detected".to_string()));
         }
@@ -604,37 +608,68 @@ mod tests {
         let keypair1 = generate_keypair();
         let keypair2 = generate_keypair();
 
-        let shared1 = compute_shared_secret(&keypair1.private_key, &keypair2.public_key)
-            .expect("Failed to compute shared secret 1");
-        let shared2 = compute_shared_secret(&keypair2.private_key, &keypair1.public_key)
-            .expect("Failed to compute shared secret 2");
+        let shared1_result = compute_shared_secret(&keypair1.private_key, &keypair2.public_key);
+        if shared1_result.is_err() {
+            panic!("Failed to compute shared secret 1: {:?}", shared1_result.err());
+        }
+        let shared1 = shared1_result.unwrap();
+
+        let shared2_result = compute_shared_secret(&keypair2.private_key, &keypair1.public_key);
+        if shared2_result.is_err() {
+            panic!("Failed to compute shared secret 2: {:?}", shared2_result.err());
+        }
+        let shared2 = shared2_result.unwrap();
 
         assert_eq!(shared1, shared2, "Shared secrets should be identical");
     }
 
     #[test]
     fn test_encrypt_decrypt_roundtrip() {
-        let key: [u8; 32] = generate_random_bytes(32).try_into().expect("Failed to generate key");
+        let key_result = generate_random_bytes(32).try_into();
+        if key_result.is_err() {
+            panic!("Failed to generate random key: {:?}", key_result.err());
+        }
+        let key: [u8; 32] = key_result.unwrap();
         let message = "This is a secret message for testing purposes.";
 
-        let encrypted_data = encrypt_message(&key, message, Some("test_recipient"), None)
-            .expect("Encryption failed");
-        let decrypted_message =
-            decrypt_message(&key, &encrypted_data, None).expect("Decryption failed");
+        let encrypted_data_result = encrypt_message(&key, message, Some("test_recipient"), None);
+        if encrypted_data_result.is_err() {
+            panic!("Encryption failed: {:?}", encrypted_data_result.err());
+        }
+        let encrypted_data = encrypted_data_result.unwrap();
+
+        let decrypted_message_result = decrypt_message(&key, &encrypted_data, None);
+        if decrypted_message_result.is_err() {
+            panic!("Decryption failed: {:?}", decrypted_message_result.err());
+        }
+        let decrypted_message = decrypted_message_result.unwrap();
 
         assert_eq!(message, decrypted_message, "Decrypted message should match original message");
     }
 
     #[test]
     fn test_encrypt_decrypt_with_ad() {
-        let key: [u8; 32] = generate_random_bytes(32).try_into().unwrap();
+        let key_result = generate_random_bytes(32).try_into();
+        if let Err(_) = key_result {
+            panic!("Failed to convert random bytes to [u8; 32]");
+        }
+        let key: [u8; 32] = key_result.unwrap();
+
         let message = "test message";
         let ad = b"associated data";
 
-        let encrypted = encrypt_message(&key, message, None, Some(ad)).unwrap();
+        let encrypted_result = encrypt_message(&key, message, None, Some(ad));
+        if encrypted_result.is_err() {
+            panic!("Encryption failed: {:?}", encrypted_result.err());
+        }
+        let encrypted = encrypted_result.unwrap();
 
         // Should succeed with correct AD
-        let decrypted = decrypt_message(&key, &encrypted, Some(ad)).unwrap();
+        let decrypted_result = decrypt_message(&key, &encrypted, Some(ad));
+        if decrypted_result.is_err() {
+            panic!("Decryption failed: {:?}", decrypted_result.err());
+        }
+        let decrypted = decrypted_result.unwrap();
         assert_eq!(decrypted, message);
 
         // Should fail with incorrect AD
@@ -648,16 +683,28 @@ mod tests {
 
     #[test]
     fn test_decrypt_with_wrong_key() {
-        let key1: [u8; 32] =
-            generate_random_bytes(32).try_into().expect("Failed to generate key 1");
-        let key2: [u8; 32] =
-            generate_random_bytes(32).try_into().expect("Failed to generate key 2");
+        let key1_result = generate_random_bytes(32).try_into();
+        if let Err(_) = key1_result {
+            panic!("Failed to generate key 1");
+        }
+        let key1: [u8; 32] = key1_result.unwrap();
+
+        let key2_result = generate_random_bytes(32).try_into();
+        if let Err(_) = key2_result {
+            panic!("Failed to generate key 2");
+        }
+        let key2: [u8; 32] = key2_result.unwrap();
+
         let message = "Another secret message.";
 
         assert_ne!(key1, key2);
 
-        let encrypted_data =
-            encrypt_message(&key1, message, None, None).expect("Encryption failed");
+        let encrypted_data_result = encrypt_message(&key1, message, None, None);
+        if encrypted_data_result.is_err() {
+            panic!("Encryption failed: {:?}", encrypted_data_result.err());
+        }
+        let encrypted_data = encrypted_data_result.unwrap();
+
         let result = decrypt_message(&key2, &encrypted_data, None);
 
         assert!(result.is_err(), "Decryption with the wrong key should fail");
@@ -666,12 +713,24 @@ mod tests {
     #[test]
     fn test_replay_attack_prevention() {
         // Clear the cache for a clean test run
-        NONCE_CACHE.lock().expect("Failed to lock nonce cache").clear();
+        let mutex_result = NONCE_CACHE.lock();
+        if mutex_result.is_err() {
+            panic!("Failed to lock nonce cache");
+        }
+        mutex_result.unwrap().clear();
 
-        let key: [u8; 32] = generate_random_bytes(32).try_into().expect("Failed to generate key");
+        let key_result = generate_random_bytes(32).try_into();
+        if key_result.is_err() {
+            panic!("Failed to generate key: {:?}", key_result.err());
+        }
+        let key: [u8; 32] = key_result.unwrap();
         let message = "A message to test replay attacks.";
 
-        let encrypted_data = encrypt_message(&key, message, None, None).expect("Encryption failed");
+        let encrypted_data_result = encrypt_message(&key, message, None, None);
+        if encrypted_data_result.is_err() {
+            panic!("Encryption failed: {:?}", encrypted_data_result.err());
+        }
+        let encrypted_data = encrypted_data_result.unwrap();
 
         // First decryption should succeed
         let first_decryption_result = decrypt_message(&key, &encrypted_data, None);
@@ -937,16 +996,28 @@ mod fcep1_ratchet_tests {
         let channel = "#test";
 
         // First ratchet step
-        let key1 = advance_ratchet_key(&initial_key, &nonce1, channel).unwrap();
+        let key1_result = advance_ratchet_key(&initial_key, &nonce1, channel);
+        if key1_result.is_err() {
+            panic!("Failed to advance ratchet key1: {:?}", key1_result.err());
+        }
+        let key1 = key1_result.unwrap();
         assert_ne!(key1, initial_key, "Ratcheted key should differ from initial");
 
         // Second ratchet step (with different nonce)
-        let key2 = advance_ratchet_key(&key1, &nonce2, channel).unwrap();
+        let key2_result = advance_ratchet_key(&key1, &nonce2, channel);
+        if key2_result.is_err() {
+            panic!("Failed to advance ratchet key2: {:?}", key2_result.err());
+        }
+        let key2 = key2_result.unwrap();
         assert_ne!(key2, key1, "Each ratchet step should produce unique key");
         assert_ne!(key2, initial_key, "Ratcheted key should differ from initial");
 
         // Verify one-way property: can't derive key1 from key2
-        let attempted_reverse = advance_ratchet_key(&key2, &nonce1, channel).unwrap();
+        let attempted_reverse_result = advance_ratchet_key(&key2, &nonce1, channel);
+        if attempted_reverse_result.is_err() {
+            panic!("Failed to advance ratchet reverse: {:?}", attempted_reverse_result.err());
+        }
+        let attempted_reverse = attempted_reverse_result.unwrap();
         assert_ne!(attempted_reverse, key1, "Ratcheting must be one-way (PCS)");
     }
 
@@ -958,8 +1029,17 @@ mod fcep1_ratchet_tests {
         let nonce2 = [1u8; NONCE_SIZE_BYTES];
         let channel = "#test";
 
-        let derived1 = advance_ratchet_key(&key, &nonce1, channel).unwrap();
-        let derived2 = advance_ratchet_key(&key, &nonce2, channel).unwrap();
+        let derived1_result = advance_ratchet_key(&key, &nonce1, channel);
+        if derived1_result.is_err() {
+            panic!("Failed to advance ratchet with nonce1: {:?}", derived1_result.err());
+        }
+        let derived1 = derived1_result.unwrap();
+
+        let derived2_result = advance_ratchet_key(&key, &nonce2, channel);
+        if derived2_result.is_err() {
+            panic!("Failed to advance ratchet with nonce2: {:?}", derived2_result.err());
+        }
+        let derived2 = derived2_result.unwrap();
 
         assert_ne!(derived1, derived2, "Different nonces must produce different keys");
     }
@@ -970,8 +1050,17 @@ mod fcep1_ratchet_tests {
         let key = [42u8; 32];
         let nonce = [0u8; NONCE_SIZE_BYTES];
 
-        let key_ch1 = advance_ratchet_key(&key, &nonce, "#channel1").unwrap();
-        let key_ch2 = advance_ratchet_key(&key, &nonce, "#channel2").unwrap();
+        let key_ch1_result = advance_ratchet_key(&key, &nonce, "#channel1");
+        if key_ch1_result.is_err() {
+            panic!("Failed to advance ratchet for channel1: {:?}", key_ch1_result.err());
+        }
+        let key_ch1 = key_ch1_result.unwrap();
+
+        let key_ch2_result = advance_ratchet_key(&key, &nonce, "#channel2");
+        if key_ch2_result.is_err() {
+            panic!("Failed to advance ratchet for channel2: {:?}", key_ch2_result.err());
+        }
+        let key_ch2 = key_ch2_result.unwrap();
 
         assert_ne!(key_ch1, key_ch2, "Channel name must be bound to key derivation");
     }
@@ -983,8 +1072,12 @@ mod fcep1_ratchet_tests {
         let message = "Secret message";
 
         // Encrypt for #channel1
-        let encrypted_ch1 =
-            encrypt_message(&key, message, Some("#channel1"), Some(b"#channel1")).unwrap();
+        let encrypted_ch1_result =
+            encrypt_message(&key, message, Some("#channel1"), Some(b"#channel1"));
+        if encrypted_ch1_result.is_err() {
+            panic!("Encryption for channel1 failed: {:?}", encrypted_ch1_result.err());
+        }
+        let encrypted_ch1 = encrypted_ch1_result.unwrap();
 
         // Try to decrypt for #channel2 (should fail due to AD mismatch)
         let decrypt_result = decrypt_message(&key, &encrypted_ch1, Some(b"#channel2"));
@@ -1090,17 +1183,34 @@ mod fcep1_ratchet_tests {
 
         // Encrypt messages with ratcheting
         for msg in &messages {
-            let encrypted =
-                encrypt_message(&current_key, msg, Some(channel), Some(channel.as_bytes()))
-                    .unwrap();
+            let encrypted_result =
+                encrypt_message(&current_key, msg, Some(channel), Some(channel.as_bytes()));
+            if encrypted_result.is_err() {
+                panic!("Ratchet test encryption failed: {:?}", encrypted_result.err());
+            }
+            let encrypted = encrypted_result.unwrap();
             encrypted_messages.push(encrypted.clone());
             ratchet_keys.push(current_key);
 
             // Extract nonce and advance ratchet
-            let encrypted_bytes = crate::utils::base64_decode(&encrypted).unwrap();
-            let nonce: [u8; NONCE_SIZE_BYTES] =
-                encrypted_bytes[..NONCE_SIZE_BYTES].try_into().unwrap();
-            current_key = advance_ratchet_key(&current_key, &nonce, channel).unwrap();
+            let encrypted_bytes_result = crate::utils::base64_decode(&encrypted);
+            if encrypted_bytes_result.is_err() {
+                panic!("Ratchet test failed to base64 decode encrypted data: {:?}", encrypted_bytes_result.err());
+            }
+            let encrypted_bytes = encrypted_bytes_result.unwrap();
+
+            let nonce_slice = &encrypted_bytes[..NONCE_SIZE_BYTES];
+            let nonce_result: Result<[u8; NONCE_SIZE_BYTES], _> = nonce_slice.try_into();
+            if nonce_result.is_err() {
+                panic!("Ratchet test failed to convert slice to nonce: {:?}", nonce_result.err());
+            }
+            let nonce: [u8; NONCE_SIZE_BYTES] = nonce_result.unwrap();
+
+            let next_key_result = advance_ratchet_key(&current_key, &nonce, channel);
+            if next_key_result.is_err() {
+                panic!("Ratchet test failed to advance key: {:?}", next_key_result.err());
+            }
+            current_key = next_key_result.unwrap();
         }
 
         // Verify all keys are different
@@ -1110,8 +1220,12 @@ mod fcep1_ratchet_tests {
 
         // Decrypt messages in order (each with its corresponding key)
         for (i, encrypted) in encrypted_messages.iter().enumerate() {
-            let decrypted =
-                decrypt_message(&ratchet_keys[i], encrypted, Some(channel.as_bytes())).unwrap();
+            let decrypted_result =
+                decrypt_message(&ratchet_keys[i], encrypted, Some(channel.as_bytes()));
+            if decrypted_result.is_err() {
+                panic!("Ratchet test decryption failed for message {}: {:?}", i, decrypted_result.err());
+            }
+            let decrypted = decrypted_result.unwrap();
             assert_eq!(decrypted, messages[i], "Message {} should decrypt correctly", i);
         }
 
@@ -1150,7 +1264,16 @@ mod fcep1_ratchet_tests {
 
     #[test]
     fn test_out_of_order_decryption_logic() {
-        NONCE_CACHE.lock().unwrap().clear();
+        // Safely clear the nonce cache
+        {
+            let cache_result = NONCE_CACHE.lock();
+            if cache_result.is_err() {
+                panic!("Failed to acquire NONCE_CACHE lock");
+            }
+            let mut cache = cache_result.unwrap();
+            cache.clear();
+        }
+
         use crate::config::models::RatchetState;
 
         let initial_key = [1u8; 32];
@@ -1160,12 +1283,20 @@ mod fcep1_ratchet_tests {
         // Generate a sequence of 3 keys
         let key1 = state.current_key;
         let nonce1 = [1u8; 12];
-        let next_key1 = advance_ratchet_key(&key1, &nonce1, channel).unwrap();
+        let next_key1_result = advance_ratchet_key(&key1, &nonce1, channel);
+        if next_key1_result.is_err() {
+            panic!("Failed to advance ratchet key1: {:?}", next_key1_result.err());
+        }
+        let next_key1 = next_key1_result.unwrap();
         state.advance(next_key1);
 
         let key2 = state.current_key;
         let nonce2 = [2u8; 12];
-        let next_key2 = advance_ratchet_key(&key2, &nonce2, channel).unwrap();
+        let next_key2_result = advance_ratchet_key(&key2, &nonce2, channel);
+        if next_key2_result.is_err() {
+            panic!("Failed to advance ratchet key2: {:?}", next_key2_result.err());
+        }
+        let next_key2 = next_key2_result.unwrap();
         state.advance(next_key2);
 
         let key3 = state.current_key;
@@ -1174,16 +1305,25 @@ mod fcep1_ratchet_tests {
 
         // Encrypt messages with their corresponding keys
         let msg1 = "old message";
-        let encrypted1 = encrypt_message(&key1, msg1, None, Some(channel.as_bytes())).unwrap();
+        let encrypted1_result = encrypt_message(&key1, msg1, None, Some(channel.as_bytes()));
+        if encrypted1_result.is_err() {
+            panic!("Encryption of msg1 failed: {:?}", encrypted1_result.err());
+        }
+        let encrypted1 = encrypted1_result.unwrap();
 
         let msg3 = "current message";
-        let encrypted3 = encrypt_message(&key3, msg3, None, Some(channel.as_bytes())).unwrap();
+        let encrypted3_result = encrypt_message(&key3, msg3, None, Some(channel.as_bytes()));
+        if encrypted3_result.is_err() {
+            panic!("Encryption of msg3 failed: {:?}", encrypted3_result.err());
+        }
+        let encrypted3 = encrypted3_result.unwrap();
 
         // Decrypting the current message with the current key should work
-        assert_eq!(
-            decrypt_message(&state.current_key, &encrypted3, Some(channel.as_bytes())).unwrap(),
-            msg3
-        );
+        let decrypt_current_result = decrypt_message(&state.current_key, &encrypted3, Some(channel.as_bytes()));
+        if decrypt_current_result.is_err() {
+            panic!("Decryption of current message failed: {:?}", decrypt_current_result.err());
+        }
+        assert_eq!(decrypt_current_result.unwrap(), msg3);
 
         // Decrypting the old message (msg1) with the current key should fail
         assert!(
@@ -1197,6 +1337,9 @@ mod fcep1_ratchet_tests {
                 decrypted_old_message = Some(plaintext);
                 break;
             }
+        }
+        if decrypted_old_message.is_none() {
+            panic!("Failed to decrypt old message with previous keys");
         }
         assert_eq!(decrypted_old_message.unwrap(), msg1);
     }

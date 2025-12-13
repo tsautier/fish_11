@@ -110,10 +110,14 @@ pub fn validate_nickname(
     log_debug!("FiSH11_ExchangeKey[{}]: validating nickname: '{}'", trace_id, nickname); // Check if nickname is empty
     if nickname.is_empty() {
         log_warn!("FiSH11_ExchangeKey[{}]: empty nickname provided", trace_id);
-        let error_msg = CString::new("Usage: /dll fish_11.dll FiSH11_ExchangeKey <nickname>")
-            .expect("Static usage string contains no null bytes");
-        unsafe {
-            let _ = buffer_utils::write_cstring_to_buffer(data, buffer_size, &error_msg);
+        match CString::new("Usage: /dll fish_11.dll FiSH11_ExchangeKey <nickname>") {
+            Ok(error_msg) => unsafe {
+                let _ = buffer_utils::write_cstring_to_buffer(data, buffer_size, &error_msg);
+            },
+            Err(_) => {
+                // This shouldn't happen since our string is static, but we handle it anyway
+                log_error!("FiSH11_ExchangeKey[{}]: CString::new failed unexpectedly", trace_id);
+            }
         }
         return false;
     }
@@ -125,10 +129,14 @@ pub fn validate_nickname(
             trace_id,
             nickname
         );
-        let error_msg = CString::new("Error: nickname contains invalid characters")
-            .expect("Static error string contains no null bytes");
-        unsafe {
-            let _ = buffer_utils::write_cstring_to_buffer(data, buffer_size, &error_msg);
+        match CString::new("Error: nickname contains invalid characters") {
+            Ok(error_msg) => unsafe {
+                let _ = buffer_utils::write_cstring_to_buffer(data, buffer_size, &error_msg);
+            },
+            Err(_) => {
+                // This shouldn't happen since our string is static, but we handle it anyway
+                log_error!("FiSH11_ExchangeKey[{}]: CString::new failed for error message", trace_id);
+            }
         }
         return false;
     }
@@ -142,16 +150,24 @@ pub fn validate_nickname(
         );
 
         // Safe CString creation with fallback
-        let error_msg = match CString::new(
+        match CString::new(
             "Error: nickname must be 1-16 characters, start with letter/[\\]`_^{|}, contain only valid IRC characters",
         ) {
-            Ok(msg) => msg,
-            Err(_) => CString::new("Error: invalid nickname format")
-                .expect("Fallback string contains no null bytes"),
-        };
-
-        unsafe {
-            let _ = buffer_utils::write_cstring_to_buffer(data, buffer_size, &error_msg);
+            Ok(msg) => unsafe {
+                let _ = buffer_utils::write_cstring_to_buffer(data, buffer_size, &msg);
+            },
+            Err(_) => {
+                // Try fallback message if primary fails
+                match CString::new("Error: invalid nickname format") {
+                    Ok(fallback_msg) => unsafe {
+                        let _ = buffer_utils::write_cstring_to_buffer(data, buffer_size, &fallback_msg);
+                    },
+                    Err(_) => {
+                        // Even fallback failed - log error but can't write to buffer
+                        log_error!("FiSH11_ExchangeKey[{}]: Both error messages failed CString::new", trace_id);
+                    }
+                }
+            }
         }
         return false;
     }

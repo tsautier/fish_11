@@ -32,7 +32,11 @@ mod tests {
         };
         assert_eq!(result, crate::dll_interface::MIRC_IDENTIFIER);
         let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
-        let path_str = c_str.to_str().unwrap();
+        let path_str_result = c_str.to_str();
+        if path_str_result.is_err() {
+            panic!("Failed to convert C string to Rust string: {:?}", path_str_result.err());
+        }
+        let path_str = path_str_result.unwrap();
         assert!(path_str.contains("fish_11.ini"));
     }
 }

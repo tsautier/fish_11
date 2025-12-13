@@ -87,8 +87,16 @@ pub unsafe fn write_error_message(data: *mut c_char, message: &str) -> c_int {
     let buffer_size = get_buffer_size() as usize;
     let error_msg = format!("Error: {}", message);
 
-    let cstring = CString::new(error_msg)
-        .unwrap_or_else(|_| CString::new("Error occurred").expect("fallback valid"));
+    let cstring = match CString::new(error_msg) {
+        Ok(s) => s,
+        Err(_) => match CString::new("Error occurred") {
+            Ok(s) => s,
+            Err(_) => CString::new("Error").unwrap_or_else(|_| {
+                // If even "Error" has null bytes, use a static CStr - this would be extremely unlikely
+                CString::new("Err").expect("Literal 'Err' should never contain null bytes")
+            }),
+        }
+    };
 
     let _ = write_cstring_to_buffer(data, buffer_size, &cstring);
     MIRC_IDENTIFIER
@@ -97,8 +105,13 @@ pub unsafe fn write_error_message(data: *mut c_char, message: &str) -> c_int {
 /// Write a result string to the buffer
 pub unsafe fn write_result(data: *mut c_char, result: &str) -> c_int {
     let buffer_size = get_buffer_size() as usize;
-    let cstring =
-        CString::new(result).unwrap_or_else(|_| CString::new("").expect("empty string valid"));
+    let cstring = match CString::new(result) {
+        Ok(s) => s,
+        Err(_) => CString::new("").unwrap_or_else(|_| {
+            // If even an empty string has null bytes (should be impossible), use a minimal fallback
+            CString::new(" ").expect("Space should never contain null bytes")
+        }),
+    };
 
     let _ = write_cstring_to_buffer(data, buffer_size, &cstring);
     MIRC_IDENTIFIER

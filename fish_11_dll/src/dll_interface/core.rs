@@ -53,13 +53,19 @@ static _INIT_ONCE: std::sync::Once = std::sync::Once::new();
 /// For external use, prefer the module-level get_buffer_size() function
 pub(crate) fn get_buffer_size_basic() -> usize {
     // Single lock acquisition
-    let guard = LOAD_INFO.lock().expect("LOAD_INFO mutex should not be poisoned");
+    let guard_result = LOAD_INFO.lock();
+    if guard_result.is_err() {
+        log::error!("FATAL: Failed to acquire LOAD_INFO mutex lock - DLL may be in corrupted state. Returning default size 4096.");
+        return 4096; // Return a reasonable default
+    }
+    let guard = guard_result.unwrap();
 
-    guard
+    let buffer_size = guard
         .as_ref()
         .map(|info| info.m_bytes as usize)
-        .unwrap_or(DEFAULT_MIRC_BUFFER_SIZE)
-        .saturating_sub(1) // Null terminator space
+        .unwrap_or(4096); // Default fallback if there's no loaded info
+
+    buffer_size.saturating_sub(1) // Reserve space for null terminator
 }
 
 /// ---------------------------------------------------------------------------
@@ -191,7 +197,12 @@ pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
             unicode_mode = (*load).m_unicode != 0;
 
             // Store the LOADINFO
-            let mut global_info = LOAD_INFO.lock().expect("LOAD_INFO mutex should not be poisoned");
+            let mut global_info_result = LOAD_INFO.lock();
+            if global_info_result.is_err() {
+                log::error!("FATAL: Failed to acquire LOAD_INFO mutex lock in LoadDll. DLL may be in corrupted state.");
+                return 0; // Return failure
+            }
+            let mut global_info = global_info_result.unwrap();
             *global_info = Some(*load);
 
             // Log structured configuration using standard log macros
@@ -238,7 +249,12 @@ pub extern "stdcall" fn UnloadDll(_timeout: c_int) -> c_int {
 
     // Clean up resources
     {
-        let mut state = LOAD_INFO.lock().expect("LOAD_INFO mutex should not be poisoned");
+        let state_result = LOAD_INFO.lock();
+        if state_result.is_err() {
+            log::error!("FATAL: Failed to acquire LOAD_INFO mutex lock during cleanup. DLL may be in corrupted state.");
+            return 0; // Return failure
+        }
+        let mut state = state_result.unwrap();
         log_debug!("Cleaning up LOAD_INFO resources");
         *state = None;
     }
@@ -279,7 +295,12 @@ pub extern "C" fn LoadDll(load: *mut LOADINFO) -> BOOL {
             buffer_size = (*load).m_bytes as usize;
             unicode_mode = (*load).m_unicode != 0;
 
-            let mut global_info = LOAD_INFO.lock().expect("LOAD_INFO mutex should not be poisoned");
+            let global_info_result = LOAD_INFO.lock();
+            if global_info_result.is_err() {
+                log::error!("FATAL: Failed to acquire LOAD_INFO mutex lock in GetInfo. DLL may be in corrupted state.");
+                return 0; // Return failure
+            }
+            let mut global_info = global_info_result.unwrap();
             *global_info = Some(*load);
 
             log::info!("CONFIG: version = {}", mirc_version);
@@ -312,7 +333,12 @@ pub extern "C" fn UnloadDll(_timeout: c_int) -> c_int {
     }
 
     {
-        let mut state = LOAD_INFO.lock().expect("LOAD_INFO mutex should not be poisoned");
+        let state_result = LOAD_INFO.lock();
+        if state_result.is_err() {
+            log::error!("FATAL: Failed to acquire LOAD_INFO mutex lock during UnloadDll. DLL may be in corrupted state.");
+            return 0; // Return failure
+        }
+        let mut state = state_result.unwrap();
         log_debug!("Cleaning up LOAD_INFO resources");
         *state = None;
     }

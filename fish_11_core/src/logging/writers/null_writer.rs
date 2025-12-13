@@ -1,4 +1,3 @@
-use std::io::{self, Write};
 use log::{Record, LevelFilter};
 use crate::logging::errors::LogError;
 
