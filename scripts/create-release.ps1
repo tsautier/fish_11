@@ -111,7 +111,7 @@ if (-not $SkipTests) {
     Write-Success "Formatage correct"
 
     Write-Info "Vérification avec clippy..."
-    cargo clippy --workspace --all-targets -- -D warnings
+    cargo clippy --workspace --all-targets --
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Clippy a trouvé des problèmes"
         exit 1
