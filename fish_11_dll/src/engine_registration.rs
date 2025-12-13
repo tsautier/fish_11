@@ -603,9 +603,8 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
 
     // CRITICAL: do NOT decrypt key exchange messages !#@
     // X25519_INIT and X25519_FINISH must pass through unchanged so mIRC can handle them
-    if line.contains("X25519_INIT")
+    if line.contains("X25519_INIT:")
         || line.contains("X25519_FINISH")
-        || line.contains("FiSH11-PubKey:")
     {
         log_debug!("Engine: ignoring key exchange message (X25519_INIT/FINISH)");
         return None;

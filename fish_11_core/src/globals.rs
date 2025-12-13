@@ -73,7 +73,8 @@ pub const ENCRYPTION_PREFIX_MCPS: &str = "mcps ";
 
 /// FiSH key exchange markers
 pub const KEY_EXCHANGE_INIT: &str = "X25519_INIT";
-pub const KEY_EXCHANGE_PUBKEY: &str = "FiSH11-PubKey:";
+pub const KEY_EXCHANGE_FINISH: &str = "X25519_FINISH";
+pub const KEY_EXCHANGE_PUBKEY: &str = "X25519_INIT:";
 
 /// Semantic version, e.g. "5.0.1-13-g5ee5b76"
 pub const BUILD_VERSION: &str = match option_env!("VERGEN_GIT_DESCRIBE") {

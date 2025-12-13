@@ -119,7 +119,7 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     let step4_duration = step4_start.elapsed();
     log_debug!("Step 4 (formatting) took {:?}", step4_duration);
 
-    if !formatted_key.starts_with("FiSH11-PubKey:") {
+    if !formatted_key.starts_with("X25519_INIT:") {
         return Err(DllError::KeyInvalid {
             reason: "invalid public key format generated".to_string(),
         });

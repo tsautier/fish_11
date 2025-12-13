@@ -252,7 +252,7 @@ pub unsafe extern "system" fn hooked_send(
             }
 
             // Check for FiSH key exchange markers
-            if text.contains("X25519_INIT") || text.contains("FiSH11-PubKey:") {
+            if text.contains("X25519_INIT:") || text.contains("X25519_FINISH") {
                 debug!("[SEND DEBUG] socket {}: detected FiSH key exchange data", s);
             }
 

@@ -203,7 +203,7 @@ Initiates a key exchange with a user. It ensures a local keypair exists (generat
 - **usage**: `/dll fish_11.dll FiSH11_ExchangeKey <nickname>`
 - **parameters**:
   - `nickname`: the nickname of the user you are initiating the exchange with.
-- **returns**: a public key token string, e.g., `FiSH11-PubKey:BASE64...`.
+- **returns**: a public key token string, e.g., `X25519_INIT:BASE64...`.
 
 ### `FiSH11_ProcessPublicKey`
 

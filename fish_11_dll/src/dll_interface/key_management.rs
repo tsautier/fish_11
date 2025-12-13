@@ -23,7 +23,7 @@ dll_function_identifier!(FiSH11_ProcessPublicKey, data, {
 
     // Helper to check if a part is a formatted public key token
     let looks_like_token = |s: &str| {
-        s.starts_with("FiSH11-PubKey:")
+        s.starts_with("X25519_INIT:")
             || s.len() == 44
                 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=')
     };

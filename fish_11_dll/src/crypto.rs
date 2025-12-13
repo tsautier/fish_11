@@ -409,21 +409,21 @@ pub fn decrypt_message(
 
 /// Format a public key for sharing over IRC
 ///
-/// Encodes a 32-byte X25519 public key as base64 with the `FiSH11-PubKey:` prefix.
+/// Encodes a 32-byte X25519 public key as base64 with the `X25519_INIT:` prefix.
 ///
 /// # Arguments
 /// * `public_key` - the 32-byte X25519 public key
 ///
 /// # Returns
-/// A formatted string: `FiSH11-PubKey:<base64-encoded-key>`
+/// A formatted string: `X25519_INIT:<base64-encoded-key>`
 pub fn format_public_key(public_key: &[u8; 32]) -> String {
     let encoded = base64_encode(public_key);
-    format!("FiSH11-PubKey:{}", encoded)
+    format!("X25519_INIT:{}", encoded)
 }
 
 /// Extract and validate a public key from a formatted string
 ///
-/// Parses a `FiSH11-PubKey:<base64>` formatted string, decodes the base64 payload,
+/// Parses a `X25519_INIT:<base64>` formatted string, decodes the base64 payload,
 /// and validates the resulting public key against low-order points.
 ///
 /// # Arguments
@@ -433,7 +433,7 @@ pub fn format_public_key(public_key: &[u8; 32]) -> String {
 /// The 32-byte X25519 public key or an error if the format is invalid or the key
 /// fails validation.
 pub fn extract_public_key(formatted: &str) -> Result<[u8; 32]> {
-    const PREFIX: &str = "FiSH11-PubKey:";
+    const PREFIX: &str = "X25519_INIT:";
 
     // Check if the string has the correct prefix
     if !formatted.starts_with(PREFIX) {
@@ -480,7 +480,7 @@ pub fn extract_public_key(formatted: &str) -> Result<[u8; 32]> {
 ///
 /// # Arguments
 /// * `nickname` - the remote user's nickname
-/// * `public_key_str` - their formatted public key (`FiSH11-PubKey:...`)
+/// * `public_key_str` - their formatted public key (`X25519_INIT:...`)
 /// * `network` - optional network identifier for key scoping
 ///
 /// # Returns
@@ -522,7 +522,7 @@ pub fn process_dh_key_exchange(
 
 /// Check if a string is in valid public key format
 pub fn is_valid_public_key_format(formatted: &str) -> bool {
-    const PREFIX: &str = "FiSH11-PubKey:";
+    const PREFIX: &str = "X25519_INIT:";
     let encoded = match formatted.strip_prefix(PREFIX) {
         Some(e) => e,
         None => return false,
