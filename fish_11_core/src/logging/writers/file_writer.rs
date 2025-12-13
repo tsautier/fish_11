@@ -101,9 +101,8 @@ impl FileWriter {
 
                     // Add some randomness to avoid synchronization issues
                     if sleep_duration > Duration::from_micros(100) {
-                        let jitter =
-                            rand::thread_rng().gen_range(0..sleep_duration.as_micros() / 2);
-                        std::thread::sleep(Duration::from_micros(jitter));
+                        let jitter_val = rand::thread_rng().gen_range(0..(sleep_duration.as_micros() / 2) as u64);
+                        std::thread::sleep(Duration::from_micros(jitter_val));
                     }
                 }
             }
@@ -131,7 +130,7 @@ impl FileWriter {
 
         // Create a rotation lock file to prevent concurrent rotations
         let rotation_lock_path = self.path.with_extension("rotating.lock");
-        let rotation_lock =
+        let mut rotation_lock =
             match OpenOptions::new().create_new(true).write(true).open(&rotation_lock_path) {
                 Ok(lock_file) => lock_file,
                 Err(_) => {
@@ -163,16 +162,9 @@ impl FileWriter {
 
         // Perform atomic rotation with proper error handling
         for i in (1..=self.max_files).rev() {
-            let old_path = self.path.with_extension(format!(
-                "{}.{}",
-                self.path.extension().unwrap_or_default(),
-                i
-            ));
-            let new_path = self.path.with_extension(format!(
-                "{}.{}",
-                self.path.extension().unwrap_or_default(),
-                i + 1
-            ));
+            let ext = self.path.extension().unwrap_or_default().to_string_lossy();
+            let old_path = self.path.with_extension(format!("{}.{}", ext, i));
+            let new_path = self.path.with_extension(format!("{}.{}", ext, i + 1));
 
             // Check if old file exists before attempting rename
             if old_path.exists() {
@@ -202,8 +194,9 @@ impl FileWriter {
         }
 
         // Move current log to .1 extension
+        let ext = self.path.extension().unwrap_or_default().to_string_lossy();
         let backup_path =
-            self.path.with_extension(format!("{}.1", self.path.extension().unwrap_or_default()));
+            self.path.with_extension(format!("{}.1", ext));
 
         // Remove existing backup if it exists
         if backup_path.exists() {
