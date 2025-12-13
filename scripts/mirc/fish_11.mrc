@@ -1191,7 +1191,9 @@ alias INI_GetInt {
 menu channel {
   -
   FiSH global
-  .Show key :fish11_showkey $chan
+  .Show keychan :fish11_showkey $chan
+  .Set manual keychan :{ var %key = $?="Enter manual key for " $+ $chan $+ ":" | if (%key != $null) fish11_setkey_manual $chan %key }
+  .Remove keychan :fish11_removekey $chan
   .Show fingerprint :fish11_showfingerprint $chan
   .Copy fingerprint to clipboard :{
     fish11_showfingerprint $chan
@@ -1201,8 +1203,7 @@ menu channel {
       echo $color(Mode text) -at *** FiSH_11: fingerprint for $chan copied to clipboard
     }
   }
-  .Set manual key... :{ var %key = $?="Enter manual key for " $+ $chan $+ ":" | if (%key != $null) fish11_setkey_manual $chan %key }
-  .Remove key :fish11_removekey $chan
+
   .Encrypt message :{
     var %msg = $?="Enter message to encrypt:"
     if (%msg) {
@@ -1210,6 +1211,7 @@ menu channel {
       echo $color(Mode text) -at *** FiSH: encrypted message: %encrypted
     }
   }
+
   .Decrypt message :{
     var %msg = $?="Enter message to decrypt:"
     if (%msg) {
@@ -1217,6 +1219,7 @@ menu channel {
       echo $color(Mode text) -at *** FiSH: decrypted message: %decrypted
     }
   }
+
   .Set topic (encrypted) :{
     var %topic = $?="Enter encrypted topic for " $+ $chan $+ ":"
     if (%topic != $null) etopic %topic
