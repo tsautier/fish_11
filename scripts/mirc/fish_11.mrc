@@ -515,7 +515,7 @@ alias fish11_X25519_INIT {
 
   ; Use regex to validate the entire key format. This is more robust against
   ; hidden characters or whitespace returned by the DLL.
-  ; Use more flexible regex to accept any valid base64 format
+  ; On a base64 format
   if ($regex(%pub, /^FiSH11-PubKey:[A-Za-z0-9+\/=]+$/)) {
     .notice %cur_contact X25519_INIT %pub
     echo $color(Mode text) -tm %cur_contact *** FiSH_11: sent X25519_INIT to %cur_contact $+ , waiting for reply...
@@ -876,16 +876,25 @@ alias fish11_showfingerprint {
     var %target = $1
   }
 
+  ; Debug: show what we're looking for
+  echo $color(Mode text) -at *** FiSH_11 DEBUG: Looking for fingerprint for: %target
+  
   ; Check if there's a stored colored fingerprint first
   if (%fish11.lastfingerprint. $+ [ %target ] != $null) {
-    echo $color(Mode text) -at *** FiSH_11: key fingerprint for %target is: %fish11.lastfingerprint. $+ [ %target ]
+    echo $color(Mode text) -at *** FiSH_11: key fingerprint for %target is: $($+(%,fish11.lastfingerprint.,%target),2)
     return
+  }
+  else {
+    echo $color(Mode text) -at *** FiSH_11 DEBUG: No cached fingerprint found for %target, generating new one...
   }
   
   ; Otherwise generate one
   var %key = $dll(%Fish11DllFile, FiSH11_FileGetKey, %target)
+  echo $color(Mode text) -at *** FiSH_11 DEBUG: FileGetKey returned: $qt(%key) (length: $len(%key))
+  
   if ($len(%key) > 1) {
     var %fingerprint = $dll(%Fish11DllFile, FiSH11_GetKeyFingerprint, %target)
+    echo $color(Mode text) -at *** FiSH_11 DEBUG: GetKeyFingerprint returned: $qt(%fingerprint)
     
     ; Check if the response is an error message
     if ($left(%fingerprint, 6) == Error:) {
@@ -896,10 +905,12 @@ alias fish11_showfingerprint {
     ; Extract just the fingerprint part from the response
     var %fp_only = $gettok(%fingerprint, 2-, 58)
     var %fp_only = $strip(%fp_only)
+    echo $color(Mode text) -at *** FiSH_11 DEBUG: Extracted fingerprint: $qt(%fp_only)
     
     ; Validate that we have a proper fingerprint (should contain spaces and alphanumeric chars)
     if (%fp_only == $null || $len(%fp_only) < 10 || $pos(%fp_only, $chr(32)) == 0) {
       echo $color(Mode text) -at *** FiSH_11: Error: Invalid fingerprint format received for %target
+      echo $color(Mode text) -at *** FiSH_11 DEBUG: fp_only is null or invalid: $qt(%fp_only)
       return
     }
     
@@ -910,21 +921,26 @@ alias fish11_showfingerprint {
     var %group3 = $gettok(%fp_only, 3, 32)
     var %group4 = $gettok(%fp_only, 4, 32)
     
+    echo $color(Mode text) -at *** FiSH_11 DEBUG: Groups - G1: $qt(%group1), G2: $qt(%group2), G3: $qt(%group3), G4: $qt(%group4)
+    
     ; Validate that we have at least 4 groups
     if (%group1 == $null || %group2 == $null || %group3 == $null || %group4 == $null) {
       echo $color(Mode text) -at *** FiSH_11: Error: Invalid fingerprint groups for %target
+      echo $color(Mode text) -at *** FiSH_11 DEBUG: Some groups are null
       return
     }
     
     ; Create colored version using mIRC color codes
     ; 04=red, 12=blue, 03=green, 07=orange
     var %colored_fp = 04 $+ %group1 $+  12 $+ %group2 $+  03 $+ %group3 $+  07 $+ %group4
+    echo $color(Mode text) -at *** FiSH_11 DEBUG: Final colored fingerprint: $qt(%colored_fp)
     
     ; Display the colored fingerprint
     echo $color(Mode text) -at *** FiSH_11: key fingerprint for %target is: %colored_fp
     
     ; Store for later
     set %fish11.lastfingerprint. $+ [ %target ] %colored_fp
+    echo $color(Mode text) -at *** FiSH_11 DEBUG: Stored fingerprint for %target
   }
   else {
     echo $color(Mode text) -at *** FiSH_11: no key found for %target
