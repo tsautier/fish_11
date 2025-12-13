@@ -751,7 +751,7 @@ alias fish11_file_list_keys {
   ; Call DLL function using proper syntax for data return
   ; Use $dll() to capture the result instead of .dll
   echo $color(Mode text) -at *** FiSH: about to call FiSH11_FileListKeys...
-  var %keys = $dll(%Fish11DllFile, FiSH11_FileListKeys)
+  var %keys = $dll(%Fish11DllFile, FiSH11_FileListKeys, $null)
   echo $color(Mode text) -at *** FiSH: DLL call completed, result length: $len(%keys)
   
   ; Check for errors (DLL returns "Error: ..." for errors)
