@@ -1,5 +1,3 @@
-//use once_cell::sync::Lazy;
-//use regex::Regex;
 use std::ffi::CStr;
 use std::ptr;
 
@@ -17,7 +15,6 @@ mod fish11_getratchetstate;
 mod fish11_help;
 mod fish11_setmanualchannelkey;
 mod fish11_setnetwork;
-mod key_management;
 mod utility;
 
 pub mod dll_error;
@@ -27,6 +24,7 @@ pub mod fish11_setkeyfromplaintext;
 pub mod fish11_setmircdir;
 pub mod function_template;
 pub mod ini_types;
+pub mod key_management;
 
 pub(crate) mod core;
 
@@ -96,3 +94,5 @@ pub use crate::channel_encryption::process_key::FiSH11_ProcessChannelKey;
 pub use fish11_getkeyttl::FiSH11_GetKeyTTL;
 pub use fish11_getratchetstate::FiSH11_GetRatchetState;
 pub use fish11_setmanualchannelkey::FiSH11_SetManualChannelKey;
+pub use key_management::FiSH11_ProcessPublicKey;
+pub use key_management::FiSH11_TestCrypt;

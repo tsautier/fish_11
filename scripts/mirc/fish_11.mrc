@@ -224,7 +224,8 @@ on ^*:NOTICE:X25519_INIT*:?:{
   ; Check if processing was successful (no error message)
   if (%process_result && $left(%process_result, 6) != Error:) {
     ; 3. If successful, send our public key back to them so they can complete the exchange.
-    if ($regex(%our_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{43}(=|==)?$/)) {
+    ; Use more flexible regex to validate public key format
+    if ($regex(%our_pub, /^FiSH11-PubKey:[A-Za-z0-9+\/=]+$/)) {
       .notice $nick X25519_FINISH %our_pub
       echo $color(Mode text) -tm $nick *** FiSH_11: sent X25519_FINISH to $nick
     }
@@ -320,9 +321,16 @@ on ^*:NOTICE:+FiSH-CEP-KEY*:?:{
   
   ; Verify we have a pre-shared key with the coordinator
   var %existing_key = $dll(%Fish11DllFile, FiSH11_FileGetKey, %coordinator)
-  if ($len(%existing_key) < 4) {
-    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FiSH_11 : FCEP-1 ERROR: no pre-shared key found for coordinator %coordinator
-    echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FiSH_11 : FCEP-1 : you must establish a key with %coordinator first using /fish11_X25519_INIT %coordinator
+  
+  ; Check for errors or empty/missing key
+  if ($left(%existing_key, 6) == Error: || $len(%existing_key) < 4) {
+    if ($left(%existing_key, 6) == Error:) {
+      echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FiSH_11 : FCEP-1 ERROR: $right(%existing_key, $calc($len(%existing_key) - 6))
+    }
+    else {
+      echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FiSH_11 : FCEP-1 ERROR: no pre-shared key found for coordinator %coordinator
+      echo -s $chr(9) $+ $chr(160) $+ $chr(9604) FiSH_11 : FCEP-1 : you must establish a key with %coordinator first using /fish11_X25519_INIT %coordinator
+    }
     halt
   }
   
@@ -507,7 +515,8 @@ alias fish11_X25519_INIT {
 
   ; Use regex to validate the entire key format. This is more robust against
   ; hidden characters or whitespace returned by the DLL.
-  if ($regex(%pub, /^FiSH11-PubKey:[A-Za-z0-9+\/]{43}(=|==)?$/)) {
+  ; On a base64 format
+  if ($regex(%pub, /^FiSH11-PubKey:[A-Za-z0-9+\/=]+$/)) {
     .notice %cur_contact X25519_INIT %pub
     echo $color(Mode text) -tm %cur_contact *** FiSH_11: sent X25519_INIT to %cur_contact $+ , waiting for reply...
   }
@@ -740,17 +749,23 @@ alias fish11_file_list_keys {
   var %keys
   
   ; Call DLL function using proper syntax for data return
-  ; The .dll command executes the function and puts output in the specified buffer
+  ; Use $dll() to capture the result instead of .dll
   echo $color(Mode text) -at *** FiSH: about to call FiSH11_FileListKeys...
-  .dll %Fish11DllFile FiSH11_FileListKeys %keys
-  echo $color(Mode text) -at *** FiSH: DLL call completed, result: %keys
+  var %keys = $dll(%Fish11DllFile, FiSH11_FileListKeys)
+  echo $color(Mode text) -at *** FiSH: DLL call completed, result length: $len(%keys)
+  
+  ; Check for errors (DLL returns "Error: ..." for errors)
+  if ($left(%keys, 6) == Error:) {
+    echo $color(Error) -at *** FiSH ERROR: %keys
+    return
+  }
   
   ; If the function returns data, display it line by line
-  if (%keys != $null) {
+  if (%keys != $null && $len(%keys) > 0) {
     fish11_display_multiline_result %keys
   }
   else {
-    echo $color(Mode text) -at *** FiSH: no keys found or error occurred
+    echo $color(Mode text) -at *** FiSH: no keys found
   }
 }
 
@@ -789,6 +804,56 @@ alias fish11_display_multiline_result {
   }
 }
 
+; Helper function to get and format colored fingerprint for a target
+; Returns the colored fingerprint or $null if not available
+; Also caches the result in %fish11.lastfingerprint.<target>
+alias -l fish11_GetColoredFingerprint {
+  var %target = $1
+  
+  ; Check if there's a cached fingerprint first
+  if (%fish11.lastfingerprint. $+ [ %target ] != $null) {
+    return $($+(%,fish11.lastfingerprint.,%target),2)
+  }
+  
+  ; Get the fingerprint from DLL
+  var %fingerprint = $dll(%Fish11DllFile, FiSH11_GetKeyFingerprint, %target)
+  
+  ; Check if the response is an error message
+  if ($left(%fingerprint, 6) == Error:) {
+    return $null
+  }
+  
+  ; Extract just the fingerprint part from the response
+  ; The response is in format: "Key fingerprint for nickname: XXXX YYYY ZZZZ AAAA"
+  var %fp_only = $gettok(%fingerprint, 2-, 58)
+  var %fp_only = $strip(%fp_only)
+  
+  ; Validate that we have a proper fingerprint (should contain spaces and alphanumeric chars)
+  if (%fp_only == $null || $len(%fp_only) < 10 || $pos(%fp_only, $chr(32)) == 0) {
+    return $null
+  }
+  
+  ; Format each group with a different color
+  var %group1 = $gettok(%fp_only, 1, 32)
+  var %group2 = $gettok(%fp_only, 2, 32) 
+  var %group3 = $gettok(%fp_only, 3, 32)
+  var %group4 = $gettok(%fp_only, 4, 32)
+  
+  ; Validate that we have at least 4 groups
+  if (%group1 == $null || %group2 == $null || %group3 == $null || %group4 == $null) {
+    return $null
+  }
+  
+  ; Create colored version using mIRC color codes
+  ; 04=red, 12=blue, 03=green, 07=orange
+  var %colored_fp = 04 $+ %group1 $+  12 $+ %group2 $+  03 $+ %group3 $+  07 $+ %group4
+  
+  ; Cache the result
+  set %fish11.lastfingerprint. $+ [ %target ] %colored_fp
+  
+  return %colored_fp
+}
+
 ; Status indicator update
 alias fish11_UpdateStatusIndicator {
   var %active = $active
@@ -801,32 +866,13 @@ alias fish11_UpdateStatusIndicator {
   
   ; Update status text accordingly
   if ($len(%key) > 1) {
-    var %fingerprint = $dll(%Fish11DllFile, FiSH11_GetKeyFingerprint, %active)
-    
-    ; Extract just the fingerprint part from the response
-    ; The response is in format: "Key fingerprint for nickname: XXXX YYYY ZZZZ AAAA"
-    var %fp_only = $gettok(%fingerprint, 2-, 58)
-    var %fp_only = $strip(%fp_only)
-    
-    ; Format the fingerprint with alternating colors
-    ; Format each group with a different color
-    var %group1 = $gettok(%fp_only, 1, 32)
-    var %group2 = $gettok(%fp_only, 2, 32) 
-    var %group3 = $gettok(%fp_only, 3, 32)
-    var %group4 = $gettok(%fp_only, 4, 32)
-    
-    ; Create colored version using mIRC color codes
-    ; 04=red, 12=blue, 03=green, 07=orange
-    var %colored_fp = 04 $+ %group1 $+  12 $+ %group2 $+  03 $+ %group3 $+  07 $+ %group4
+    var %colored_fp = $fish11_GetColoredFingerprint(%active)
     
     if (!$window(@FiSH_Status)) { window -hn @FiSH_Status }
     aline -p @FiSH_Status * $timestamp $+ %active is encrypted (Key: %colored_fp $+ )
     
     ; Show encryption in status bar with colored fingerprint
-     echo -at ** FiSH_11: 🔒 %active [Fingerprint: %colored_fp $+ ]
-    
-    ; Also create a command that lets users copy/display the fingerprint on demand
-    set %fish11.lastfingerprint. $+ [ %active ] %colored_fp
+    echo -at ** FiSH_11: 🔒 %active [Fingerprint: %colored_fp $+ ]
   }
   else {
     if (!$window(@FiSH_Status)) { window -hn @FiSH_Status }
@@ -848,38 +894,20 @@ alias fish11_showfingerprint {
   else {
     var %target = $1
   }
-
-  ; Check if there's a stored colored fingerprint first
-  if (%fish11.lastfingerprint. $+ [ %target ] != $null) {
-    echo $color(Mode text) -at *** FiSH_11: key fingerprint for %target is: %fish11.lastfingerprint. $+ [ %target ]
-    return
-  }
   
-  ; Otherwise generate one
+  ; Check if we have a key for this target
   var %key = $dll(%Fish11DllFile, FiSH11_FileGetKey, %target)
+  
   if ($len(%key) > 1) {
-    var %fingerprint = $dll(%Fish11DllFile, FiSH11_GetKeyFingerprint, %target)
+    var %colored_fp = $fish11_GetColoredFingerprint(%target)
     
-    ; Extract just the fingerprint part from the response
-    var %fp_only = $gettok(%fingerprint, 2-, 58)
-    var %fp_only = $strip(%fp_only)
-    
-    ; Format the fingerprint with alternating colors
-    ; Format each group with a different color
-    var %group1 = $gettok(%fp_only, 1, 32)
-    var %group2 = $gettok(%fp_only, 2, 32) 
-    var %group3 = $gettok(%fp_only, 3, 32)
-    var %group4 = $gettok(%fp_only, 4, 32)
-    
-    ; Create colored version using mIRC color codes
-    ; 04=red, 12=blue, 03=green, 07=orange
-    var %colored_fp = 04 $+ %group1 $+  12 $+ %group2 $+  03 $+ %group3 $+  07 $+ %group4
-    
-    ; Display the colored fingerprint
-    echo $color(Mode text) -at *** FiSH_11: key fingerprint for %target is: %colored_fp
-    
-    ; Store for later
-    set %fish11.lastfingerprint. $+ [ %target ] %colored_fp
+    if (%colored_fp != $null) {
+      ; Display the colored fingerprint
+      echo $color(Mode text) -at *** FiSH_11: key fingerprint for %target is: %colored_fp
+    }
+    else {
+      echo $color(Mode text) -at *** FiSH_11: Error: could not retrieve valid fingerprint for %target
+    }
   }
   else {
     echo $color(Mode text) -at *** FiSH_11: no key found for %target
