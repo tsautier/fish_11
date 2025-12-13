@@ -46,7 +46,9 @@ pub(crate) fn get_buffer_size() -> usize {
     let buffer_size = {
         let guard_result = LOAD_INFO.lock();
         if guard_result.is_err() {
-            log::error!("FATAL: Failed to acquire LOAD_INFO mutex lock in get_buffer_size. DLL may be in corrupted state. Returning default size.");
+            log::error!(
+                "FATAL: Failed to acquire LOAD_INFO mutex lock in get_buffer_size. DLL may be in corrupted state. Returning default size."
+            );
             return DEFAULT_MIRC_BUFFER_SIZE as usize; // Return a default if mutex fails
         }
         let guard = guard_result.unwrap();

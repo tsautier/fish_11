@@ -150,7 +150,11 @@ fn encrypt_channel_key_for_storage(key: &[u8; 32], channel_name: &str) -> Result
 
     // Log sensitive content if DEBUG flag is enabled for sensitive content
     if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-        log_debug!("Manual_Channel_Keys: encrypting channel key for '{}': {} bytes", channel_name, key_b64.len());
+        log_debug!(
+            "Manual_Channel_Keys: encrypting channel key for '{}': {} bytes",
+            channel_name,
+            key_b64.len()
+        );
     }
 
     // Encrypt the channel key with the master key
@@ -158,7 +162,11 @@ fn encrypt_channel_key_for_storage(key: &[u8; 32], channel_name: &str) -> Result
 
     // Log encrypted result if DEBUG flag is enabled for sensitive content
     if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-        log_debug!("Manual_Channel_Keys: encrypted channel key for '{}': {} bytes", channel_name, encrypted_key.len());
+        log_debug!(
+            "Manual_Channel_Keys: encrypted channel key for '{}': {} bytes",
+            channel_name,
+            encrypted_key.len()
+        );
     }
 
     Ok(encrypted_key)
@@ -177,7 +185,11 @@ fn decrypt_channel_key_from_storage(
 
     // Log sensitive content if DEBUG flag is enabled for sensitive content
     if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-        log_debug!("Manual_Channel_Keys: decrypting channel key for '{}': {} bytes", channel_name, encrypted_key_b64.len());
+        log_debug!(
+            "Manual_Channel_Keys: decrypting channel key for '{}': {} bytes",
+            channel_name,
+            encrypted_key_b64.len()
+        );
     }
 
     // Decrypt the base64-encoded channel key
@@ -185,7 +197,11 @@ fn decrypt_channel_key_from_storage(
 
     // Log decrypted result if DEBUG flag is enabled for sensitive content
     if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-        log_debug!("Manual_Channel_Keys: decrypted channel key for '{}': {} bytes", channel_name, decrypted_key_b64.len());
+        log_debug!(
+            "Manual_Channel_Keys: decrypted channel key for '{}': {} bytes",
+            channel_name,
+            decrypted_key_b64.len()
+        );
     }
 
     // Now decode the base64 to get the actual key

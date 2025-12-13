@@ -55,15 +55,14 @@ pub(crate) fn get_buffer_size_basic() -> usize {
     // Single lock acquisition
     let guard_result = LOAD_INFO.lock();
     if guard_result.is_err() {
-        log::error!("FATAL: Failed to acquire LOAD_INFO mutex lock - DLL may be in corrupted state. Returning default size 4096.");
+        log::error!(
+            "FATAL: Failed to acquire LOAD_INFO mutex lock - DLL may be in corrupted state. Returning default size 4096."
+        );
         return 4096; // Return a reasonable default
     }
     let guard = guard_result.unwrap();
 
-    let buffer_size = guard
-        .as_ref()
-        .map(|info| info.m_bytes as usize)
-        .unwrap_or(4096); // Default fallback if there's no loaded info
+    let buffer_size = guard.as_ref().map(|info| info.m_bytes as usize).unwrap_or(4096); // Default fallback if there's no loaded info
 
     buffer_size.saturating_sub(1) // Reserve space for null terminator
 }
@@ -199,7 +198,9 @@ pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
             // Store the LOADINFO
             let mut global_info_result = LOAD_INFO.lock();
             if global_info_result.is_err() {
-                log::error!("FATAL: Failed to acquire LOAD_INFO mutex lock in LoadDll. DLL may be in corrupted state.");
+                log::error!(
+                    "FATAL: Failed to acquire LOAD_INFO mutex lock in LoadDll. DLL may be in corrupted state."
+                );
                 return 0; // Return failure
             }
             let mut global_info = global_info_result.unwrap();
@@ -251,7 +252,9 @@ pub extern "stdcall" fn UnloadDll(_timeout: c_int) -> c_int {
     {
         let state_result = LOAD_INFO.lock();
         if state_result.is_err() {
-            log::error!("FATAL: Failed to acquire LOAD_INFO mutex lock during cleanup. DLL may be in corrupted state.");
+            log::error!(
+                "FATAL: Failed to acquire LOAD_INFO mutex lock during cleanup. DLL may be in corrupted state."
+            );
             return 0; // Return failure
         }
         let mut state = state_result.unwrap();
@@ -297,7 +300,9 @@ pub extern "C" fn LoadDll(load: *mut LOADINFO) -> BOOL {
 
             let global_info_result = LOAD_INFO.lock();
             if global_info_result.is_err() {
-                log::error!("FATAL: Failed to acquire LOAD_INFO mutex lock in GetInfo. DLL may be in corrupted state.");
+                log::error!(
+                    "FATAL: Failed to acquire LOAD_INFO mutex lock in GetInfo. DLL may be in corrupted state."
+                );
                 return 0; // Return failure
             }
             let mut global_info = global_info_result.unwrap();
@@ -335,7 +340,9 @@ pub extern "C" fn UnloadDll(_timeout: c_int) -> c_int {
     {
         let state_result = LOAD_INFO.lock();
         if state_result.is_err() {
-            log::error!("FATAL: Failed to acquire LOAD_INFO mutex lock during UnloadDll. DLL may be in corrupted state.");
+            log::error!(
+                "FATAL: Failed to acquire LOAD_INFO mutex lock during UnloadDll. DLL may be in corrupted state."
+            );
             return 0; // Return failure
         }
         let mut state = state_result.unwrap();

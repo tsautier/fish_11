@@ -37,7 +37,11 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
 
             // Log message content if DEBUG flag is enabled for sensitive content
             if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                log_debug!("DLL_Interface: channel message encryption input for channel '{}': '{}'", target, message);
+                log_debug!(
+                    "DLL_Interface: channel message encryption input for channel '{}': '{}'",
+                    target,
+                    message
+                );
             }
 
             // Encrypt with the fixed key, using the channel name as Associated Data.
@@ -50,7 +54,11 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
 
             // Log encrypted result if DEBUG flag is enabled for sensitive content
             if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                log_debug!("DLL_Interface: channel message encrypted output for channel '{}': '{}'", target, &encrypted_b64);
+                log_debug!(
+                    "DLL_Interface: channel message encrypted output for channel '{}': '{}'",
+                    target,
+                    &encrypted_b64
+                );
             }
 
             let result = format!("+FiSH {}", encrypted_b64);
@@ -64,7 +72,11 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
 
                 // Log message content if DEBUG flag is enabled for sensitive content
                 if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                    log_debug!("DLL_Interface: ratchet channel encryption input for channel '{}': '{}'", target, message);
+                    log_debug!(
+                        "DLL_Interface: ratchet channel encryption input for channel '{}': '{}'",
+                        target,
+                        message
+                    );
                 }
 
                 // Encrypt with the current key, using the channel name as Associated Data.
@@ -77,7 +89,11 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
 
                 // Log encrypted result if DEBUG flag is enabled for sensitive content
                 if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                    log_debug!("DLL_Interface: ratchet channel encrypted output for channel '{}': '{}'", target, &encrypted_b64);
+                    log_debug!(
+                        "DLL_Interface: ratchet channel encrypted output for channel '{}': '{}'",
+                        target,
+                        &encrypted_b64
+                    );
                 }
 
                 // Extract the nonce from the encrypted payload to derive the next key.
@@ -120,7 +136,11 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
 
     // Log message content if DEBUG flag is enabled for sensitive content
     if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-        log_debug!("DLL_Interface: private message encryption input for target '{}': '{}'", &nickname, message);
+        log_debug!(
+            "DLL_Interface: private message encryption input for target '{}': '{}'",
+            &nickname,
+            message
+        );
     }
 
     // 3. Encrypt the message using the retrieved key (no AD for private messages).
@@ -132,7 +152,11 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
 
     // Log encrypted result if DEBUG flag is enabled for sensitive content
     if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-        log_debug!("DLL_Interface: private message encrypted output for target '{}': '{}'", &nickname, &encrypted_base64);
+        log_debug!(
+            "DLL_Interface: private message encrypted output for target '{}': '{}'",
+            &nickname,
+            &encrypted_base64
+        );
     }
 
     // 4. Format the result with the FiSH protocol prefix and return.

@@ -135,7 +135,10 @@ pub fn validate_nickname(
             },
             Err(_) => {
                 // This shouldn't happen since our string is static, but we handle it anyway
-                log_error!("FiSH11_ExchangeKey[{}]: CString::new failed for error message", trace_id);
+                log_error!(
+                    "FiSH11_ExchangeKey[{}]: CString::new failed for error message",
+                    trace_id
+                );
             }
         }
         return false;
@@ -160,11 +163,15 @@ pub fn validate_nickname(
                 // Try fallback message if primary fails
                 match CString::new("Error: invalid nickname format") {
                     Ok(fallback_msg) => unsafe {
-                        let _ = buffer_utils::write_cstring_to_buffer(data, buffer_size, &fallback_msg);
+                        let _ =
+                            buffer_utils::write_cstring_to_buffer(data, buffer_size, &fallback_msg);
                     },
                     Err(_) => {
                         // Even fallback failed - log error but can't write to buffer
-                        log_error!("FiSH11_ExchangeKey[{}]: Both error messages failed CString::new", trace_id);
+                        log_error!(
+                            "FiSH11_ExchangeKey[{}]: Both error messages failed CString::new",
+                            trace_id
+                        );
                     }
                 }
             }

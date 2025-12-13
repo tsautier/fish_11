@@ -95,7 +95,7 @@ pub unsafe fn write_error_message(data: *mut c_char, message: &str) -> c_int {
                 // If even "Error" has null bytes, use a static CStr - this would be extremely unlikely
                 CString::new("Err").expect("Literal 'Err' should never contain null bytes")
             }),
-        }
+        },
     };
 
     let _ = write_cstring_to_buffer(data, buffer_size, &cstring);

@@ -21,6 +21,7 @@ lazy_static = "1.4"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"
 cfg-if = "1.0"
+rand = "0.9.2"
 
 [build-dependencies]
 vergen = { version = "9.0.6", features = ["build", "cargo", "rustc", "si"] }

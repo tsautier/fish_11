@@ -56,7 +56,11 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
 
             // Log encrypted content if DEBUG flag is enabled for sensitive content
             if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                log_debug!("DLL_Interface: decrypting channel message for '{}' (manual key): '{}'", target, encrypted_message);
+                log_debug!(
+                    "DLL_Interface: decrypting channel message for '{}' (manual key): '{}'",
+                    target,
+                    encrypted_message
+                );
             }
 
             // Decrypt with the fixed key, using the channel name as Associated Data.
@@ -70,7 +74,11 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
 
             // Log decrypted content if DEBUG flag is enabled for sensitive content
             if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                log_debug!("DLL_Interface: decrypted channel message for '{}' (manual key): '{}'", target, &decrypted);
+                log_debug!(
+                    "DLL_Interface: decrypted channel message for '{}' (manual key): '{}'",
+                    target,
+                    &decrypted
+                );
             }
 
             log::info!("Successfully decrypted message for channel {} using manual key", target);
@@ -97,10 +105,13 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
 
             // 2. Attempt decryption with ratchet state
             let decrypted = config::with_ratchet_state_mut(target, |state| {
-
                 // Log encrypted content if DEBUG flag is enabled for sensitive content
                 if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                    log_debug!("DLL_Interface: decrypting ratchet channel message for '{}': '{}'", target, encrypted_message);
+                    log_debug!(
+                        "DLL_Interface: decrypting ratchet channel message for '{}': '{}'",
+                        target,
+                        encrypted_message
+                    );
                 }
 
                 // Try current key first
@@ -115,7 +126,11 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
 
                     // Log decrypted content if DEBUG flag is enabled for sensitive content
                     if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                        log_debug!("DLL_Interface: decrypted ratchet channel message for '{}' with current key: '{}'", target, &plaintext);
+                        log_debug!(
+                            "DLL_Interface: decrypted ratchet channel message for '{}' with current key: '{}'",
+                            target,
+                            &plaintext
+                        );
                     }
 
                     return Ok(Some(plaintext)); // Return plaintext to outer scope
@@ -135,7 +150,11 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
 
                         // Log decrypted content if DEBUG flag is enabled for sensitive content
                         if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                            log_debug!("DLL_Interface: decrypted ratchet channel message for '{}' with old key: '{}'", target, &plaintext);
+                            log_debug!(
+                                "DLL_Interface: decrypted ratchet channel message for '{}' with old key: '{}'",
+                                target,
+                                &plaintext
+                            );
                         }
 
                         return Ok(Some(plaintext)); // Return plaintext to outer scope
@@ -170,7 +189,11 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
 
     // Log encrypted content if DEBUG flag is enabled for sensitive content
     if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-        log_debug!("DLL_Interface: decrypting private message for '{}': '{}'", nickname, encrypted_message);
+        log_debug!(
+            "DLL_Interface: decrypting private message for '{}': '{}'",
+            nickname,
+            encrypted_message
+        );
     }
 
     // Decrypt the message (no AD for private messages).

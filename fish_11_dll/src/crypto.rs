@@ -1195,7 +1195,10 @@ mod fcep1_ratchet_tests {
             // Extract nonce and advance ratchet
             let encrypted_bytes_result = crate::utils::base64_decode(&encrypted);
             if encrypted_bytes_result.is_err() {
-                panic!("Ratchet test failed to base64 decode encrypted data: {:?}", encrypted_bytes_result.err());
+                panic!(
+                    "Ratchet test failed to base64 decode encrypted data: {:?}",
+                    encrypted_bytes_result.err()
+                );
             }
             let encrypted_bytes = encrypted_bytes_result.unwrap();
 
@@ -1223,7 +1226,11 @@ mod fcep1_ratchet_tests {
             let decrypted_result =
                 decrypt_message(&ratchet_keys[i], encrypted, Some(channel.as_bytes()));
             if decrypted_result.is_err() {
-                panic!("Ratchet test decryption failed for message {}: {:?}", i, decrypted_result.err());
+                panic!(
+                    "Ratchet test decryption failed for message {}: {:?}",
+                    i,
+                    decrypted_result.err()
+                );
             }
             let decrypted = decrypted_result.unwrap();
             assert_eq!(decrypted, messages[i], "Message {} should decrypt correctly", i);
@@ -1319,7 +1326,8 @@ mod fcep1_ratchet_tests {
         let encrypted3 = encrypted3_result.unwrap();
 
         // Decrypting the current message with the current key should work
-        let decrypt_current_result = decrypt_message(&state.current_key, &encrypted3, Some(channel.as_bytes()));
+        let decrypt_current_result =
+            decrypt_message(&state.current_key, &encrypted3, Some(channel.as_bytes()));
         if decrypt_current_result.is_err() {
             panic!("Decryption of current message failed: {:?}", decrypt_current_result.err());
         }

@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use log::LevelFilter;
+use std::path::PathBuf;
 
 #[derive(Clone, Debug)]
 pub struct LogConfig {
@@ -9,10 +9,10 @@ pub struct LogConfig {
     pub max_files: usize,
     pub console_output: bool,
     pub console_level: LevelFilter,
-    pub enable_context: bool,     // Ajouter des contextes (module, fonction, etc.)
-    pub mask_sensitive: bool,     // Masquer les données sensibles
-    pub structured_logs: bool,    // Format JSON pour les logs structurés
-    pub enable_metrics: bool,     // Activer le suivi des métriques
+    pub enable_context: bool, // Ajouter des contextes (module, fonction, etc.)
+    pub mask_sensitive: bool, // Masquer les données sensibles
+    pub structured_logs: bool, // Format JSON pour les logs structurés
+    pub enable_metrics: bool, // Activer le suivi des métriques
 }
 
 impl Default for LogConfig {

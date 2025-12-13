@@ -244,7 +244,11 @@ impl DllError {
 
             // Log sensitive content if DEBUG flag is enabled for sensitive content
             if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                log::debug!("Unified_Error: detailed error context - Error: {}, Source: {}", self, source);
+                log::debug!(
+                    "Unified_Error: detailed error context - Error: {}, Source: {}",
+                    self,
+                    source
+                );
             }
 
             // Log the full error chain if available

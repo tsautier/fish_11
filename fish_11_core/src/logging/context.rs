@@ -1,6 +1,6 @@
 use chrono::{DateTime, Local};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::fmt;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 // Global counter for unique trace IDs
 static TRACE_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -57,10 +57,7 @@ impl Default for LogContext {
 
 fn generate_trace_id() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let counter = TRACE_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
 
     format!("{:016x}{:016x}", now, counter)
@@ -80,10 +77,6 @@ fn get_thread_id() -> u64 {
 
 impl fmt::Display for LogContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}::{}[{}]",
-            self.module, self.function, self.trace_id
-        )
+        write!(f, "{}::{}[{}]", self.module, self.function, self.trace_id)
     }
 }

@@ -1,5 +1,5 @@
-use log::{Record, LevelFilter};
 use crate::logging::errors::LogError;
+use log::{LevelFilter, Record};
 
 pub struct NullWriter;
 

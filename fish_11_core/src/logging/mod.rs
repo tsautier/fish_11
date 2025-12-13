@@ -2,16 +2,16 @@
 //use std::sync::Mutex;
 
 pub mod config;
-pub mod unified_logger;
-pub mod writers;
 pub mod context;
-pub mod security;
 pub mod errors;
 pub mod filters;
 pub mod metrics;
+pub mod security;
+pub mod unified_logger;
+pub mod writers;
 
-use unified_logger::UnifiedLogger;
 use config::LogConfig;
+use unified_logger::UnifiedLogger;
 
 // Global logger instance
 static mut LOGGER: Option<UnifiedLogger> = None;
@@ -19,13 +19,12 @@ static LOGGER_INIT: std::sync::Once = std::sync::Once::new();
 
 pub fn init_logging(config: LogConfig) -> Result<(), errors::LogError> {
     let result = std::panic::catch_unwind(|| {
-        LOGGER_INIT.call_once(|| {
-            unsafe {
-                LOGGER = Some(UnifiedLogger::new(config));
-                log::set_logger(&LOGGER.as_ref().unwrap())
-                    .map(|()| log::set_max_level(LOGGER.as_ref().unwrap().max_level()))
-                    .expect("Failed to initialize logger");
-            }
+        LOGGER_INIT.call_once(|| unsafe {
+            LOGGER = Some(UnifiedLogger::new(config).expect("Failed to create logger"));
+            let logger_ref = LOGGER.as_ref().unwrap();
+            log::set_logger(logger_ref)
+                .map(|()| log::set_max_level(logger_ref.max_level()))
+                .expect("Failed to initialize logger");
         });
     });
 

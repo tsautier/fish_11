@@ -226,10 +226,14 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
                 Ok(enc) => {
                     // Log encrypted result if DEBUG flag is enabled for sensitive content
                     if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                        log_debug!("Engine: topic encrypted output for channel '{}': '{}'", target, &enc);
+                        log_debug!(
+                            "Engine: topic encrypted output for channel '{}': '{}'",
+                            target,
+                            &enc
+                        );
                     }
                     enc
-                },
+                }
                 Err(e) => {
                     log_error!("Engine: topic encryption failed for channel '{}': {}", target, e);
                     return None;
@@ -249,7 +253,11 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
                 Ok(key) => {
                     // Log message content if DEBUG flag is enabled for sensitive content
                     if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                        log_debug!("Engine: channel message encryption input for channel '{}': '{}'", target, &message);
+                        log_debug!(
+                            "Engine: channel message encryption input for channel '{}': '{}'",
+                            target,
+                            &message
+                        );
                     }
 
                     // Encrypt with the fixed key, using the channel name as Associated Data.
@@ -257,10 +265,14 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
                         Ok(encrypted_b64) => {
                             // Log encrypted result if DEBUG flag is enabled for sensitive content
                             if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                                log_debug!("Engine: channel message encrypted output for channel '{}': '{}'", target, &encrypted_b64);
+                                log_debug!(
+                                    "Engine: channel message encrypted output for channel '{}': '{}'",
+                                    target,
+                                    &encrypted_b64
+                                );
                             }
                             encrypted_b64
-                        },
+                        }
                         Err(e) => {
                             log_error!(
                                 "Engine: channel encryption failed for '{}' (manual key): {}",
@@ -283,7 +295,11 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
 
                 // Log message content if DEBUG flag is enabled for sensitive content
                 if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                    log_debug!("Engine: ratchet channel encryption input for channel '{}': '{}'", target, &message);
+                    log_debug!(
+                        "Engine: ratchet channel encryption input for channel '{}': '{}'",
+                        target,
+                        &message
+                    );
                 }
 
                 // Encrypt with the current key, using the channel name as Associated Data.
@@ -293,7 +309,11 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
 
                 // Log encrypted result if DEBUG flag is enabled for sensitive content
                 if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                    log_debug!("Engine: ratchet channel encrypted output for channel '{}': '{}'", target, &encrypted_b64);
+                    log_debug!(
+                        "Engine: ratchet channel encrypted output for channel '{}': '{}'",
+                        target,
+                        &encrypted_b64
+                    );
                 }
 
                 // Extract the nonce from the encrypted payload to derive the next key.
@@ -352,7 +372,11 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
 
         // Log message content if DEBUG flag is enabled for sensitive content
         if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-            log_debug!("Engine: private message encryption input for target '{}': '{}'", target, &message);
+            log_debug!(
+                "Engine: private message encryption input for target '{}': '{}'",
+                target,
+                &message
+            );
         }
 
         // Encrypt the message (no AD for private messages).
@@ -360,10 +384,14 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
             Ok(enc) => {
                 // Log encrypted result if DEBUG flag is enabled for sensitive content
                 if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                    log_debug!("Engine: private message encrypted output for target '{}': '{}'", target, &enc);
+                    log_debug!(
+                        "Engine: private message encrypted output for target '{}': '{}'",
+                        target,
+                        &enc
+                    );
                 }
                 enc
-            },
+            }
             Err(e) => {
                 log_error!("Engine: encryption failed for target '{}': {}", target, e);
                 return None;
@@ -483,7 +511,11 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
                     );
                     // Log decrypted content if DEBUG flag is enabled for sensitive content
                     if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                        log_debug!("Engine: decrypted topic content for channel '{}': '{}'", key_identifier, &msg);
+                        log_debug!(
+                            "Engine: decrypted topic content for channel '{}': '{}'",
+                            key_identifier,
+                            &msg
+                        );
                     }
                     msg
                 }
@@ -612,7 +644,11 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
                 );
                 // Log decrypted content if DEBUG flag is enabled for sensitive content
                 if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                    log_debug!("Engine: decrypted incoming topic content for channel '{}': '{}'", key_identifier, &msg);
+                    log_debug!(
+                        "Engine: decrypted incoming topic content for channel '{}': '{}'",
+                        key_identifier,
+                        &msg
+                    );
                 }
                 msg
             }
@@ -654,9 +690,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
 
     // CRITICAL: do NOT decrypt key exchange messages !#@
     // X25519_INIT and X25519_FINISH must pass through unchanged so mIRC can handle them
-    if line.contains("X25519_INIT:")
-        || line.contains("X25519_FINISH")
-    {
+    if line.contains("X25519_INIT:") || line.contains("X25519_FINISH") {
         log_debug!("Engine: ignoring key exchange message (X25519_INIT/FINISH)");
         return None;
     }

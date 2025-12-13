@@ -8,11 +8,7 @@ pub struct LogFilter {
 
 impl LogFilter {
     pub fn new(min_level: LevelFilter) -> Self {
-        Self {
-            min_level,
-            modules: vec![],
-            exclude_modules: vec![],
-        }
+        Self { min_level, modules: vec![], exclude_modules: vec![] }
     }
 
     pub fn include_module(mut self, module: &str) -> Self {

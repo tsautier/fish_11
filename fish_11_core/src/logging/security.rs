@@ -1,5 +1,5 @@
-use regex::Regex;
 use lazy_static::lazy_static;
+use regex::Regex;
 
 /// Masks sensitive information in log messages
 pub fn mask_sensitive_data(input: &str) -> String {
@@ -19,35 +19,39 @@ pub fn mask_sensitive_data(input: &str) -> String {
 
 fn mask_x25519_keys(input: &str) -> String {
     lazy_static! {
-        // Pattern for X25519 public keys (43-44 base64 chars with padding)
-        static ref X25519_PATTERN: Regex = Regex::new(r"[A-Za-z0-9+/]{42,44}={0,2}").unwrap();
+        // More precise pattern for X25519 public keys
+        // - Exactly 43 base64 characters (32 bytes encoded)
+        // - Optional padding (0-2 = signs)
+        // - Word boundaries to avoid matching substrings
+        static ref X25519_PATTERN: Regex = Regex::new(r"\b[A-Za-z0-9+/]{43}={0,2}\b").unwrap();
     }
 
-    X25519_PATTERN
-        .replace_all(input, "X25519_KEY_REDACTED")
-        .to_string()
+    X25519_PATTERN.replace_all(input, "X25519_KEY_REDACTED").to_string()
 }
 
 fn mask_ip_addresses(input: &str) -> String {
     lazy_static! {
-        static ref IP_PATTERN: Regex = Regex::new(r"\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b").unwrap();
+        // IPv4 pattern - more comprehensive
+        static ref IP_PATTERN: Regex = Regex::new(r"\b(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\b").unwrap();
     }
 
-    IP_PATTERN
-        .replace_all(input, "IP_REDACTED")
-        .to_string()
+    IP_PATTERN.replace_all(input, "IP_REDACTED").to_string()
 }
 
 fn mask_potential_keys(input: &str) -> String {
     lazy_static! {
         // Pattern for potential key-like strings (longer base64 patterns)
-        static ref KEY_PATTERN: Regex = Regex::new(r"(?i)(key|token|secret|password)\s*[:=]\s*[A-Za-z0-9+/]{20,}={0,2}").unwrap();
+    static ref KEY_PATTERN: Regex = Regex::new(r"(?i)(key|token|secret|password)\s*[:=]\s*[A-Za-z0-9+/]{20,}={0,2}").unwrap();
     }
 
     KEY_PATTERN
         .replace_all(input, |caps: &regex::Captures| {
-            let prefix = &caps[0..caps.get(1).unwrap().start()];
-            format!("{}REDACTED_VALUE", prefix)
+            if let Some(prefix) = caps.get(1) {
+                format!("{}REDACTED_VALUE", prefix.as_str())
+            } else {
+                // Fallback if capture groups don't match as expected
+                "REDACTED_KEY_VALUE".to_string()
+            }
         })
         .to_string()
 }
