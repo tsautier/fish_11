@@ -53,16 +53,16 @@ Remove-Item -Force -ErrorAction SilentlyContinue $aToB,$bToA,$logFile
 
 function Extract-Token {
     param([string]$cliOutput)
-    # Find the first line that contains the FiSH11-PubKey token
+    # Find the first line that contains the X25519_INIT token
     $lines = $cliOutput -split "\r?\n"
     foreach ($l in $lines) {
         $trim = $l.Trim()
-        if ($trim -match '^FiSH11-PubKey:[A-Za-z0-9+/=]+$') { return $trim }
+        if ($trim -match '^X25519_INIT:[A-Za-z0-9+/=]+$') { return $trim }
     }
     # If not exact match, fallback to last line starting with prefix
     foreach ($l in $lines | Select-Object -Last 5) {
         $trim = $l.Trim()
-        if ($trim.StartsWith('FiSH11-PubKey:')) { return $trim }
+        if ($trim.StartsWith('X25519_INIT:')) { return $trim }
     }
     return $null
 }
@@ -94,7 +94,7 @@ $receiverJob = Start-Job -Name Receiver -ScriptBlock {
     # extract token using same rules
     $lines = $cliOut -split "\r?\n"
     $found = $null
-    foreach ($l in $lines) { if ($l.Trim().StartsWith('FiSH11-PubKey:')) { $found = $l.Trim(); break } }
+    foreach ($l in $lines) { if ($l.Trim().StartsWith('X25519_INIT:')) { $found = $l.Trim(); break } }
     if ($found) {
         Set-Content -Path $outFile -Value $found
         "[$(Get-Date -Format o)] Receiver wrote token to ${outFile}: ${found}" | Out-File -FilePath $logFile -Append
@@ -119,7 +119,7 @@ $SendahJob = Start-Job -Name Sender -ScriptBlock {
     "[$(Get-Date -Format o)] Sender exchangekey output:`n$cliOut" | Out-File -FilePath $logFile -Append
     $lines = $cliOut -split "\r?\n"
     $found = $null
-    foreach ($l in $lines) { if ($l.Trim().StartsWith('FiSH11-PubKey:')) { $found = $l.Trim(); break } }
+    foreach ($l in $lines) { if ($l.Trim().StartsWith('X25519_INIT:')) { $found = $l.Trim(); break } }
     if (-not $found) { Write-Error "Sender failed to extract token"; exit 3 }
 
     # Write token for receiver
