@@ -53,6 +53,11 @@ pub static MIRC_BUFFER_SIZE: Mutex<usize> = Mutex::new(DEFAULT_MIRC_BUFFER_SIZE)
 // Maximum size of a message that can be encrypted/decrypted
 pub const MAX_MESSAGE_SIZE: usize = 4096;
 
+/// Flag to enable logging of decrypted content for debugging
+/// This should normally be false to protect user privacy
+/// Can be enabled by setting the "LOG_SENSITIVE_CONTENT" environment variable during compilation
+pub const LOG_DECRYPTED_CONTENT: bool = option_env!("LOG_SENSITIVE_CONTENT").is_some();
+
 /// IRC protocol commands
 pub const CMD_PRIVMSG: &str = "PRIVMSG";
 pub const CMD_NOTICE: &str = "NOTICE";
