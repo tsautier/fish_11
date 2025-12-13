@@ -35,6 +35,11 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
         if config::has_channel_key(target) {
             let key = config::get_channel_key_with_fallback(target)?;
 
+            // Log message content if DEBUG flag is enabled for sensitive content
+            if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
+                log_debug!("DLL_Interface: channel message encryption input for channel '{}': '{}'", target, message);
+            }
+
             // Encrypt with the fixed key, using the channel name as Associated Data.
             let encrypted_b64 =
                 crypto::encrypt_message(&key, message, Some(target), Some(target.as_bytes()))
@@ -42,6 +47,11 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
                         context: format!("encrypting for channel {}", target),
                         cause: e.to_string(),
                     })?;
+
+            // Log encrypted result if DEBUG flag is enabled for sensitive content
+            if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
+                log_debug!("DLL_Interface: channel message encrypted output for channel '{}': '{}'", target, &encrypted_b64);
+            }
 
             let result = format!("+FiSH {}", encrypted_b64);
             log::info!("Successfully encrypted message for channel {} using manual key", target);
@@ -52,6 +62,11 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
             let encrypted_base64 = config::with_ratchet_state_mut(target, |state| {
                 let current_key = state.current_key;
 
+                // Log message content if DEBUG flag is enabled for sensitive content
+                if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
+                    log_debug!("DLL_Interface: ratchet channel encryption input for channel '{}': '{}'", target, message);
+                }
+
                 // Encrypt with the current key, using the channel name as Associated Data.
                 let encrypted_b64 = crypto::encrypt_message(
                     &current_key,
@@ -59,6 +74,11 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
                     Some(target),
                     Some(target.as_bytes()),
                 )?;
+
+                // Log encrypted result if DEBUG flag is enabled for sensitive content
+                if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
+                    log_debug!("DLL_Interface: ratchet channel encrypted output for channel '{}': '{}'", target, &encrypted_b64);
+                }
 
                 // Extract the nonce from the encrypted payload to derive the next key.
                 let encrypted_bytes = crate::utils::base64_decode(&encrypted_b64)?;
@@ -98,12 +118,22 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
 
     log_debug!("Successfully retrieved encryption key");
 
+    // Log message content if DEBUG flag is enabled for sensitive content
+    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
+        log_debug!("DLL_Interface: private message encryption input for target '{}': '{}'", &nickname, message);
+    }
+
     // 3. Encrypt the message using the retrieved key (no AD for private messages).
     let encrypted_base64 = crypto::encrypt_message(key_ref, message, Some(&nickname), None)
         .map_err(|e| DllError::EncryptionFailed {
             context: format!("encrypting for {}", nickname),
             cause: e.to_string(),
         })?;
+
+    // Log encrypted result if DEBUG flag is enabled for sensitive content
+    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
+        log_debug!("DLL_Interface: private message encrypted output for target '{}': '{}'", &nickname, &encrypted_base64);
+    }
 
     // 4. Format the result with the FiSH protocol prefix and return.
     let result = format!("+FiSH {}", encrypted_base64);

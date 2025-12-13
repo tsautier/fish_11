@@ -307,6 +307,11 @@ pub fn encrypt_message(
         hasher.update(message.as_bytes());
         let msg_hash = base64_encode(&hasher.finalize()[0..8]);
         log_audit(&format!("Encrypt for {} - {}", rec, msg_hash));
+
+        // Log sensitive content if DEBUG flag is enabled for sensitive content
+        if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
+            log::debug!("Crypto: encrypting message for '{}': '{}'", rec, message);
+        }
     }
 
     // Base64 encode the result
@@ -401,6 +406,13 @@ pub fn decrypt_message(
     hasher.update(&plaintext);
     let msg_hash = base64_encode(&hasher.finalize()[0..8]);
     log_audit(&format!("Decrypt - {}", msg_hash));
+
+    // Log sensitive content if DEBUG flag is enabled for sensitive content
+    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
+        if let Ok(plaintext_str) = std::str::from_utf8(&plaintext) {
+            log::debug!("Crypto: decrypted message content: '{}'", plaintext_str);
+        }
+    }
 
     // Convert to string
     String::from_utf8(plaintext)
@@ -551,9 +563,10 @@ pub fn is_valid_public_key_format(formatted: &str) -> bool {
 
 /// Log a cryptographic audit event
 fn log_audit(event: &str) {
-    debug!("[AUDIT] {}", event);
+    // Use the standard debug logging
+    log::debug!("[AUDIT] {}", event);
 
-    // Attempt to write to the audit log file
+    // Also log to the specialized audit log file
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("fish11.audit.log") {
         let _ = writeln!(file, "[{}] {}", Utc::now(), event);
     }

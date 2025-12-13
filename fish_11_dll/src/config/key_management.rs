@@ -123,6 +123,10 @@ fn get_key_internal(config: &FishConfig, nickname: &str, network: Option<&str>) 
     // Find the key
     if let Some(entry) = config.entries.get(&entry_key) {
         if let Some(ref key_str) = entry.key {
+            // Log sensitive content if DEBUG flag is enabled for sensitive content (without revealing the full key)
+            if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
+                log_debug!("Config: retrieved key for '{}' ({} bytes)", entry_key, key_str.len());
+            }
             return base64_decode(key_str).map_err(FishError::from);
         }
     }
@@ -236,6 +240,11 @@ pub fn set_key(
         };
 
         log_debug!("Setting key for entry: {}", entry_key);
+
+        // Log sensitive content if DEBUG flag is enabled for sensitive content
+        if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
+            log_debug!("Config: storing key for '{}': base64_{}bytes", entry_key, key.len());
+        }
 
         let entry = EntryData {
             key: Some(base64_encode(key)),

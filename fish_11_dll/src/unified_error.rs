@@ -242,6 +242,11 @@ impl DllError {
         if let Some(source) = self.source() {
             log::error!("DLL Error: {} (caused by: {})", self, source);
 
+            // Log sensitive content if DEBUG flag is enabled for sensitive content
+            if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
+                log::debug!("Unified_Error: detailed error context - Error: {}, Source: {}", self, source);
+            }
+
             // Log the full error chain if available
             let mut current_source = source.source();
             let mut depth = 1;
@@ -252,6 +257,11 @@ impl DllError {
             }
         } else {
             log::error!("DLL Error: {}", self);
+
+            // Log sensitive content if DEBUG flag is enabled for sensitive content
+            if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
+                log::debug!("Unified_Error: error details - Error: {}", self);
+            }
         }
 
         // Special handling for KeyExpired to trigger re-exchange
