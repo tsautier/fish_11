@@ -19,13 +19,16 @@ pub struct UnifiedLogger {
 
 impl UnifiedLogger {
     pub fn new(config: LogConfig) -> Result<Self, LogError> {
-        let file_writer =
-            if !config.file_path.to_string_lossy().is_empty() {
-                Some(Arc::new(FileWriter::new(&config.file_path, config.max_file_size, config.max_files)))
-            } else {
-                None
-            };
-            
+        let file_writer = if !config.file_path.to_string_lossy().is_empty() {
+            Some(Arc::new(FileWriter::new(
+                &config.file_path,
+                config.max_file_size,
+                config.max_files,
+            )?))
+        } else {
+            None
+        };
+
         let console_writer = if config.console_output {
             Some(ConsoleWriter::new(config.console_level))
         } else {
@@ -43,42 +46,28 @@ impl UnifiedLogger {
 
     /// Attempt to log with context, returns Result for error handling
     fn try_log_with_context(&self, record: &Record, context: &LogContext) -> Result<(), LogError> {
-        // Apply security filtering if enabled by creating a new record with masked args
-        let processed_record = if self.mask_sensitive {
-            let original_args = format!("{}", record.args());
-            let masked_args = self.apply_security_filter(&original_args);
+        // Format the message first, as we need to apply both context and masking potentially
+        let mut message = format!("{}", record.args());
 
-            // Create a new record with the masked arguments
-            Record::builder()
-                .level(record.level())
-                .target(record.target())
-                .file(record.file())
-                .line(record.line())
-                .module_path(record.module_path())
-                .args(format_args!("{}", masked_args))
-                .build()
-        } else {
-            // If no masking needed, use the original record
-            record.clone()
-        };
+        // Apply security filtering if enabled (mask sensitive data)
+        if self.mask_sensitive {
+            message = self.apply_security_filter(&message);
+        }
 
-        // Add context if enabled
-        let final_record = if self.context_enabled {
-            // For context, we need to modify the message again
-            let original_args = format!("{}", processed_record.args());
-            let contextualized_message = self.add_context(&original_args, context);
+        // Add context if enabled (after masking to avoid exposing context info in sensitive data)
+        if self.context_enabled {
+            message = self.add_context(&message, context);
+        }
 
-            Record::builder()
-                .level(processed_record.level())
-                .target(processed_record.target())
-                .file(processed_record.file())
-                .line(processed_record.line())
-                .module_path(processed_record.module_path())
-                .args(format_args!("{}", contextualized_message))
-                .build()
-        } else {
-            processed_record
-        };
+        // Build a new record with the processed message
+        let final_record = Record::builder()
+            .level(record.level())
+            .target(record.target())
+            .file(record.file())
+            .line(record.line())
+            .module_path(record.module_path())
+            .args(format_args!("{}", message))
+            .build();
 
         // Write to file with error handling
         if let Some(ref file_writer) = self.file_writer {
@@ -152,7 +141,7 @@ impl Log for UnifiedLogger {
         if self.enabled(record.metadata()) {
             // Create a default context for logs without explicit context
             let default_context = crate::logging::context::LogContext::default();
-            self.log_with_context(record, &default_context); 
+            self.log_with_context(record, &default_context);
         }
     }
 

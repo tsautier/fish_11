@@ -101,7 +101,8 @@ impl FileWriter {
 
                     // Add some randomness to avoid synchronization issues
                     if sleep_duration > Duration::from_micros(100) {
-                        let jitter_val = rand::thread_rng().gen_range(0..(sleep_duration.as_micros() / 2) as u64);
+                        let jitter_val = rand::thread_rng()
+                            .gen_range(0..(sleep_duration.as_micros() / 2) as u64);
                         std::thread::sleep(Duration::from_micros(jitter_val));
                     }
                 }
@@ -195,8 +196,7 @@ impl FileWriter {
 
         // Move current log to .1 extension
         let ext = self.path.extension().unwrap_or_default().to_string_lossy();
-        let backup_path =
-            self.path.with_extension(format!("{}.1", ext));
+        let backup_path = self.path.with_extension(format!("{}.1", ext));
 
         // Remove existing backup if it exists
         if backup_path.exists() {
