@@ -65,7 +65,11 @@ dll_function_identifier!(FiSH11_SetKeyFromPlaintext, data, {
     // Then store the key, allowing overwrite.
     config::set_key(&nickname, &derived_key, network, true, false)?;
 
-    log::info!("Successfully set key from plaintext for {} on network {}", nickname, network.unwrap_or("auto"));
+    log::info!(
+        "Successfully set key from plaintext for {} on network {}",
+        nickname,
+        network.unwrap_or("auto")
+    );
 
     Ok("1".to_string())
 });
