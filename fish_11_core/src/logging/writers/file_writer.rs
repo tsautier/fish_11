@@ -123,18 +123,67 @@ impl FileWriter {
         Err(LogError::WriteTimeout)
     }
 
+    /// Clean up stale lock files from previous crashes
+    fn cleanup_stale_lock_files(&self) -> Result<(), LogError> {
+        use std::fs;
+        use std::time::Duration;
+
+        let lock_file_path = self.path.with_extension("rotating.lock");
+        
+        if lock_file_path.exists() {
+            if let Ok(metadata) = fs::metadata(&lock_file_path) {
+                if let Ok(modified) = metadata.modified() {
+                    if let Ok(elapsed) = modified.elapsed() {
+                        if elapsed > Duration::from_secs(300) { // 5 minutes
+                            // Stale lock file, remove it
+                            fs::remove_file(&lock_file_path).map_err(|e| {
+                                LogError::IoError(std::io::Error::new(
+                                    std::io::ErrorKind::Other,
+                                    format!("Failed to cleanup stale lock {}: {}", 
+                                        lock_file_path.display(), e)
+                                ))
+                            })?;
+                        }
+                    }
+                }
+            }
+        }
+        
+        Ok(())
+    }
+
     fn rotate_files(&self) -> Result<(), LogError> {
         use std::fs;
         use std::io::Write;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        // Clean up any stale lock files from previous crashes
+        self.cleanup_stale_lock_files()?;
 
         // Create a rotation lock file to prevent concurrent rotations
         let rotation_lock_path = self.path.with_extension("rotating.lock");
         let lock_file_result =
             OpenOptions::new().create_new(true).write(true).open(&rotation_lock_path);
 
-        let mut rotation_lock = match lock_file_result {
+        let mut rotation_lock;
+        rotation_lock = match lock_file_result {
             Ok(lock_file) => lock_file,
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                // Check if the lock is stale (older than 5 minutes)
+                if let Ok(metadata) = fs::metadata(&rotation_lock_path) {
+                    if let Ok(modified) = metadata.modified() {
+                        if let Ok(elapsed) = modified.elapsed() {
+                            if elapsed > Duration::from_secs(300) { // 5 minutes
+                                // Stale lock, remove it and proceed
+                                let _ = fs::remove_file(&rotation_lock_path);
+                                rotation_lock = OpenOptions::new()
+                                    .create_new(true)
+                                    .write(true)
+                                    .open(&rotation_lock_path)?;
+                            }
+                        }
+                    }
+                }
                 // Another process or thread is rotating, wait a bit
                 std::thread::sleep(Duration::from_millis(50));
                 return Ok(());

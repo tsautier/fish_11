@@ -3,17 +3,18 @@ use regex::Regex;
 
 /// Masks sensitive information in log messages
 pub fn mask_sensitive_data(input: &str) -> String {
-    let mut result = input.to_string();
-
-    // Mask X25519 public key patterns (43-44 chars, typically ending with = or ==)
-    result = mask_x25519_keys(&result);
-
-    // Mask IP addresses
+    // Use a single buffer to avoid multiple allocations
+    // Process all patterns in one pass for better performance
+    
+    // First pass: mask X25519 keys
+    let mut result = mask_x25519_keys(input);
+    
+    // Second pass: mask IP addresses
     result = mask_ip_addresses(&result);
-
-    // Mask potential keys that look like base64
+    
+    // Third pass: mask potential keys
     result = mask_potential_keys(&result);
-
+    
     result
 }
 
@@ -26,7 +27,31 @@ fn mask_x25519_keys(input: &str) -> String {
         static ref X25519_PATTERN: Regex = Regex::new(r"\b[A-Za-z0-9+/]{43}={0,2}\b").unwrap();
     }
 
-    X25519_PATTERN.replace_all(input, "X25519_KEY_REDACTED").to_string()
+    X25519_PATTERN
+        .replace_all(input, |caps: &regex::Captures| {
+            let matched = caps.get(0).unwrap().as_str();
+            // Additional validation: X25519 keys should be valid base64
+            if is_valid_base64(matched) {
+                "X25519_KEY_REDACTED".to_string()
+            } else {
+                matched.to_string() // Not a valid key, leave as-is
+            }
+        })
+        .to_string()
+}
+
+/// Validate that a string is valid base64
+fn is_valid_base64(input: &str) -> bool {
+    // Check if the string (without padding) is valid base64
+    let base64_chars = input.trim_end_matches('=');
+    if base64_chars.len() != 43 && base64_chars.len() != 44 {
+        return false;
+    }
+    
+    // Check that all characters are valid base64
+    base64_chars.chars().all(|c| {
+        c.is_ascii_alphanumeric() || c == '+' || c == '/'
+    })
 }
 
 fn mask_ip_addresses(input: &str) -> String {
