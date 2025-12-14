@@ -507,7 +507,7 @@ mod tests {
             },
         );
         config.entries.insert(
-            "#test_chan@test_net".to_string(),
+            "test_chan@test_net".to_string(),
             EntryData {
                 key: Some("chan_key_b64".to_string()),
                 date: Some("2025-01-02 00:00:00".to_string()),
