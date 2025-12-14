@@ -9,11 +9,7 @@ use std::ffi::c_char;
 use std::os::raw::c_int;
 
 dll_function_identifier!(FiSH11_GetVersion, _data, {
-    let build_type = if cfg!(debug_assertions) {
-        "DEBUG"
-    } else {
-        "RELEASE"
-    };
+    let build_type = if cfg!(debug_assertions) { "DEBUG" } else { "RELEASE" };
 
     // Return raw version info for script to display
     let version_info = format!(

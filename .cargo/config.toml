@@ -2,4 +2,3 @@
 # Default target for Windows builds (comment out for Linux/Unix builds)
 target = "i686-pc-windows-msvc"
 
-[alias]

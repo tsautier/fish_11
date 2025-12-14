@@ -413,6 +413,7 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
     let keys_section = "Keys";
     let dates_section = "Dates";
 
+    // First, save the new format entries (with network information)
     for (entry_key, entry_data) in &config.entries {
         // The entry_key is already in "name@network" format.
         // It is now a key in a section, so special characters are not a problem.
@@ -421,6 +422,16 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
         }
         if let Some(date_val) = &entry_data.date {
             ini.set(dates_section, entry_key, Some(date_val.clone()));
+        }
+    }
+
+    // Then, save the legacy keys format (without network information)
+    // These are simple nickname -> key mappings without network context
+    for (nickname, key_val) in &config.keys {
+        // Only save legacy keys that don't conflict with new format entries
+        // (i.e., keys that don't contain '@' which would indicate network info)
+        if !nickname.contains('@') {
+            ini.set(keys_section, nickname, Some(key_val.clone()));
         }
     }
 

@@ -311,7 +311,7 @@ pub fn encrypt_message(
         // Log sensitive content if DEBUG flag is enabled for sensitive content
         #[cfg(debug_assertions)]
         if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-            crate::log_debug!("Crypto: encrypting message for '{}': '{}'", rec, message);
+            log::debug!("Crypto: encrypting message for '{}': '{}'", rec, message);
         }
     }
 
@@ -416,7 +416,7 @@ pub fn decrypt_message(
     #[cfg(debug_assertions)]
     if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
         if let Ok(plaintext_str) = std::str::from_utf8(&plaintext) {
-            crate::log_debug!("Crypto: decrypted message content: '{}'", plaintext_str);
+            log::debug!("Crypto: decrypted message content: '{}'", plaintext_str);
         }
     }
 
@@ -571,7 +571,7 @@ pub fn is_valid_public_key_format(formatted: &str) -> bool {
 fn log_audit(event: &str) {
     // Use the standard debug logging
     #[cfg(debug_assertions)]
-    crate::log_debug!("[AUDIT] {}", event);
+    log::debug!("[AUDIT] {}", event);
 
     // Also log to the specialized audit log file
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("fish11.audit.log") {
