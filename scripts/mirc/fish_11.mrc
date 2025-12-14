@@ -64,9 +64,23 @@ alias fish11_startup {
   }
 
   ; Get and display core DLL version
-  var %core_version = $dll(%Fish11DllFile, FiSH11_CoreVersion, $null)
-  if (%core_version) {
-    echo -ts *** %core_version ***
+  var %raw_version_info = $dll(%Fish11DllFile, FiSH11_GetVersion, $null)
+  if (%raw_version_info) {
+    ; Parse the raw string: VERSION|BUILD_TYPE
+    var %version_string = $gettok(%raw_version_info, 1, 124) ; 124 is ASCII for |
+    var %build_type = $gettok(%raw_version_info, 2, 124)
+
+    ; Display the base version info
+    echo -ts *** %version_string ***
+
+    ; Display context-specific warning or info message
+    if (%build_type == DEBUG) {
+      echo 4 -ts $chr(3)4 *** SECURITY WARNING : you're running a DEBUG version which logs EVERYTHING (keys, private messages, etc.) ON YOUR DISK.
+      echo 4 -ts $chr(3)4 *** DO NOT USE THIS VERSION IN REAL LIFE.
+    }
+    else {
+      echo 4 -ts $chr(3)3 *** You are running a RELEASE version. Sensitive data is NOT logged.
+    }
   }
   else {
     echo -ts *** FiSH_11: WARNING - could not load core DLL version ***
@@ -998,8 +1012,29 @@ alias fish11_help {
 
 
 alias fish11_version {
-  var %core_version = $dll(%Fish11DllFile, FiSH11_CoreVersion, $null)
-  echo -ts *** %core_version ***
+  var %raw_version_info = $dll(%Fish11DllFile, FiSH11_GetVersion, $null)
+  
+  if (!%raw_version_info) {
+    echo -ts *** FiSH_11: ERROR - could not get version info from DLL.
+    return
+  }
+
+  ; Parse the raw string: VERSION|BUILD_TYPE
+  var %version_string = $gettok(%raw_version_info, 1, 124) ; 124 is ASCII for |
+  var %build_type = $gettok(%raw_version_info, 2, 124)
+
+  ; Display the base version info
+  echo -ts *** %version_string ***
+
+  ; Display context-specific warning or info message
+  if (%build_type == DEBUG) {
+    echo 4 -ts $chr(3)4 *** SECURITY WARNING : you're running a DEBUG version which logs EVERYTHING (keys, private messages, etc.) ON YOUR DISK.
+    echo 4 -ts $chr(3)4 *** DO NOT USE THIS VERSION IN REAL LIFE.
+  }
+  else {
+    echo 4 -ts $chr(3)3 *** You are running a RELEASE version. Sensitive data is NOT logged.
+    echo 4 -ts $chr(3)3 *** Logging can be configured in your fish_11.ini file.
+  }
 }
 
 alias fish11_injection_version {
