@@ -562,7 +562,9 @@ mod tests {
     fn test_get_config_path_with_mircdir() {
         // Set a temporary directory for MIRCDIR
         let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
-        std::env::set_var("MIRCDIR", temp_dir.path());
+        unsafe {
+            std::env::set_var("MIRCDIR", temp_dir.path());
+        }
 
         // Call the function
         let path_result = get_config_path();
@@ -581,7 +583,9 @@ mod tests {
     #[test]
     fn test_get_config_path_no_mircdir() {
         // Ensure MIRCDIR is not set
+        unsafe {
         std::env::remove_var("MIRCDIR");
+        }
 
         // Call the function
         let path_result = get_config_path();
