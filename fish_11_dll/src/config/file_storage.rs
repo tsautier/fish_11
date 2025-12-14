@@ -192,26 +192,6 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
         ini.sections().iter().map(|s| (s.to_lowercase(), s.clone())).collect();
 
     log_debug!("load_config: section cache built in {:?}", cache_start.elapsed());
-    log_trace!("load_config: processing [Keys] section...");
-
-    let keys_start = std::time::Instant::now();
-
-    // Load [Keys] section (case-insensitive, optimized)
-    if let Some(section_name) = sections_lower.get("keys") {
-        if let Some(section_map) = ini.get_map_ref().get(section_name) {
-            for (k, v_opt) in section_map.iter() {
-                if let Some(v) = v_opt {
-                    config.keys.insert(k.clone(), v.clone());
-                }
-            }
-        }
-    }
-    log_warn!(
-        "load_config: [Keys] processed in {:?} ({} keys)",
-        keys_start.elapsed(),
-        config.keys.len()
-    );
-
     log_trace!("load_config: processing [KeyPair] section...");
 
     let keypair_section_start = std::time::Instant::now();
@@ -310,7 +290,7 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
     let entries_start = std::time::Instant::now();
 
     // Load from [Keys] and [Dates] sections into config.entries
-    // This new format is robust against special characters in nicknames.
+    // Using only the new format (nick@network)
     let keys_section_name = sections_lower.get("keys").cloned();
     let dates_section_name = sections_lower.get("dates").cloned();
 
@@ -325,7 +305,7 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
 
             for (entry_key, key_val_opt) in keys_map.iter() {
                 if let Some(key_val) = key_val_opt {
-                    // Find the corresponding date using the case-sensitive key
+                    // New format: entry with network information
                     let date_val = dates_map.get(entry_key).and_then(|v| v.clone());
                     let entry_data = EntryData {
                         key: Some(key_val.clone()),
@@ -413,6 +393,7 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
     let keys_section = "Keys";
     let dates_section = "Dates";
 
+    // Save the new format entries (with network information)
     for (entry_key, entry_data) in &config.entries {
         // The entry_key is already in "name@network" format.
         // It is now a key in a section, so special characters are not a problem.
@@ -509,7 +490,6 @@ mod tests {
     // Helper to create a dummy config for testing
     fn create_dummy_config() -> FishConfig {
         let mut config = FishConfig::new();
-        config.keys.insert("test_key_legacy".to_string(), "value_legacy".to_string());
         config.nick_networks.insert("test_nick".to_string(), "test_net".to_string());
         config.our_private_key = Some(base64_encode(&generate_random_bytes(32)));
         config.our_public_key = Some(base64_encode(&generate_random_bytes(32)));

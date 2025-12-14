@@ -1017,6 +1017,32 @@ mod tests {
     }
 
     #[test]
+    fn test_set_and_get_key_multi_network() {
+        let nickname = "test_user_multi";
+        let key1 = random_key();
+        let key2 = random_key();
+
+        assert_ne!(key1, key2);
+
+        // Set key on net1
+        set_key(nickname, &key1, Some("net1"), true, false).expect("Failed to set key on net1");
+        // Set key on net2
+        set_key(nickname, &key2, Some("net2"), true, false).expect("Failed to set key on net2");
+
+        // Get key from net1
+        let retrieved_key1 = get_key(nickname, Some("net1")).expect("Failed to get key from net1");
+        assert_eq!(key1.to_vec(), retrieved_key1);
+
+        // Get key from net2
+        let retrieved_key2 = get_key(nickname, Some("net2")).expect("Failed to get key from net2");
+        assert_eq!(key2.to_vec(), retrieved_key2);
+
+        // Cleanup
+        delete_key(nickname, Some("net1")).ok();
+        delete_key(nickname, Some("net2")).ok();
+    }
+
+    #[test]
     fn test_get_all_keys_with_ttl() {
         // Tests getting all keys with TTL
         let nickname = "all_keys_test_user";

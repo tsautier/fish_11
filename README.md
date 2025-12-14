@@ -4,7 +4,7 @@
 [![Release](https://github.com/ggielly/fish_11/workflows/Create%20Release/badge.svg)](https://github.com/ggielly/fish_11/releases)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-FiSH_11 is a modern implementation of an IRC encryption plugin, fully written in Rust. It provides strong, end-to-end encryption for both private messages and multi-user channels, based on [X25519](https://en.wikipedia.org/wiki/Curve25519) and [ChaCha20-Poly1305](https://en.wikipedia.org/wiki/ChaCha20-Poly1305). With a primary focus on the mIRC client for Windows (with a winsocks dll h00ks for fun & transparent operation) but also libraries and CLI for Linux.
+FiSH_11 is a modern implementation of an IRC encryption plugin/addon, fully written in Rust. It provides strong, end-to-end encryption for both private messages and multi-user channels, based on [X25519](https://en.wikipedia.org/wiki/Curve25519) and [ChaCha20-Poly1305](https://en.wikipedia.org/wiki/ChaCha20-Poly1305) without external libraries. With a primary focus on the mIRC client for Windows (with a winsocks dll h00ks for fun & transparent operation) but also libraries and CLI for Linux.
 
 ## Development status, bugs and roadmap
 
@@ -20,10 +20,11 @@ FiSH_11 is a modern implementation of an IRC encryption plugin, fully written in
 - [x] Right click on a user => key exchange DH X25519 => encrypt/decrypt private messages :)
 - [x] Configuration persistence and key management (`fish_11.ini`)
 - [x] Read and write the fish_11.ini config file
+- [x] Topic encryption with manual password
 
 #### Other OS binary
 
-- [x] Cross compile
+- [x] Cross compilation
 - [x] Generate a xxx.so file for Linux
 
 #### Encryption
@@ -36,30 +37,32 @@ FiSH_11 is a modern implementation of an IRC encryption plugin, fully written in
 
 ### Work in progress features and/or still bugged
 
-- [x] Comprehensive mIRC script integration (`fish_11.mrc`)
+- [ ] Full working mIRC script integration (`fish_11.mrc`)
 - [x] Command-line interface (`fish_11_cli`) for testing and integration
 - [x] FCEP-1 channel encryption protocol (multi-user)
-- [x] key rotation / TTL management: add functionality for automatic key rotation with configurable intervals.
+- [ ] key rotation / TTL management: add functionality for automatic key rotation with configurable intervals.
 - [x] fuzzing integration: add `cargo-fuzz` (`libfuzzer`) to the project to systematically test for security vulnerabilities in parsing and cryptographic functions.
 - [x] cross-platform library: mature the `fish_11_core` library and provide stable C-APIs for easy integration on Linux and other systems.
-- [x] Topic encryption with manual password
-- [ ] Refactor the logging engine for fish11_core, fish11_dll and fish11_inject
+- [x] Refactor the logging engine for fish11_core, fish11_dll and fish11_inject
 - [ ] CLI in linux can call the .so library
+- [ ] CLI in windows can call the .dll library
+- [ ] irc bnc parsing/detection support
 
 ### Current limitations
 
 - The injection DLL is Windows-only and specific to 32-bit mIRC.
 - The `fish_11_core` library is portable, but the `fish_11_dll` wrapper contains Windows-specific FFI code.
 
-### Future roadmap
+### Future roadmap ?
 
-This is a list of desired features and improvements. Contributions are welcome!
+This is a list of desired features and improvements. Contributions are welcome !
 
 - [ ] ElligatorSwift : improve furtivity over X25519 key exchange with automatic detection (Keypair u32 -> u64 ; curve25519_dalek::ristretto ; curve25519_dalek::scalar ?) with parallel functions.
+- [ ] Add hybrid key exchange post-quantic : X25519 (S1) + CRYSTALS-Kyber (S2) : (HKDF-SHA256(S1 || S2))
 - [ ] enhanced forward secrecy: investigate and implement a Double Ratchet algorithm for 1-to-1 conversations to provide stronger forward and post-compromise security.
 - [ ] master password: implement an option to encrypt the `fish_11.ini` key storage file with a user-provided master password (e.g., using Argon2 for key derivation).
 - [ ] CI/CD pipeline: set up a GitHub Actions pipeline for automated testing, building, and releases.
-- [ ] more algorithms/ciphers: explore the possibility of adding other modern cryptographic algorithms as optional choices.
+- [ ] more algorithms/ciphers: explore the possibility of adding other modern cryptographic algorithms as optional choices ?
 
 ## Documentation
 

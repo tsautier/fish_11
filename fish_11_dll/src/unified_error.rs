@@ -243,6 +243,7 @@ impl DllError {
             log::error!("DLL Error: {} (caused by: {})", self, source);
 
             // Log sensitive content if DEBUG flag is enabled for sensitive content
+            #[cfg(debug_assertions)]
             if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
                 log::debug!(
                     "Unified_Error: detailed error context - Error: {}, Source: {}",
@@ -263,6 +264,7 @@ impl DllError {
             log::error!("DLL Error: {}", self);
 
             // Log sensitive content if DEBUG flag is enabled for sensitive content
+            #[cfg(debug_assertions)]
             if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
                 log::debug!("Unified_Error: error details - Error: {}", self);
             }
