@@ -70,7 +70,8 @@ impl SocketInfo {
         flags.is_ssl = is_ssl;
 
         if is_ssl {
-            log::debug!("Socket {}: marked as SSL/TLS connection", self.socket);
+            #[cfg(debug_assertions)]
+        log::debug!("Socket {}: marked as SSL/TLS connection", self.socket);
         }
     }
 
@@ -88,7 +89,8 @@ impl SocketInfo {
         flags.ssl_handshake_complete = complete;
 
         if complete {
-            log::debug!("Socket {}: SSL/TLS handshake completed", self.socket);
+            #[cfg(debug_assertions)]
+        log::debug!("Socket {}: SSL/TLS handshake completed", self.socket);
         }
     }
 
