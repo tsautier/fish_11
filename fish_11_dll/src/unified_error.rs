@@ -245,7 +245,7 @@ impl DllError {
             // Log sensitive content if DEBUG flag is enabled for sensitive content
             #[cfg(debug_assertions)]
             if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                log::debug!(
+                crate::log_debug!(
                     "Unified_Error: detailed error context - Error: {}, Source: {}",
                     self,
                     source
@@ -266,7 +266,7 @@ impl DllError {
             // Log sensitive content if DEBUG flag is enabled for sensitive content
             #[cfg(debug_assertions)]
             if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                log::debug!("Unified_Error: error details - Error: {}", self);
+                crate::log_debug!("Unified_Error: error details - Error: {}", self);
             }
         }
 

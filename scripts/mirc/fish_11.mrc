@@ -75,8 +75,12 @@ alias fish11_startup {
 
     ; Display context-specific warning or info message
     if (%build_type == DEBUG) {
+      echo 4 -ts $chr(3)4 *** WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING ***
+      echo 4 -ts $chr(3)4 *** 
       echo 4 -ts $chr(3)4 *** SECURITY WARNING : you're running a DEBUG version which logs EVERYTHING (keys, private messages, etc.) ON YOUR DISK.
       echo 4 -ts $chr(3)4 *** DO NOT USE THIS VERSION IN REAL LIFE.
+      echo 4 -ts $chr(3)4 *** 
+      echo 4 -ts $chr(3)4 *** WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING ***
     }
     else {
       echo 4 -ts $chr(3)3 *** You are running a RELEASE version. Sensitive data is NOT logged.
