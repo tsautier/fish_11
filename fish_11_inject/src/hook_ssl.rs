@@ -1058,3 +1058,37 @@ pub fn uninstall_ssl_hooks() {
 unsafe fn get_socket_from_ssl_context(ssl: *mut SSL) -> Option<u32> {
     SslSocketMapping::get_socket(ssl)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ssl_to_id() {
+        let fake_ssl_ptr = 0x12345678 as *mut SSL;
+        let id = ssl_to_id(fake_ssl_ptr);
+
+        assert_eq!(id, 0x12345678);
+    }
+
+    #[test]
+    fn test_find_ssl_function_recv() {
+        // Test that we can find a system function that should exist
+        let _recv_func = find_ssl_function("recv"); // Use underscore to indicate we're intentionally not using the result
+        // Note: This may be null since it's an SSL function, but it shouldn't crash
+        // The important thing is that it doesn't cause a panic or crash
+    }
+
+    #[test]
+    fn test_ssl_wrapper_send_sync() {
+        // Test that SSLWrapper implements Send and Sync
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<SSLWrapper>();
+    }
+
+    #[test]
+    fn test_ssl_struct_size() {
+        // Test that SSL is an opaque structure as expected
+        assert_eq!(std::mem::size_of::<SSL>(), 0); // Zero-sized type
+    }
+}

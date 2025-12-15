@@ -584,7 +584,7 @@ mod tests {
     fn test_get_config_path_no_mircdir() {
         // Ensure MIRCDIR is not set
         unsafe {
-        std::env::remove_var("MIRCDIR");
+            std::env::remove_var("MIRCDIR");
         }
 
         // Call the function

@@ -451,3 +451,139 @@ pub unsafe extern "C" fn GetNetworkName(socket_id: u32) -> *mut std::ffi::c_char
     }
     std::ptr::null_mut()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::CString;
+
+    // Mock function implementations for testing
+    unsafe extern "C" fn mock_on_outgoing_irc_line(
+        _socket: u32,
+        _line: *const i8,
+        _len: usize,
+    ) -> *mut i8 {
+        std::ptr::null_mut()
+    }
+
+    unsafe extern "C" fn mock_on_incoming_irc_line(
+        _socket: u32,
+        _line: *const i8,
+        _len: usize,
+    ) -> *mut i8 {
+        std::ptr::null_mut()
+    }
+
+    unsafe extern "C" fn mock_on_socket_closed(_socket: u32) {}
+
+    unsafe extern "C" fn mock_free_string(_ptr: *mut i8) {}
+
+    unsafe extern "C" fn mock_get_network_name(_socket: u32) -> *mut i8 {
+        std::ptr::null_mut()
+    }
+
+    #[test]
+    fn test_safe_engine_creation() {
+        let engine_name_cstr = CString::new("TestEngine").unwrap();
+        let engine = FishInjectEngine {
+            version: FISH_INJECT_ENGINE_VERSION,
+            engine_name: engine_name_cstr.as_ptr(),
+            is_postprocessor: false,
+            on_outgoing_irc_line: mock_on_outgoing_irc_line,
+            on_incoming_irc_line: mock_on_incoming_irc_line,
+            on_socket_closed: mock_on_socket_closed,
+            free_string: mock_free_string,
+            get_network_name: mock_get_network_name,
+        };
+
+        // Create a SafeEngine from the FishInjectEngine
+        let safe_engine = unsafe { SafeEngine::new(&engine) };
+        assert!(safe_engine.is_some());
+
+        let safe_engine = safe_engine.unwrap();
+        assert_eq!(safe_engine.version, FISH_INJECT_ENGINE_VERSION);
+        assert_eq!(safe_engine.engine_name, "TestEngine");
+        assert_eq!(safe_engine.is_postprocessor, false);
+    }
+
+    #[test]
+    fn test_safe_engine_version_mismatch() {
+        let engine_name_cstr = CString::new("TestEngine").unwrap();
+        let engine = FishInjectEngine {
+            version: FISH_INJECT_ENGINE_VERSION + 1, // Wrong version
+            engine_name: engine_name_cstr.as_ptr(),
+            is_postprocessor: false,
+            on_outgoing_irc_line: mock_on_outgoing_irc_line,
+            on_incoming_irc_line: mock_on_incoming_irc_line,
+            on_socket_closed: mock_on_socket_closed,
+            free_string: mock_free_string,
+            get_network_name: mock_get_network_name,
+        };
+
+        // Create a SafeEngine from the FishInjectEngine with wrong version
+        let safe_engine = unsafe { SafeEngine::new(&engine) };
+        assert!(safe_engine.is_none());
+    }
+
+    #[test]
+    fn test_inject_engines_registration() {
+        let engines = InjectEngines::new();
+
+        // Create a mock engine for testing
+        let engine_name_cstr = CString::new("TestEngine").unwrap();
+        let engine = FishInjectEngine {
+            version: FISH_INJECT_ENGINE_VERSION,
+            engine_name: engine_name_cstr.as_ptr(),
+            is_postprocessor: false,
+            on_outgoing_irc_line: mock_on_outgoing_irc_line,
+            on_incoming_irc_line: mock_on_incoming_irc_line,
+            on_socket_closed: mock_on_socket_closed,
+            free_string: mock_free_string,
+            get_network_name: mock_get_network_name,
+        };
+
+        // Register the engine
+        let result = engines.register(&engine);
+        assert!(result);
+
+        // Check that the engine list is not empty
+        let engine_list = engines.get_engine_list();
+        assert!(engine_list.contains("TestEngine"));
+    }
+
+    #[test]
+    fn test_inject_engines_unregister() {
+        let engines = InjectEngines::new();
+
+        // Create a CString and keep it alive for the duration of the test
+        let engine_name_cstr = CString::new("UnregisterTestEngine").unwrap();
+
+        // Put the engine in a static-like allocation to ensure address consistency
+        let engine = Box::new(FishInjectEngine {
+            version: FISH_INJECT_ENGINE_VERSION,
+            engine_name: engine_name_cstr.as_ptr(),
+            is_postprocessor: false,
+            on_outgoing_irc_line: mock_on_outgoing_irc_line,
+            on_incoming_irc_line: mock_on_incoming_irc_line,
+            on_socket_closed: mock_on_socket_closed,
+            free_string: mock_free_string,
+            get_network_name: mock_get_network_name,
+        });
+
+        // Register and then unregister the engine using the same pointer
+        let register_result = engines.register(&*engine);
+        assert!(register_result);
+
+        let unregister_result = engines.unregister(&*engine);
+        assert!(unregister_result);
+    }
+
+    #[test]
+    fn test_inject_engines_new() {
+        let engines = InjectEngines::new();
+
+        // Check that new engines instance has empty lists
+        assert_eq!(engines.get_engines().len(), 0);
+        assert_eq!(engines.get_engine_list(), "");
+    }
+}

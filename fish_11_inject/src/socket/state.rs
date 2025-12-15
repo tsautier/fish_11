@@ -59,3 +59,112 @@ pub struct SocketStats {
     pub lines_received: usize,
     pub lines_decrypted: usize,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_socket_state_display() {
+        assert_eq!(format!("{}", SocketState::Initializing), "Initializing");
+        assert_eq!(format!("{}", SocketState::TlsHandshake), "TlsHandshake");
+        assert_eq!(format!("{}", SocketState::Connected), "Connected");
+        assert_eq!(format!("{}", SocketState::IrcIdentified), "IrcIdentified");
+        assert_eq!(format!("{}", SocketState::Closed), "Closed");
+    }
+
+    #[test]
+    fn test_socket_state_equality() {
+        assert_eq!(SocketState::Initializing, SocketState::Initializing);
+        assert_ne!(SocketState::Initializing, SocketState::Connected);
+        assert_eq!(SocketState::TlsHandshake, SocketState::TlsHandshake);
+        assert_eq!(SocketState::Connected, SocketState::Connected);
+        assert_eq!(SocketState::IrcIdentified, SocketState::IrcIdentified);
+        assert_eq!(SocketState::Closed, SocketState::Closed);
+    }
+
+    #[test]
+    fn test_socket_flags_default_values() {
+        let flags =
+            SocketFlags { is_ssl: false, ssl_handshake_complete: false, used_starttls: false };
+
+        assert!(!flags.is_ssl);
+        assert!(!flags.ssl_handshake_complete);
+        assert!(!flags.used_starttls);
+    }
+
+    #[test]
+    fn test_socket_flags_ssl_setting() {
+        let mut flags =
+            SocketFlags { is_ssl: false, ssl_handshake_complete: false, used_starttls: false };
+
+        // Set SSL flag to true
+        flags.is_ssl = true;
+        assert!(flags.is_ssl);
+
+        // Set back to false
+        flags.is_ssl = false;
+        assert!(!flags.is_ssl);
+    }
+
+    #[test]
+    fn test_socket_stats_initialization() {
+        let stats = SocketStats {
+            bytes_sent: 0,
+            lines_sent: 0,
+            lines_encrypted: 0,
+            bytes_received: 0,
+            lines_received: 0,
+            lines_decrypted: 0,
+        };
+
+        assert_eq!(stats.bytes_sent, 0);
+        assert_eq!(stats.lines_sent, 0);
+        assert_eq!(stats.lines_encrypted, 0);
+        assert_eq!(stats.bytes_received, 0);
+        assert_eq!(stats.lines_received, 0);
+        assert_eq!(stats.lines_decrypted, 0);
+    }
+
+    #[test]
+    fn test_socket_stats_modification() {
+        let mut stats = SocketStats {
+            bytes_sent: 0,
+            lines_sent: 0,
+            lines_encrypted: 0,
+            bytes_received: 0,
+            lines_received: 0,
+            lines_decrypted: 0,
+        };
+
+        // Update stats
+        stats.bytes_sent = 100;
+        stats.lines_sent = 5;
+        stats.bytes_received = 200;
+        stats.lines_received = 10;
+
+        assert_eq!(stats.bytes_sent, 100);
+        assert_eq!(stats.lines_sent, 5);
+        assert_eq!(stats.bytes_received, 200);
+        assert_eq!(stats.lines_received, 10);
+    }
+
+    #[test]
+    fn test_socket_error_conversions() {
+        // Test UTF-8 error conversion
+        let utf8_error = std::str::from_utf8(b"\xFF").unwrap_err();
+        let socket_error: SocketError = utf8_error.into();
+        match socket_error {
+            SocketError::Utf8Error(_) => assert!(true), // Expected
+            _ => panic!("Expected Utf8Error"),
+        }
+
+        // Test IO error conversion
+        let io_error = std::io::Error::new(std::io::ErrorKind::Other, "test error");
+        let socket_error: SocketError = io_error.into();
+        match socket_error {
+            SocketError::IoError(_) => assert!(true), // Expected
+            _ => panic!("Expected IoError"),
+        }
+    }
+}

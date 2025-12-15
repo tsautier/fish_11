@@ -75,7 +75,7 @@ pub fn set_manual_channel_key(
         // Replace '#' with 'hash_' to avoid INI file comment issues
         let safe_channel_name = normalized_channel.replace('#', "hash_");
         let entry_key = format!("channel_key_{}", safe_channel_name);
-        
+
         if !overwrite && config.entries.contains_key(&entry_key) {
             return Err(FishError::DuplicateEntry(entry_key));
         }

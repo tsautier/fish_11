@@ -1342,6 +1342,16 @@ mod fcep1_ratchet_tests {
             decrypt_message(&state.current_key, &encrypted1, Some(channel.as_bytes())).is_err()
         );
 
+        // Clear the nonce cache to simulate a new session where old messages can be decrypted
+        {
+            let cache_result = NONCE_CACHE.lock();
+            if cache_result.is_err() {
+                panic!("Failed to acquire NONCE_CACHE lock");
+            }
+            let mut cache = cache_result.unwrap();
+            cache.clear();
+        }
+
         // But it should succeed if we search through the previous_keys
         let mut decrypted_old_message = None;
         for old_key in &state.previous_keys {

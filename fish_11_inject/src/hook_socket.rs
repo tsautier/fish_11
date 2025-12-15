@@ -543,3 +543,82 @@ pub fn uninstall_socket_hooks() {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engines::InjectEngines;
+    use std::sync::Arc;
+
+    #[test]
+    fn test_get_or_create_socket() {
+        let socket_id = 12345u32;
+
+        // Create a socket and verify it's created properly
+        let socket_info_1 = get_or_create_socket(socket_id, false);
+        assert_eq!(socket_info_1.socket, socket_id);
+
+        // Get the same socket again and verify it's the same instance
+        let socket_info_2 = get_or_create_socket(socket_id, false);
+        assert_eq!(Arc::as_ptr(&socket_info_1), Arc::as_ptr(&socket_info_2));
+    }
+
+    #[test]
+    fn test_socket_info_creation() {
+        let engines = Arc::new(InjectEngines::new());
+        let socket_id = 54321u32;
+
+        let socket_info = SocketInfo::new(socket_id, engines);
+
+        assert_eq!(socket_info.socket, socket_id);
+        assert_eq!(socket_info.get_state(), SocketState::Initializing);
+        assert!(!socket_info.is_ssl());
+    }
+
+    #[test]
+    fn test_socket_ssl_flag() {
+        let engines = Arc::new(InjectEngines::new());
+        let socket_id = 67890u32;
+
+        let socket_info = SocketInfo::new(socket_id, engines);
+
+        // Initially should not be SSL
+        assert!(!socket_info.is_ssl());
+
+        // Set as SSL and verify
+        socket_info.set_ssl(true);
+        assert!(socket_info.is_ssl());
+
+        // Set back to non-SSL and verify
+        socket_info.set_ssl(false);
+        assert!(!socket_info.is_ssl());
+    }
+
+    #[test]
+    fn test_socket_states() {
+        let engines = Arc::new(InjectEngines::new());
+        let socket_id = 98765u32;
+
+        let socket_info = SocketInfo::new(socket_id, engines);
+
+        // Test initial state
+        assert_eq!(socket_info.get_state(), SocketState::Initializing);
+
+        // Change state and verify
+        socket_info.set_state(SocketState::Connected);
+        assert_eq!(socket_info.get_state(), SocketState::Connected);
+
+        // Test other states
+        socket_info.set_state(SocketState::TlsHandshake);
+        assert_eq!(socket_info.get_state(), SocketState::TlsHandshake);
+
+        socket_info.set_state(SocketState::IrcIdentified);
+        assert_eq!(socket_info.get_state(), SocketState::IrcIdentified);
+
+        socket_info.set_state(SocketState::Closed);
+        assert_eq!(socket_info.get_state(), SocketState::Closed);
+
+        socket_info.set_state(SocketState::Initializing);
+        assert_eq!(socket_info.get_state(), SocketState::Initializing);
+    }
+}

@@ -111,3 +111,87 @@ impl SocketInfo {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engines::InjectEngines;
+    use std::sync::Arc;
+
+    #[test]
+    fn test_socket_info_creation() {
+        let engines = Arc::new(InjectEngines::new());
+        let socket_id = 12345u32;
+
+        let socket_info = SocketInfo::new(socket_id, engines);
+
+        assert_eq!(socket_info.socket, socket_id);
+        assert_eq!(socket_info.get_state(), SocketState::Initializing);
+        assert!(!socket_info.is_ssl());
+        assert!(socket_info.network_name.read().is_none());
+    }
+
+    #[test]
+    fn test_socket_info_set_network_name() {
+        let engines = Arc::new(InjectEngines::new());
+        let socket_id = 67890u32;
+
+        let socket_info = SocketInfo::new(socket_id, engines);
+
+        // Set network name and verify
+        socket_info.set_network_name("LiberaChat");
+
+        let network_name = socket_info.network_name.read();
+        assert_eq!(network_name.as_ref().unwrap(), "LiberaChat");
+    }
+
+    #[test]
+    fn test_socket_info_set_state() {
+        let engines = Arc::new(InjectEngines::new());
+        let socket_id = 54321u32;
+
+        let socket_info = SocketInfo::new(socket_id, engines);
+
+        // Test changing states
+        assert_eq!(socket_info.get_state(), SocketState::Initializing);
+
+        socket_info.set_state(SocketState::Connected);
+        assert_eq!(socket_info.get_state(), SocketState::Connected);
+
+        socket_info.set_state(SocketState::TlsHandshake);
+        assert_eq!(socket_info.get_state(), SocketState::TlsHandshake);
+    }
+
+    #[test]
+    fn test_socket_info_ssl_flag() {
+        let engines = Arc::new(InjectEngines::new());
+        let socket_id = 98765u32;
+
+        let socket_info = SocketInfo::new(socket_id, engines);
+
+        // Initially should not be SSL
+        assert!(!socket_info.is_ssl());
+
+        // Set as SSL and verify
+        socket_info.set_ssl(true);
+        assert!(socket_info.is_ssl());
+
+        // Set back to non-SSL and verify
+        socket_info.set_ssl(false);
+        assert!(!socket_info.is_ssl());
+    }
+
+    #[test]
+    fn test_socket_info_get_stats() {
+        let engines = Arc::new(InjectEngines::new());
+        let socket_id = 11111u32;
+
+        let socket_info = SocketInfo::new(socket_id, engines);
+
+        let stats_str = socket_info.get_stats();
+
+        assert!(stats_str.contains(&socket_id.to_string()));
+        assert!(stats_str.contains("Initializing"));
+        assert!(stats_str.contains("Plain")); // Should be Plain initially
+    }
+}
