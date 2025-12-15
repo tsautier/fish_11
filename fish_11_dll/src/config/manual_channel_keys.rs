@@ -72,7 +72,10 @@ pub fn set_manual_channel_key(
 
     with_config_mut(|config| {
         // Check if key already exists and overwriting is not allowed
-        let entry_key = format!("channel_key_{}", normalized_channel);
+        // Replace '#' with 'hash_' to avoid INI file comment issues
+        let safe_channel_name = normalized_channel.replace('#', "hash_");
+        let entry_key = format!("channel_key_{}", safe_channel_name);
+
         if !overwrite && config.entries.contains_key(&entry_key) {
             return Err(FishError::DuplicateEntry(entry_key));
         }
@@ -118,7 +121,9 @@ pub fn get_manual_channel_key(channel_name: &str) -> DllResult<[u8; 32]> {
     }
 
     with_config(|config| {
-        let entry_key = format!("channel_key_{}", normalized_channel);
+        // Replace '#' with 'hash_' to avoid INI file comment issues
+        let safe_channel_name = normalized_channel.replace('#', "hash_");
+        let entry_key = format!("channel_key_{}", safe_channel_name);
 
         let entry = config.entries.get(&entry_key).ok_or_else(|| {
             FishError::KeyNotFound(format!(

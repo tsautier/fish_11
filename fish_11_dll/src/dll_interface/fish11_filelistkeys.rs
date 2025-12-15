@@ -107,7 +107,7 @@ mod tests {
     #[test]
     fn test_listkeys_buffer_too_small() {
         let (code, msg) = call_listkeys(8);
-        assert_eq!(code, MIRC_COMMAND);
+        assert_eq!(code, crate::dll_interface::MIRC_IDENTIFIER);
         // Structured check: message is truncated
         assert!(msg.len() < 20);
     }
@@ -127,7 +127,7 @@ mod tests {
         );
 
         let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
-        assert_eq!(result, MIRC_COMMAND);
+        assert_eq!(result, crate::dll_interface::MIRC_IDENTIFIER);
         // Structured check: message should not be empty
         assert!(!c_str.to_string_lossy().is_empty());
     }

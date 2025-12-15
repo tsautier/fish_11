@@ -336,3 +336,34 @@ pub unsafe fn _validate_openssl(info: &OpenSslInfo) -> Result<(), String> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_openssl_info_struct() {
+        // Just verify that our OpenSslInfo struct has the expected fields
+        let info = OpenSslInfo {
+            module_handle: std::ptr::null_mut(),
+            dll_name: "test.dll".to_string(),
+            version: "1.0.0".to_string(),
+            ssl_read_addr: std::ptr::null(),
+            ssl_write_addr: std::ptr::null(),
+        };
+
+        assert_eq!(info.dll_name, "test.dll");
+        assert_eq!(info.version, "1.0.0");
+    }
+
+    #[test]
+    fn test_openssl_dll_names_array() {
+        // Verify that the OPENSSL_DLL_NAMES constant is not empty
+        assert!(!OPENSSL_DLL_NAMES.is_empty());
+
+        // Verify that it contains some expected values
+        assert!(OPENSSL_DLL_NAMES.contains(&"libssl-3.dll"));
+        assert!(OPENSSL_DLL_NAMES.contains(&"libssl-1_1.dll"));
+        assert!(OPENSSL_DLL_NAMES.contains(&"ssleay32.dll"));
+    }
+}

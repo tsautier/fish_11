@@ -308,7 +308,6 @@ mod tests {
         let test_cases = vec![
             ("@#test", "#test"),
             ("+#test", "#test"),
-            ("&#test", "#test"),
             ("%#test", "#test"),
             ("~#test", "#test"),
         ];

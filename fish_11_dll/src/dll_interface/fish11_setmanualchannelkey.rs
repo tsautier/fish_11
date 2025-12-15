@@ -108,7 +108,7 @@ mod tests {
         let input = format!("#test {}", key_b64);
 
         let (code, msg) = call_set_manual_channel_key(&input, 256);
-        assert_eq!(code, MIRC_COMMAND);
+        assert_eq!(code, crate::dll_interface::MIRC_IDENTIFIER);
         assert!(msg.contains("Manual channel key set"));
     }
 

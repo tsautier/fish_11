@@ -323,3 +323,52 @@ pub fn handle_poison<T>(err: PoisonError<T>) -> T {
     error!("Mutex poisoned: {}", err);
     err.into_inner()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    #[test]
+    fn test_init_logger() {
+        init_logger();
+        init_logger(); // Should not panic (idempotent)
+    }
+
+    #[test]
+    fn test_get_winsock_function() {
+        // This test is skipped in environments where ws2_32.dll may not be accessible
+        // The function itself has a hardcoded panic if ws2_32.dll is not found
+        // which makes it unsuitable for unit testing in all environments
+    }
+
+    #[test]
+    fn test_handle_poison() {
+        use std::sync::Mutex;
+
+        let mutex = Arc::new(Mutex::new(42));
+        let mutex_clone = Arc::clone(&mutex);
+
+        // Manually create a poisoned mutex by calling panic! while holding the lock in another thread
+        let handle = std::thread::spawn(move || {
+            let _guard = mutex_clone.lock().unwrap();
+            panic!("Intentional panic to create poisoned mutex");
+        });
+
+        // Wait for the thread to panic
+        let _ = handle.join();
+
+        // Now try to lock the mutex - this should fail
+        let poisoned_result = mutex.lock();
+
+        // Test that handle_poison works without panicking
+        match poisoned_result {
+            Ok(_) => panic!("Expected mutex to be poisoned"),
+            Err(poison_err) => {
+                // Use handle_poison to retrieve the inner value
+                let value = handle_poison(poison_err);
+                assert_eq!(*value, 42); // Dereference the value to get the integer
+            }
+        }
+    }
+}

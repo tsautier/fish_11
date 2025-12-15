@@ -405,3 +405,25 @@ pub extern "system" fn FiSH11_InjectVersion(
 
     MIRC_IDENTIFIER
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_loadinfo_struct_size() {
+        // Just verify that our LOADINFO struct has the expected fields
+        let load_info = LOADINFO {
+            m_unicode: 0,
+            m_version: 700,
+            m_hwnd: unsafe { std::mem::zeroed() },
+            m_filename: std::ptr::null_mut(),
+            m_keep: 0,
+            m_bytes: 4096,
+        };
+
+        // Test that we can create a LOADINFO struct (compile-time check)
+        assert_eq!(load_info.m_version, 700);
+        assert_eq!(load_info.m_bytes, 4096);
+    }
+}
