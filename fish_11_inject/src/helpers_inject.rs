@@ -198,9 +198,8 @@ pub fn install_hooks() -> Result<(), io::Error> {
             warn!("Could not find SSL_is_init_finished function, skipping SSL hook installation.");
             return Ok(());
         }
-        let ssl_is_init_finished = std::mem::transmute::<FARPROC, SslIsInitFinishedProc>(
-            ssl_is_init_finished_ptr,
-        );
+        let ssl_is_init_finished =
+            std::mem::transmute::<FARPROC, SslIsInitFinishedProc>(ssl_is_init_finished_ptr);
         #[cfg(debug_assertions)]
         info!(
             "install_hooks: SSL_is_init_finished resolved at {:?}",

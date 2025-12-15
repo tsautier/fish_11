@@ -295,8 +295,13 @@ pub unsafe extern "system" fn hooked_send(
         drop(stats); // Release the lock before protocol detection
 
         if protocol_detection::is_initial_irc_command(data_slice) {
-            socket_info.set_state(SocketState::IrcIdentified);
-            debug!("Socket {}: identified as IRC connection", s);
+            // Only update to IrcIdentified if not already at least Connected
+            let current_state = socket_info.get_state();
+            if current_state == SocketState::Initializing || current_state == SocketState::Connected
+            {
+                socket_info.set_state(SocketState::IrcIdentified);
+                debug!("Socket {}: identified as IRC connection", s);
+            }
 
             if let Ok(utf8_str) = std::str::from_utf8(data_slice) {
                 trace!("Socket {}: sending initial IRC data: {}", s, utf8_str.trim());
@@ -406,6 +411,7 @@ pub unsafe extern "system" fn hooked_connect(
     if result == 0 {
         // Connection successful
         debug!("Socket {}: connection established", s);
+        // Initially set to Connected when underlying network connection is ready
         socket_info.set_state(SocketState::Connected);
 
         // Check if this is likely to be a TLS connection (e.g., port 6697)
