@@ -453,6 +453,11 @@ pub extern "C" fn UnregisterEngine(engine: *const FishInjectEngine) -> i32 {
     }
 }
 
+/// Gets the network name associated with a socket ID.
+///
+/// # Safety
+/// The returned string must be freed by calling FreeString() function
+/// to avoid memory leaks. The caller owns the returned string pointer.
 #[no_mangle]
 pub unsafe extern "C" fn GetNetworkName(socket_id: u32) -> *mut std::ffi::c_char {
     use crate::ACTIVE_SOCKETS;
@@ -466,6 +471,20 @@ pub unsafe extern "C" fn GetNetworkName(socket_id: u32) -> *mut std::ffi::c_char
         }
     }
     std::ptr::null_mut()
+}
+
+/// Frees a string allocated by this DLL.
+///
+/// # Safety
+/// This function should only be called with pointers returned by functions
+/// in this DLL that explicitly state the returned pointer must be freed
+/// using this function.
+#[no_mangle]
+pub unsafe extern "C" fn FreeString(str_ptr: *mut std::ffi::c_char) {
+    if !str_ptr.is_null() {
+        // Convert back to CString which will be automatically freed when it goes out of scope
+        let _ = std::ffi::CString::from_raw(str_ptr);
+    }
 }
 
 #[cfg(test)]
