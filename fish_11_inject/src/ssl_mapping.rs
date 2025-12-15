@@ -98,7 +98,8 @@ impl SslSocketMapping {
 
         let ssl_id = ssl as usize;
 
-        // Remove from SSL_TO_SOCKET and get the socket_id
+        // To prevent deadlock with remove_socket, we follow the same pattern:
+        // First get the socket_id from SSL_TO_SOCKET, then remove from both maps
         if let Some((_, socket_id)) = SSL_TO_SOCKET.remove(&ssl_id) {
             // Also remove from SOCKET_TO_SSL
             SOCKET_TO_SSL.remove(&socket_id);
@@ -122,12 +123,14 @@ impl SslSocketMapping {
     /// # Returns
     /// The SSL pointer that was associated, if any.
     pub fn remove_socket(socket_id: u32) -> Option<*mut SSL> {
-        // Remove from SOCKET_TO_SSL and get the SSL pointer
+        // Remove from SOCKET_TO_SSL and get the SSL wrapper first
         if let Some((_, wrapper)) = SOCKET_TO_SSL.remove(&socket_id) {
             let ssl = wrapper.ssl;
             let ssl_id = ssl as usize;
 
-            // Also remove from SSL_TO_SOCKET
+            // Also remove from SSL_TO_SOCKET to maintain consistency
+            // This order is different from remove_ssl but this is unavoidable
+            // since we need to get SSL from socket first
             SSL_TO_SOCKET.remove(&ssl_id);
 
             debug!("SslSocketMapping: removed socket {} (was mapped to SSL {:p})", socket_id, ssl);

@@ -280,7 +280,7 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
         }
     };
 
-    // Get socket associated with SSL context
+    // Get socket associated with SSL context BEFORE calling original
     let socket_id = match get_socket_from_ssl_context(ssl) {
         Some(id) => id,
         None => {
