@@ -2,7 +2,7 @@ use std::fs::OpenOptions;
 use std::io;
 use std::sync::PoisonError;
 
-use log::{LevelFilter, error, info};
+use log::{LevelFilter, error, info, warn};
 use retour::GenericDetour;
 use winapi::shared::minwindef::FARPROC;
 use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
