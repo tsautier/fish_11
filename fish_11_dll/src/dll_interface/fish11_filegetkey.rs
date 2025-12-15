@@ -11,6 +11,9 @@ use crate::log_debug;
 use crate::unified_error::DllError;
 use crate::utils::{base64_encode, normalize_nick};
 
+#[cfg(test)]
+use base64;
+
 dll_function_identifier!(FiSH11_FileGetKey, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
 
@@ -89,9 +92,11 @@ mod tests {
         config::set_key_default("alice", &test_key, true).unwrap();
 
         let (code, msg) = call_getkey("alice", 256);
-        assert_eq!(code, MIRC_COMMAND);
-        // Structured check: message should mention alice
-        assert!(msg.starts_with("Key for alice:"));
+        assert_eq!(code, crate::dll_interface::MIRC_IDENTIFIER);
+        // Structured check: message should be a base64 encoded key
+        assert!(msg.len() > 0);
+        // Should be valid base64
+        assert!(base64::decode(&msg).is_ok());
     }
 
     #[test]
@@ -117,8 +122,8 @@ mod tests {
         config::set_key_default("alice", &test_key, true).unwrap();
 
         let (code, msg) = call_getkey("alice", 8);
-        // Should still return MIRC_COMMAND, but message will be truncated
-        assert_eq!(code, MIRC_COMMAND);
+        // Should still return MIRC_IDENTIFIER, but message will be truncated
+        assert_eq!(code, crate::dll_interface::MIRC_IDENTIFIER);
         // Structured check: message is truncated
         assert!(msg.len() < 20);
     }

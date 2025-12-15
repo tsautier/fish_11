@@ -93,7 +93,7 @@ mod tests {
     #[test]
     fn test_delkey_nickname_empty() {
         let (code, msg) = call_delkey("   ", 256);
-        assert_eq!(code, crate::dll_interface::MIRC_IDENTIFIER);
+        assert_eq!(code, crate::dll_interface::MIRC_COMMAND);
         // Structured check: message should mention empty input or missing parameter
         assert!(msg.to_lowercase().contains("empty") || msg.to_lowercase().contains("missing"));
     }
@@ -101,7 +101,7 @@ mod tests {
     #[test]
     fn test_delkey_key_not_found() {
         let (code, msg) = call_delkey("unknown_nick", 256);
-        assert_eq!(code, crate::dll_interface::MIRC_IDENTIFIER);
+        assert_eq!(code, crate::dll_interface::MIRC_COMMAND);
         // Structured check: message should mention no encryption key
         assert!(msg.to_lowercase().contains("no encryption key"));
     }
@@ -143,7 +143,7 @@ mod tests {
         crate::dll_interface::restore_buffer_size_for_test(prev_size);
 
         let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
-        assert_eq!(result, crate::dll_interface::MIRC_IDENTIFIER);
+        assert_eq!(result, crate::dll_interface::MIRC_COMMAND);
         // The function will read "a" and try to delete key for "a"
         // It should return an error message (key not found or similar)
         assert!(c_str.to_string_lossy().len() > 0);
