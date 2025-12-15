@@ -80,10 +80,6 @@ pub fn normalize_target(target: &str) -> &str {
         if seen_status && idx > 0 {
             return &trimmed[idx..];
         }
-        // Handle the case where & is used as a channel prefix - normalize to #
-        if trimmed.starts_with('&') {
-            return &trimmed.replace('&', "#");
-        }
     }
 
     trimmed
