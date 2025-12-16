@@ -6,11 +6,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Maximum number of previous ratchet keys to retain.
 ///
 /// This window allows decryption of out-of-order messages while maintaining
-/// forward secrecy. A window of 5 keys provides tolerance for typical IRC
-/// network conditions (reordering, lag) while keeping memory usage minimal.
+/// forward secrecy. A window of 2 keys provides tolerance for typical IRC
+/// network conditions (reordering, lag) while significantly improving security.
 ///
 /// Security trade-off: Larger window = better reliability but slower FS.
-const MAX_PREVIOUS_KEYS: usize = 5;
+/// Reduced from 5 to 2 keys to minimize the attack surface in case of memory compromise.
+/// This means only the 2 most recent previous keys are kept, limiting the exposure
+/// window while still handling most common out-of-order message scenarios.
+const MAX_PREVIOUS_KEYS: usize = 2;
 
 /// Maximum number of nonces to cache per channel for replay detection.
 ///
