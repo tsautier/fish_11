@@ -4,6 +4,7 @@
 use std::ffi::{CString, c_char};
 use std::ptr;
 
+use once_cell::sync::OnceCell;
 use winapi::shared::minwindef::{FARPROC, HMODULE};
 use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
 
@@ -12,7 +13,7 @@ use crate::crypto::{decrypt_message, encrypt_message};
 use crate::{log_debug, log_error, log_info, log_warn};
 
 type GetNetworkNameFn = unsafe extern "C" fn(u32) -> *mut c_char;
-static mut GET_NETWORK_NAME_FN: Option<GetNetworkNameFn> = None;
+static GET_NETWORK_NAME_FN: OnceCell<GetNetworkNameFn> = OnceCell::new();
 
 // C-style struct for engine registration
 #[repr(C)]
@@ -32,7 +33,7 @@ unsafe impl Sync for FishInjectEngine {}
 
 // Real implementation for get_network_name (calls fish_inject's GetNetworkName)
 unsafe extern "C" fn get_network_name_impl(socket: u32) -> *mut c_char {
-    if let Some(get_network_name_fn) = GET_NETWORK_NAME_FN {
+    if let Some(get_network_name_fn) = GET_NETWORK_NAME_FN.get() {
         return get_network_name_fn(socket);
     }
     ptr::null_mut()
@@ -842,7 +843,10 @@ pub fn register_engine() {
         if get_network_name_fn.is_null() {
             log_error!("GetNetworkName function not found in fish_11_inject.dll.");
         } else {
-            GET_NETWORK_NAME_FN = Some(std::mem::transmute(get_network_name_fn));
+            let get_network_name_fn_ptr: GetNetworkNameFn = std::mem::transmute(get_network_name_fn);
+            if let Err(_) = GET_NETWORK_NAME_FN.set(get_network_name_fn_ptr) {
+                log_error!("GetNetworkName function already set, this should not happen.");
+            }
         }
 
         let register_fn_name = CString::new("RegisterEngine").unwrap();
@@ -866,7 +870,7 @@ pub fn register_engine() {
 
 pub fn get_network_name_from_inject(socket_id: u32) -> Option<String> {
     unsafe {
-        if let Some(get_network_name_fn) = GET_NETWORK_NAME_FN {
+        if let Some(get_network_name_fn) = GET_NETWORK_NAME_FN.get() {
             let c_char_ptr = get_network_name_fn(socket_id);
             if !c_char_ptr.is_null() {
                 let c_string = CString::from_raw(c_char_ptr);

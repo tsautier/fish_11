@@ -188,6 +188,14 @@ pub unsafe extern "system" fn hooked_recv(
 }
 
 /// Hook implementation for send
+///
+/// State machine transitions handled in this function:
+/// - Initializing -> IrcIdentified (when first IRC command is detected)
+/// - Connected -> IrcIdentified (when first IRC command is detected)
+/// - Initializing -> TlsHandshake (when TLS handshake is detected)
+///
+/// Note: Once in IrcIdentified state, the socket will not transition back
+/// to avoid state inconsistency and ensure proper protocol handling.
 pub unsafe extern "system" fn hooked_send(
     s: SOCKET,
     buf: *const i8,
@@ -295,8 +303,17 @@ pub unsafe extern "system" fn hooked_send(
         drop(stats); // Release the lock before protocol detection
 
         if protocol_detection::is_initial_irc_command(data_slice) {
-            socket_info.set_state(SocketState::IrcIdentified);
-            debug!("Socket {}: identified as IRC connection", s);
+            // Only update to IrcIdentified if not already at least Connected
+            let current_state = socket_info.get_state();
+            if current_state == SocketState::Initializing || current_state == SocketState::Connected
+            {
+                socket_info.set_state(SocketState::IrcIdentified);
+                debug!("Socket {}: identified as IRC connection", s);
+            } else if current_state != SocketState::IrcIdentified {
+                // Socket is already in a different state (TlsHandshake, Closed, etc.)
+                // Log this as it might indicate unexpected protocol behavior
+                debug!("Socket {}: IRC command detected but socket is in {} state", s, current_state);
+            }
 
             if let Ok(utf8_str) = std::str::from_utf8(data_slice) {
                 trace!("Socket {}: sending initial IRC data: {}", s, utf8_str.trim());
@@ -406,7 +423,16 @@ pub unsafe extern "system" fn hooked_connect(
     if result == 0 {
         // Connection successful
         debug!("Socket {}: connection established", s);
-        socket_info.set_state(SocketState::Connected);
+        
+        // Only transition to Connected if not already in a more advanced state
+        let current_state = socket_info.get_state();
+        if current_state == SocketState::Initializing {
+            // Initially set to Connected when underlying network connection is ready
+            socket_info.set_state(SocketState::Connected);
+        } else if current_state != SocketState::Connected {
+            // Log unexpected state transitions
+            debug!("Socket {}: connection established but socket was in {} state", s, current_state);
+        }
 
         // Check if this is likely to be a TLS connection (e.g., port 6697)
         //
@@ -620,5 +646,58 @@ mod tests {
 
         socket_info.set_state(SocketState::Initializing);
         assert_eq!(socket_info.get_state(), SocketState::Initializing);
+    }
+
+    #[test]
+    fn test_state_transition_logic() {
+        let engines = Arc::new(InjectEngines::new());
+        let socket_id = 12345u32;
+
+        let socket_info = SocketInfo::new(socket_id, engines.clone());
+
+        // Test that we can transition from Initializing to IrcIdentified
+        assert_eq!(socket_info.get_state(), SocketState::Initializing);
+        socket_info.set_state(SocketState::IrcIdentified);
+        assert_eq!(socket_info.get_state(), SocketState::IrcIdentified);
+
+        // Test that we can transition from Connected to IrcIdentified
+        let socket_info2 = SocketInfo::new(54321u32, engines.clone());
+        socket_info2.set_state(SocketState::Connected);
+        assert_eq!(socket_info2.get_state(), SocketState::Connected);
+        socket_info2.set_state(SocketState::IrcIdentified);
+        assert_eq!(socket_info2.get_state(), SocketState::IrcIdentified);
+
+        // Test that we don't accidentally regress from IrcIdentified
+        let socket_info3 = SocketInfo::new(67890u32, engines.clone());
+        socket_info3.set_state(SocketState::IrcIdentified);
+        
+        // Simulate the condition check from hooked_send
+        let current_state = socket_info3.get_state();
+        if current_state == SocketState::Initializing || current_state == SocketState::Connected {
+            socket_info3.set_state(SocketState::IrcIdentified);
+        }
+        // State should remain IrcIdentified (not be reset)
+        assert_eq!(socket_info3.get_state(), SocketState::IrcIdentified);
+    }
+
+    #[test]
+    fn test_ssl_state_transitions() {
+        let engines = Arc::new(InjectEngines::new());
+        let socket_id = 98765u32;
+
+        let socket_info = SocketInfo::new(socket_id, engines.clone());
+
+        // Test TLS handshake state
+        assert_eq!(socket_info.get_state(), SocketState::Initializing);
+        socket_info.set_state(SocketState::TlsHandshake);
+        assert_eq!(socket_info.get_state(), SocketState::TlsHandshake);
+
+        // Test that TLS handshake doesn't interfere with IRC identification
+        let current_state = socket_info.get_state();
+        if current_state == SocketState::Initializing || current_state == SocketState::Connected {
+            // This should not execute as state is TlsHandshake
+            panic!("Should not transition from TlsHandshake to IrcIdentified");
+        }
+        assert_eq!(socket_info.get_state(), SocketState::TlsHandshake);
     }
 }

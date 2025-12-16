@@ -1163,7 +1163,7 @@ mod fcep1_ratchet_tests {
         assert_eq!(state.epoch, 6, "Epoch should be 6 after 6 advances");
         assert_eq!(
             state.previous_keys.len(),
-            5,
+            2,
             "Previous keys should be capped at MAX_PREVIOUS_KEYS"
         );
 

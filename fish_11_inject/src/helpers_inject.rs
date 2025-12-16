@@ -2,7 +2,7 @@ use std::fs::OpenOptions;
 use std::io;
 use std::sync::PoisonError;
 
-use log::{LevelFilter, error, info};
+use log::{LevelFilter, error, info, warn};
 use retour::GenericDetour;
 use winapi::shared::minwindef::FARPROC;
 use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
@@ -166,22 +166,40 @@ pub fn install_hooks() -> Result<(), io::Error> {
         info!("install_hooks: resolving SSL functions...");
 
         // Install SSL hooks
-        let ssl_read = std::mem::transmute::<FARPROC, SslReadFn>(find_ssl_function("SSL_read"));
+        let ssl_read_ptr = find_ssl_function("SSL_read");
+        if ssl_read_ptr.is_null() {
+            warn!("Could not find SSL_read function, skipping SSL hook installation.");
+            return Ok(());
+        }
+        let ssl_read = std::mem::transmute::<FARPROC, SslReadFn>(ssl_read_ptr);
         #[cfg(debug_assertions)]
         info!("install_hooks: SSL_read resolved at {:?}", ssl_read as *const ());
 
-        let ssl_write = std::mem::transmute::<FARPROC, SslWriteFn>(find_ssl_function("SSL_write"));
+        let ssl_write_ptr = find_ssl_function("SSL_write");
+        if ssl_write_ptr.is_null() {
+            warn!("Could not find SSL_write function, skipping SSL hook installation.");
+            return Ok(());
+        }
+        let ssl_write = std::mem::transmute::<FARPROC, SslWriteFn>(ssl_write_ptr);
         #[cfg(debug_assertions)]
         info!("install_hooks: SSL_write resolved at {:?}", ssl_write as *const ());
 
-        let ssl_get_fd =
-            std::mem::transmute::<FARPROC, SslGetFdFn>(find_ssl_function("SSL_get_fd"));
+        let ssl_get_fd_ptr = find_ssl_function("SSL_get_fd");
+        if ssl_get_fd_ptr.is_null() {
+            warn!("Could not find SSL_get_fd function, skipping SSL hook installation.");
+            return Ok(());
+        }
+        let ssl_get_fd = std::mem::transmute::<FARPROC, SslGetFdFn>(ssl_get_fd_ptr);
         #[cfg(debug_assertions)]
         info!("install_hooks: SSL_get_fd resolved at {:?}", ssl_get_fd as *const ());
 
-        let ssl_is_init_finished = std::mem::transmute::<FARPROC, SslIsInitFinishedProc>(
-            find_ssl_function("SSL_is_init_finished"),
-        );
+        let ssl_is_init_finished_ptr = find_ssl_function("SSL_is_init_finished");
+        if ssl_is_init_finished_ptr.is_null() {
+            warn!("Could not find SSL_is_init_finished function, skipping SSL hook installation.");
+            return Ok(());
+        }
+        let ssl_is_init_finished =
+            std::mem::transmute::<FARPROC, SslIsInitFinishedProc>(ssl_is_init_finished_ptr);
         #[cfg(debug_assertions)]
         info!(
             "install_hooks: SSL_is_init_finished resolved at {:?}",

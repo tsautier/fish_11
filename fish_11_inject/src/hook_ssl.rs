@@ -280,7 +280,7 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
         }
     };
 
-    // Get socket associated with SSL context
+    // Get socket associated with SSL context BEFORE calling original
     let socket_id = match get_socket_from_ssl_context(ssl) {
         Some(id) => id,
         None => {
@@ -658,8 +658,7 @@ unsafe extern "C" fn hooked_ssl_connect(ssl: *mut SSL) -> c_int {
         debug!("[HANDSHAKE] Socket {}: state set to TlsHandshake (post connect)", socket_id);
         socket_info.set_state(SocketState::TlsHandshake);
         debug!("Socket {}: SSL_connect - Setting state to TLS handshake", socket_id);
-    } // Call original function
-    let result = original_fn(ssl);
+    }
 
     // If connection successful, update state
     if result > 0 {
