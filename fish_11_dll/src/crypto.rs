@@ -608,6 +608,67 @@ mod tests {
     }
 
     #[test]
+    fn test_constant_time_compare() {
+        // Test equal values
+        let a = b"hello";
+        let b = b"hello";
+        assert!(constant_time_compare(a, b));
+
+        // Test different values
+        let a = b"hello";
+        let b = b"world";
+        assert!(!constant_time_compare(a, b));
+
+        // Test different lengths (should return false)
+        let a = b"hello";
+        let b = b"hello!";
+        assert!(!constant_time_compare(a, b));
+
+        // Test empty arrays
+        let a = b"";
+        let b = b"";
+        assert!(constant_time_compare(a, b));
+
+        // Test with cryptographic values
+        let key1 = [42u8; 32];
+        let key2 = [42u8; 32];
+        assert!(constant_time_compare(&key1, &key2));
+
+        let key1 = [42u8; 32];
+        let key2 = [43u8; 32];
+        assert!(!constant_time_compare(&key1, &key2));
+    }
+
+    #[test]
+    fn test_extract_public_key_with_constant_time() {
+        // Create a valid key for testing
+        let keypair = generate_keypair();
+        let valid_key = format!("X25519_INIT:{}", base64_encode(&keypair.public_key));
+        let result = extract_public_key(&valid_key);
+        assert!(result.is_ok());
+
+        // Test invalid prefix (should fail with constant time)
+        let invalid_prefix = "INVALID_INIT:SGVsbG8gV29ybGQhISEhIQ==";
+        let result = extract_public_key(invalid_prefix);
+        assert!(result.is_err());
+
+        // Test wrong prefix (should fail with constant time)
+        let wrong_prefix = "X25519_WRONG:SGVsbG8gV29ybGQhISEhIQ==";
+        let result = extract_public_key(wrong_prefix);
+        assert!(result.is_err());
+
+        // Test empty prefix (should fail with constant time)
+        let empty_prefix = "SGVsbG8gV29ybGQhISEhIQ==";
+        let result = extract_public_key(empty_prefix);
+        assert!(result.is_err());
+
+        // Test too short after prefix
+        let short_key = "X25519_INIT:SGVsbG8="; // Only 8 bytes instead of 32
+        let result = extract_public_key(short_key);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_compute_shared_secret() {
         let keypair1 = generate_keypair();
         let keypair2 = generate_keypair();
