@@ -87,7 +87,7 @@ pub fn process_mirc_output(output: &str, format: OutputFormat) -> String {
 
                     // Don't add separator lines as-is
                     if content.contains("------------------------") {
-                        formatted_output.push_str("\n");
+                        formatted_output.push('\n');
                     } else {
                         formatted_output.push_str(&format!("{}\n", content));
                     }

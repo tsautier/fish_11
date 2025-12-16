@@ -453,8 +453,9 @@ pub fn format_public_key(public_key: &[u8; 32]) -> String {
 pub fn extract_public_key(formatted: &str) -> Result<[u8; 32]> {
     const PREFIX: &str = "X25519_INIT:";
 
-    // Check if the string has the correct prefix
-    if !formatted.starts_with(PREFIX) {
+    // Check if the string has the correct prefix using constant-time comparison
+    // to prevent timing attacks that could leak information about the prefix
+    if !formatted.len() >= PREFIX.len() || !constant_time_compare(formatted.as_bytes(), PREFIX.as_bytes()) {
         return Err(FishError::InvalidInput(
             "Formatted key does not have the correct prefix".to_string(),
         ));

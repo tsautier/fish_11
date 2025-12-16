@@ -123,72 +123,7 @@ Get the time-to-live (TTL) for a key in seconds.
   - `NO_TTL` - Key is not an exchange key (manual key)
   - Error message on failure
 
-### `FiSH11_GetKeyTTLHumanReadable`
 
-Get the time-to-live (TTL) for a key in a human-readable format.
-
-- **usage**: `/dll fish_11.dll FiSH11_GetKeyTTLHumanReadable <nickname> [network]`
-- **parameters**:
-  - `nickname`: the nickname for which to get the TTL
-  - `network` (optional): the network name (default: current network)
-- **returns**:
-  - Human-readable TTL description (e.g., "12h 30m", "EXPIRED", "NO_TTL")
-  - Error message on failure
-
-### `FiSH11_GetKeyStatus`
-
-Get detailed status information for a key.
-
-- **usage**: `/dll fish_11.dll FiSH11_GetKeyStatus <nickname> [network]`
-- **parameters**:
-  - `nickname`: the nickname for which to get the status
-  - `network` (optional): the network name (default: current network)
-- **returns**:
-  - JSON-like status information including nickname, network, is_exchange, is_valid, and TTL
-  - Error message on failure
-
-### `FiSH11_GetKeyStatusHumanReadable`
-
-Get human-readable status information for a key.
-
-- **usage**: `/dll fish_11.dll FiSH11_GetKeyStatusHumanReadable <nickname> [network]`
-- **parameters**:
-  - `nickname`: the nickname for which to get the status
-  - `network` (optional): the network name (default: current network)
-- **returns**:
-  - Human-readable status description (e.g., "exchange key, expires in 12h 30m", "manual key, expired")
-  - Error message on failure
-
-### `FiSH11_GetAllKeysWithTTL`
-
-Get information about all keys with their TTL status.
-
-- **usage**: `/dll fish_11.dll FiSH11_GetAllKeysWithTTL`
-- **parameters**: none
-- **returns**:
-  - List of all keys with their status information
-  - Error message on failure
-
-### `FiSH11_GetConfiguredKeyTTL`
-
-Get the configured TTL for exchange keys.
-
-- **usage**: `/dll fish_11.dll FiSH11_GetConfiguredKeyTTL`
-- **parameters**: none
-- **returns**:
-  - TTL in seconds on success
-  - Error message on failure
-
-### `FiSH11_SetKeyTTL`
-
-Set the TTL for exchange keys (not yet implemented).
-
-- **usage**: `/dll fish_11.dll FiSH11_SetKeyTTL <ttl_seconds>`
-- **parameters**:
-  - `ttl_seconds`: the TTL in seconds
-- **returns**:
-  - Success message on success
-  - Error message on failure
 
 ---
 
@@ -230,7 +165,7 @@ Encrypts a message for a target user or channel.
 - **behavior**:
   - **private message**: if the target is a nickname, it uses the pre-established symmetric key for that user.
   - **channel message**: if the target is a channel (starts with `#` or `&`), it uses the FCEP-1 ratchet-based key for that channel.
-- **returns**: the encrypted message, prefixed with `+FiSH `, e.g., `+FiSH BASE64...`.
+- **returns**: the encrypted message, prefixed with `+FiSH `, e.g., `+FiSH BASE64...`. On error (e.g., key expired), returns a descriptive error message.
 
 ### `FiSH11_DecryptMsg`
 
@@ -243,7 +178,7 @@ Decrypts a message received from a user or in a channel.
 - **behavior**:
   - **private message**: uses the symmetric key associated with the sender's nickname.
   - **channel message**: uses the FCEP-1 ratchet-based key for the channel, handling out-of-order messages and replay protection.
-- **returns**: the decrypted plaintext message.
+- **returns**: the decrypted plaintext message. On error (e.g. key expired), returns a descriptive error message.
 
 ---
 
