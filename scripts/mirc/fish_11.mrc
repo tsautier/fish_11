@@ -67,7 +67,8 @@ alias fish11_startup {
   var %raw_version_info = $dll(%Fish11DllFile, FiSH11_GetVersion, $null)
   if (%raw_version_info) {
     ; Parse the raw string: VERSION|BUILD_TYPE
-    var %version_string = $gettok(%raw_version_info, 1, 124) ; 124 is ASCII for |
+    ; 124 is ASCII for |
+    var %version_string = $gettok(%raw_version_info, 1, 124)
     var %build_type = $gettok(%raw_version_info, 2, 124)
 
     ; Display the base version info
@@ -1024,7 +1025,8 @@ alias fish11_version {
   }
 
   ; Parse the raw string: VERSION|BUILD_TYPE
-  var %version_string = $gettok(%raw_version_info, 1, 124) ; 124 is ASCII for |
+  ; 124 is ASCII for |
+  var %version_string = $gettok(%raw_version_info, 1, 124)
   var %build_type = $gettok(%raw_version_info, 2, 124)
 
   ; Display the base version info
@@ -1040,6 +1042,8 @@ alias fish11_version {
     echo 4 -ts $chr(3)3 *** Logging can be configured in your fish_11.ini file.
   }
 }
+
+
 
 alias fish11_injection_version {
   var %inject_version = $dll(%Fish11InjectDllFile, FiSH11_InjectVersion, $null)
