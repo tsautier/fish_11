@@ -281,7 +281,7 @@ fn list_exports(dll_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     for func_name in [
         "FiSH11_GetVersion",
         "FiSH11_GenKey",
-        "FiSH11_DelKey",
+        "FiSH11_FileDelKey",  // Changed from FiSH11_DelKey
         "FiSH11_SetKey",
         "FiSH11_FileGetKey",
         "FiSH11_FileListKeys",
@@ -290,13 +290,27 @@ fn list_exports(dll_path: &str) -> Result<(), Box<dyn std::error::Error>> {
         "FiSH11_EncryptMsg",
         "FiSH11_DecryptMsg",
         "FiSH11_TestCrypt",
-        "FiSH11_ImportKey",
-        "FiSH11_ExportKey",
-        "FiSH11_SetPasswordHash",
-        "FiSH11_VerifyPasswordHash",
-        "FiSH11_GetKeyInfo",
-        "FiSH11_ReKeyAll",
+        "FiSH11_GetConfigPath",
         "FiSH11_Help",
+        "FiSH11_SetMircDir",
+        "FiSH11_FileListKeysItem",
+        "INI_GetBool",
+        "INI_GetString",
+        "INI_GetInt",
+        "FiSH11_InitChannelKey",
+        "FiSH11_ProcessChannelKey",
+        "FiSH11_GetKeyTTL",
+        "FiSH11_GetRatchetState",
+        "FiSH11_SetManualChannelKey",
+        "FiSH11_SetNetwork",
+        "FiSH11_SetKeyFromPlaintext",
+        // Functions that were in CLI but not found in DLL:
+        // "FiSH11_ImportKey",  // Not in DLL
+        // "FiSH11_ExportKey",  // Not in DLL
+        // "FiSH11_SetPasswordHash",  // Not in DLL
+        // "FiSH11_VerifyPasswordHash",  // Not in DLL
+        // "FiSH11_GetKeyInfo",  // Not in DLL
+        // "FiSH11_ReKeyAll",  // Not in DLL
     ] {
         let found = unsafe {
             dll.get::<DllFunctionFn>(func_name.as_bytes()).is_ok()
@@ -325,23 +339,43 @@ fn display_help() {
     println!("  -q, --quiet     Minimize output messages");
     println!("");
     println!("Commands:");
-    println!("  help            Show this help message");
-    println!("  list            List available functions in the DLL");
-    println!("  getversion      Get the DLL version");
-    println!("  genkey          Generate a new encryption key for a target");
-    println!("  setkey          Set a specific key for a target");
-    println!("  getkey          Get the key for a target");
-    println!("  delkey          Delete a key for a target");
-    println!("  listkeys        List all stored keys");
-    println!("  encrypt         Encrypt a message");
-    println!("  decrypt         Decrypt a message");
+    println!("  help                    Show this help message");
+    println!("  list                    List available functions in the DLL");
+    println!("  getversion              Get the DLL version");
+    println!("  genkey                  Generate a new encryption key for a target");
+    println!("  setkey                  Set a specific key for a target");
+    println!("  getkey                  Get the key for a target");
+    println!("  delkey                  Delete a key for a target");
+    println!("  listkeys                List all stored keys");
+    println!("  listkeysitem            List a specific key item");
+    println!("  encrypt                 Encrypt a message");
+    println!("  decrypt                 Decrypt a message");
+    println!("  testcrypt               Test encryption/decryption cycle");
+    println!("  getconfigpath           Get the configuration file path");
+    println!("  setmircdir              Set the mIRC directory");
+    println!("  ini_getbool             Get a boolean value from the config file");
+    println!("  ini_getstring           Get a string value from the config file");
+    println!("  ini_getint              Get an integer value from the config file");
+    println!("  initchannelkey          Initialize a channel encryption key");
+    println!("  processchannelkey       Process a received channel key");
+    println!("  getkeyttl               Get the time-to-live for a key");
+    println!("  getratchetstate         Get the ratchet state for a channel");
+    println!("  setmanualchannelkey     Set a manual channel encryption key");
+    println!("  setnetwork              Set the current IRC network");
+    println!("  setkeyfromplaintext     Set a key from plaintext");
     println!("");
     println!("Examples:");
     println!("  fish_11_cli fish_11.dll getversion");
     println!("  fish_11_cli fish_11.dll genkey #channel");
     println!("  fish_11_cli fish_11.dll encrypt #channel \"Secret message\"");
     println!("  fish_11_cli fish_11.dll decrypt #channel \"+OK abcdef1234\"");
-    println!("  fish_11_cli fish_11.dll listkeys c:\\path\\to\\fish_10.ini");
+    println!("  fish_11_cli fish_11.dll listkeys c:\\path\\to\\fish_11.ini");
+    println!("  fish_11_cli fish_11.dll ini_getbool process_incoming 1");
+    println!("  fish_11_cli fish_11.dll ini_getstring plain_prefix \"\"");
+    println!("  fish_11_cli fish_11.dll ini_getint mark_position 0");
+    println!("  fish_11_cli fish_11.dll initchannelkey #secret alice bob");
+    println!("  fish_11_cli fish_11.dll setkeyttl alice");
+    println!("  fish_11_cli fish_11.dll setnetwork EFNet");
 }
 
 fn main() {
@@ -476,23 +510,37 @@ fn main() {
     let function_name = match command.as_str() {
         "getversion" => "FiSH11_GetVersion",
         "genkey" => "FiSH11_GenKey",
-        "delkey" => "FiSH11_DelKey",
+        "delkey" => "FiSH11_FileDelKey",  // Changed from FiSH11_DelKey
         "setkey" => "FiSH11_SetKey",
         "getkey" => "FiSH11_FileGetKey",
         "listkeys" => "FiSH11_FileListKeys",
         "listfiles" => "FiSH11_FileListKeys",
+        "listkeysitem" => "FiSH11_FileListKeysItem",
         "exchangekey" => "FiSH11_ExchangeKey",
         "processkey" => "FiSH11_ProcessPublicKey",
         "encrypt" => "FiSH11_EncryptMsg",
         "decrypt" => "FiSH11_DecryptMsg",
         "testcrypt" => "FiSH11_TestCrypt",
-        "importkey" => "FiSH11_ImportKey",
-        "exportkey" => "FiSH11_ExportKey",
-        "setpassword" => "FiSH11_SetPasswordHash",
-        "verifypassword" => "FiSH11_VerifyPasswordHash",
-        "getkeyinfo" => "FiSH11_GetKeyInfo",
-        "rekeyall" => "FiSH11_ReKeyAll",
+        "getconfigpath" => "FiSH11_GetConfigPath",
+        "setmircdir" => "FiSH11_SetMircDir",
         "help" => "FiSH11_Help",
+        "ini_getbool" => "INI_GetBool",
+        "ini_getstring" => "INI_GetString",
+        "ini_getint" => "INI_GetInt",
+        "initchannelkey" => "FiSH11_InitChannelKey",
+        "processchannelkey" => "FiSH11_ProcessChannelKey",
+        "getkeyttl" => "FiSH11_GetKeyTTL",
+        "getratchetstate" => "FiSH11_GetRatchetState",
+        "setmanualchannelkey" => "FiSH11_SetManualChannelKey",
+        "setnetwork" => "FiSH11_SetNetwork",
+        "setkeyfromplaintext" => "FiSH11_SetKeyFromPlaintext",
+        // Removed functions that don't exist in the DLL:
+        // "importkey" => "FiSH11_ImportKey",  // Not in DLL
+        // "exportkey" => "FiSH11_ExportKey",  // Not in DLL
+        // "setpassword" => "FiSH11_SetPasswordHash",  // Not in DLL
+        // "verifypassword" => "FiSH11_VerifyPasswordHash",  // Not in DLL
+        // "getkeyinfo" => "FiSH11_GetKeyInfo",  // Not in DLL
+        // "rekeyall" => "FiSH11_ReKeyAll",  // Not in DLL
         _ => {
             println!("Unknown command: {}", command);
             display_help();

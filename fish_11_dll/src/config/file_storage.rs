@@ -597,4 +597,26 @@ mod tests {
         expected_path.push("fish_11.ini");
         assert_eq!(path, expected_path);
     }
+
+    #[test]
+    fn test_ttl_persistence() {
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let temp_path = temp_file.path().to_path_buf();
+
+        let mut config = create_dummy_config();
+        // Set a specific TTL
+        config.fish11.key_ttl = Some(12345);
+
+        // Save
+        save_config(&config, Some(temp_path.clone())).expect("Failed to save");
+
+        // Load
+        let loaded = load_config(Some(temp_path.clone())).expect("Failed to load");
+
+        // Verify
+        assert_eq!(loaded.fish11.key_ttl, Some(12345));
+
+        // Cleanup
+        let _ = fs::remove_file(&temp_path);
+    }
 }

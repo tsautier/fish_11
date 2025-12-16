@@ -113,6 +113,30 @@ fn get_key_internal(config: &FishConfig, nickname: &str, network: Option<&str>) 
         },
     };
 
+    // Helper closure to check expiration
+    let check_expiration = |entry: &EntryData, nick: &str| -> Result<()> {
+        if entry.is_exchange == Some(true) {
+            if let Some(date_str) = &entry.date {
+                if let Ok(key_date) = NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S") {
+                    let now = Local::now().naive_local();
+                    let duration = now.signed_duration_since(key_date);
+                    let elapsed_seconds = duration.num_seconds();
+                    
+                    // Get configured TTL (defaulting to 24h if not set)
+                    let key_lifetime_seconds = config.fish11.key_ttl.unwrap_or(86400); // 86400 = 24h
+                    
+                    // Add grace period to account for clock drift
+                    let remaining_seconds = key_lifetime_seconds + KEY_EXPIRY_GRACE_PERIOD - elapsed_seconds;
+
+                    if remaining_seconds <= 0 {
+                        return Err(FishError::KeyExpired(nick.to_string()));
+                    }
+                }
+            }
+        }
+        Ok(())
+    };
+
     // Create the entry key to look for
     let entry_key = if normalized_nick.starts_with('#') {
         format!("{}@{}", normalized_nick, network_name)
@@ -123,6 +147,9 @@ fn get_key_internal(config: &FishConfig, nickname: &str, network: Option<&str>) 
     // Find the key
     if let Some(entry) = config.entries.get(&entry_key) {
         if let Some(ref key_str) = entry.key {
+            // Check for expiration
+            check_expiration(entry, &normalized_nick)?;
+
             // Log sensitive content if DEBUG flag is enabled for sensitive content (without revealing the full key)
             if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
                 log_debug!("Config: retrieved key for '{}' ({} bytes)", entry_key, key_str.len());
@@ -136,6 +163,9 @@ fn get_key_internal(config: &FishConfig, nickname: &str, network: Option<&str>) 
         let default_entry_key = format!("{}@default", normalized_nick);
         if let Some(entry) = config.entries.get(&default_entry_key) {
             if let Some(ref key_str) = entry.key {
+                // Check for expiration
+                check_expiration(entry, &normalized_nick)?;
+
                 log_debug!("Key found with fallback to @default for {}", normalized_nick);
                 return base64_decode(key_str).map_err(FishError::from);
             }
@@ -150,6 +180,9 @@ fn get_key_internal(config: &FishConfig, nickname: &str, network: Option<&str>) 
             // Check if this entry key has the correct nickname regardless of network
             if entry_key_full.starts_with(&format!("{}@", normalized_nick)) {
                 if let Some(ref key_str) = entry_data.key {
+                    // Check for expiration
+                    check_expiration(entry_data, &normalized_nick)?;
+                    
                     log_debug!(
                         "Key found with network fallback for '{}' (found in '{}')",
                         normalized_nick,

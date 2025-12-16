@@ -146,8 +146,10 @@ pub use entries::{
 };
 pub use file_storage::{get_config_path, init_config_file, load_config, save_config};
 pub use key_management::{
-    delete_key, delete_key_default, get_key, get_key_default, get_keypair, get_our_keypair,
-    list_keys, set_key, set_key_default, store_keypair,
+    delete_key, delete_key_default, get_all_keys_with_ttl, get_configured_key_ttl, get_key,
+    get_key_default, get_key_status, get_key_status_human_readable, get_key_ttl,
+    get_key_ttl_human_readable, get_keypair, get_our_keypair, is_key_about_to_expire, list_keys,
+    set_configured_key_ttl, set_key, set_key_default, store_keypair,
 };
 pub use manual_channel_keys::{
     get_manual_channel_key, list_manual_channel_keys, set_manual_channel_key,

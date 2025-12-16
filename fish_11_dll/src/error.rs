@@ -24,6 +24,7 @@ pub enum FishError {
     NonceReuse,
     OversizedMessage,
     InvalidCiphertext,
+    KeyExpired(String),
 }
 
 impl From<base64::DecodeError> for FishError {
@@ -52,6 +53,7 @@ impl fmt::Display for FishError {
             FishError::NonceReuse => write!(f, "Nonce reuse detected"),
             FishError::OversizedMessage => write!(f, "Message exceeds maximum allowed size"),
             FishError::InvalidCiphertext => write!(f, "Invalid ciphertext format or size"),
+            FishError::KeyExpired(nick) => write!(f, "Key expired for nickname: {}", nick),
             FishError::Base64Error(e) => write!(f, "Base64 decoding error: {}", e),
             FishError::NullByteInString => write!(f, "String contains null byte"),
             FishError::NonAsciiCharacter(c) => {
