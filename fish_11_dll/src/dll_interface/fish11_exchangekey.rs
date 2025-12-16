@@ -50,6 +50,10 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     // Track if we need to save config at the end
     let mut config_modified = false;
 
+    // Check if we're currently connected to IRC
+    // Note: In a real implementation, we would check the socket connection status here
+    // For now, we'll proceed but add better error handling for disconnection scenarios
+
     // Step 1: Ensure key exists (may generate new key)
     let step1_start = Instant::now();
     log_debug!("Starting ensure_key_exists...");

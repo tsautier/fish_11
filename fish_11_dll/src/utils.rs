@@ -46,11 +46,20 @@ pub fn normalize_nick(nick: &str) -> String {
 /// prefixes so the rest of the stack always sees the bare channel name (`#channel` or `&channel`).
 /// For non-channel targets (private messages), it returns the input untouched.
 ///
+/// This function handles complex cases including:
+/// - Multiple consecutive status prefixes: `@%+#test` → `#test`
+/// - Mixed status prefixes: `~@#test` → `#test`
+/// - Invalid/malformed prefixes: `@invalid` → `@invalid` (unchanged)
+/// - Empty or whitespace-only input: "   " → ""
+///
 /// Examples:
 /// - `@#fish_11` → `#fish_11`
 /// - `@%+#test` → `#test`
+/// - `~@#channel` → `#channel`
 /// - `&fish_11` → `&fish_11`
 /// - `bob` → `bob`
+/// - `@invalid` → `@invalid`
+/// - `   @#test   ` → `#test`
 pub fn normalize_target(target: &str) -> &str {
     let trimmed = target.trim();
 
@@ -73,6 +82,8 @@ pub fn normalize_target(target: &str) -> &str {
             continue;
         }
 
+        // If we encounter a non-status character before a channel prefix,
+        // this is not a valid STATUSMSG format, so return the original
         break;
     }
 
@@ -199,6 +210,37 @@ mod tests {
         assert_eq!(normalize_target("~#secure"), "#secure");
         assert_eq!(normalize_target("&fish_11"), "&fish_11");
         assert_eq!(normalize_target("bob"), "bob");
+    }
+
+    #[test]
+    fn test_normalize_target_complex_statusmsg() {
+        // Test multiple consecutive status prefixes
+        assert_eq!(normalize_target("@%+#test"), "#test");
+        assert_eq!(normalize_target("~@#channel"), "#channel");
+        assert_eq!(normalize_target("@%+~#complex"), "#complex");
+        
+        // Test mixed status prefixes
+        assert_eq!(normalize_target("@%+#test"), "#test");
+        
+        // Test invalid/malformed prefixes (should remain unchanged)
+        assert_eq!(normalize_target("@invalid"), "@invalid");
+        assert_eq!(normalize_target("@#"), "#");
+        
+        // Test whitespace handling
+        assert_eq!(normalize_target("   @#test   "), "#test");
+        assert_eq!(normalize_target("\t@%+#test\n"), "#test");
+        
+        // Test regular channels (no prefixes)
+        assert_eq!(normalize_target("#test"), "#test");
+        assert_eq!(normalize_target("&test"), "&test");
+        
+        // Test private messages (no channel prefixes)
+        assert_eq!(normalize_target("bob"), "bob");
+        assert_eq!(normalize_target("@bob"), "@bob"); // Not a channel, so unchanged
+        
+        // Test empty and whitespace-only
+        assert_eq!(normalize_target(""), "");
+        assert_eq!(normalize_target("   "), "");
     }
 
     #[test]

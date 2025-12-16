@@ -41,6 +41,7 @@ unsafe extern "C" fn get_network_name_impl(socket: u32) -> *mut c_char {
 // Callback for outgoing messages (encryption)
 unsafe extern "C" fn on_outgoing(socket: u32, line: *const c_char, _len: usize) -> *mut c_char {
     if line.is_null() {
+        log_debug!("Engine: received null line pointer, ignoring");
         return ptr::null_mut();
     }
 
@@ -54,6 +55,18 @@ unsafe extern "C" fn on_outgoing(socket: u32, line: *const c_char, _len: usize) 
             return ptr::null_mut();
         }
     };
+
+    // Validate line is not empty or truncated
+    if c_str.is_empty() {
+        log_debug!("Engine: received empty line, ignoring");
+        return ptr::null_mut();
+    }
+
+    // Check for truncated lines (should end with \r\n for IRC protocol)
+    if !c_str.ends_with("\r\n") && !c_str.ends_with("\n") {
+        log_warn!("Engine: received potentially truncated line (missing IRC line ending): {}", c_str);
+        // Continue processing but log the warning
+    }
 
     // CRITICAL: update the global current network before processing
     //
@@ -78,6 +91,7 @@ unsafe extern "C" fn on_outgoing(socket: u32, line: *const c_char, _len: usize) 
 // Callback for incoming messages (decryption)
 unsafe extern "C" fn on_incoming(socket: u32, line: *const c_char, _len: usize) -> *mut c_char {
     if line.is_null() {
+        log_debug!("Engine: received null line pointer for incoming message, ignoring");
         return ptr::null_mut();
     }
 
@@ -91,6 +105,18 @@ unsafe extern "C" fn on_incoming(socket: u32, line: *const c_char, _len: usize) 
             return ptr::null_mut();
         }
     };
+
+    // Validate line is not empty or truncated
+    if c_str.is_empty() {
+        log_debug!("Engine: received empty incoming line, ignoring");
+        return ptr::null_mut();
+    }
+
+    // Check for truncated lines (should end with \r\n for IRC protocol)
+    if !c_str.ends_with("\r\n") && !c_str.ends_with("\n") {
+        log_warn!("Engine: received potentially truncated incoming line (missing IRC line ending): {}", c_str);
+        // Continue processing but log the warning
+    }
 
     // CRITICAL: update the global current network before processing
     //
