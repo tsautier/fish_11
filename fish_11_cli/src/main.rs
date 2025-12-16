@@ -27,16 +27,13 @@ const DEFAULT_LISTKEYS_TIMEOUT_SECONDS: u64 = 10;
 pub const FISH_11_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // Global flag to control output verbosity
-static mut QUIET_MODE: bool = false;
+static QUIET_MODE: AtomicBool = AtomicBool::new(false);
 
 // Macro for conditional printing based on quiet mode
 macro_rules! info_print {
     ($($arg:tt)*) => {
-        // TODO : should be safe here
-        unsafe {
-            if !QUIET_MODE {
-                println!($($arg)*);
-            }
+        if !unsafe { QUIET_MODE.load(Ordering::Relaxed) } {
+            println!($($arg)*);
         }
     };
 }
@@ -46,7 +43,7 @@ macro_rules! info_print {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 #[allow(non_snake_case)]
-struct LOADINFO {
+struct LoadInfo {
     m_version: DWORD,
     m_hwnd: HWND,
     m_keep: BOOL, // BOOL is c_int (i32)
@@ -56,7 +53,7 @@ struct LOADINFO {
 }
 
 // Function signatures for the DLL functions
-type DllLoadFn = extern "system" fn(*mut LOADINFO) -> c_int;
+type DllLoadFn = extern "system" fn(*mut LoadInfo) -> c_int;
 type DllFunctionFn =
     extern "system" fn(HWND, HWND, *mut c_char, *mut c_char, c_int, c_int) -> c_int;
 
@@ -173,10 +170,7 @@ fn call_dll_function(
     unsafe {
         let preview_size = 20.min(buffer_size);
         if preview_size > 0 {
-            let bytes: Vec<u8> = std::slice::from_raw_parts(data_ptr as *const u8, preview_size)
-                .iter()
-                .cloned()
-                .collect();
+            let bytes: Vec<u8> = std::slice::from_raw_parts(data_ptr as *const u8, preview_size).to_vec();
 
             println!("Buffer first {} bytes: {:?}", preview_size, bytes);
 
@@ -335,10 +329,10 @@ fn display_help() {
     println!("FiSH 11 CLI v{} - Command Line Interface for FiSH11 DLL", FISH_11_VERSION);
     println!("Usage:");
     println!("  fish_11_cli [options] <dll_path> <command> [parameters...]");
-    println!("");
+    println!();
     println!("Options:");
     println!("  -q, --quiet     Minimize output messages");
-    println!("");
+    println!();
     println!("Commands:");
     println!("  help                    Show this help message");
     println!("  list                    List available functions in the DLL");
@@ -365,7 +359,7 @@ fn display_help() {
     println!("  setnetwork              Set the current IRC network");
     println!("  getkeyfingerprint       Get the fingerprint of a key");
     println!("  setkeyfromplaintext     Set a key from plaintext");
-    println!("");
+    println!();
     println!("Examples:");
     println!("  fish_11_cli fish_11.dll getversion");
     println!("  fish_11_cli fish_11.dll genkey #channel");
@@ -408,9 +402,7 @@ fn main() {
         match args[arg_index].as_str() {
             "-q" | "--quiet" => {
                 // Set quiet mode
-                unsafe {
-                    QUIET_MODE = true;
-                }
+                QUIET_MODE.store(true, Ordering::Relaxed);
                 arg_index += 1;
             }
             _ => {
@@ -489,7 +481,7 @@ fn main() {
     };
 
     // Prepare the LOADINFO structure (updated to match actual structure)
-    let mut load_info = LOADINFO {
+    let mut load_info = LoadInfo {
         m_version: 0x00370007, // mIRC version as DWORD
         m_hwnd: std::ptr::null_mut(),
         m_keep: 1,    // BOOL (TRUE)

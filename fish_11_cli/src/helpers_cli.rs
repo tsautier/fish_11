@@ -163,9 +163,14 @@ pub fn validate_config_file(file_path: &str) -> bool {
             // Try to read the first few bytes to confirm readability
             let mut buffer = [0u8; 10];
             match file.read(&mut buffer) {
-                Ok(_) => {
-                    println!("Config file '{}' exists and is readable", file_path);
-                    true
+                Ok(bytes_read) => {
+                    if bytes_read > 0 {
+                        println!("Config file '{}' exists and is readable", file_path);
+                        true
+                    } else {
+                        println!("Warning: Config file '{}' is empty", file_path);
+                        true
+                    }
                 }
                 Err(e) => {
                     println!("Error: cannot read from config file '{}': {}", file_path, e);
@@ -180,79 +185,4 @@ pub fn validate_config_file(file_path: &str) -> bool {
     }
 }
 
-/// A helper function that tries to directly call a DLL function without using the
-/// full call_dll_function mechanism (Windows only)
-#[cfg(windows)]
-pub fn try_call_function(
-    dll: &libloading::Library,
-    function_name: &str,
-    args: &Vec<String>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    // Make sure we only call functions starting with FiSH11_
-    if !function_name.starts_with("FiSH11_") {
-        info_print!("Warning: refusing to call non-FiSH function: {}", function_name);
-        return Err("Only FiSH11_ functions can be called".into());
-    }
 
-    // Verify the function exists in the DLL - this doesn't use the result directly
-    // but we need to check if the function exists
-    unsafe {
-        match dll.get::<DllFunctionFn>(function_name.as_bytes()) {
-            Ok(_) => {
-                // Function exists - that's all we care about for validation
-            }
-            Err(_) => {
-                // Try mangled name format (common in MSVC/MinGW builds)
-                let mangled_name = format!("_{}@24", function_name);
-                match dll.get::<DllFunctionFn>(mangled_name.as_bytes()) {
-                    Ok(_) => {
-                        info_print!("Found function with mangled name: {}", mangled_name);
-                    }
-                    Err(e) => {
-                        return Err(format!("Function {} not found: {}", function_name, e).into());
-                    }
-                }
-            }
-        }
-    };
-
-    // This function is only for validation - actual calling happens in call_dll_function    // Validate parameters for the function based on the specific function
-    match function_name {
-        "FiSH11_TestCrypt" => {
-            if args.len() < 3 {
-                println!("Error: testcrypt requires a message parameter");
-                display_help();
-                return Ok(());
-            }
-            args[2..].join(" ")
-        }
-        "FiSH11_EncryptMsg" | "FiSH11_DecryptMsg" => {
-            // Format: encrypt/decrypt <target> <message>
-            if args.len() < 4 {
-                println!("Error: {} requires target and message parameters", function_name);
-                display_help();
-                return Ok(());
-            }
-            format!("{} {}", args[2], args[3..].join(" "))
-        }
-        "FiSH11_GenKey" | "FiSH11_SetKey" | "FiSH11_FileGetKey" | "FiSH11_DelKey" => {
-            // Format: command <nickname> [network]
-            if args.len() < 3 {
-                println!("Error: {} requires at least a nickname parameter", function_name);
-                display_help();
-                return Ok(());
-            }
-            args[2..].join(" ")
-        }
-        _ => {
-            if args.len() > 2 {
-                args[2..].join(" ")
-            } else {
-                String::new()
-            }
-        }
-    };
-    // This function doesn't actually call the function - it's just for validation
-    // Real calling happens in call_dll_function - we just return a marker error here
-    Err("Function validated - call via main method".into())
-}
