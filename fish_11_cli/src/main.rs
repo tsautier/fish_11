@@ -294,6 +294,7 @@ fn list_exports(dll_path: &str) -> Result<(), Box<dyn std::error::Error>> {
         "FiSH11_Help",
         "FiSH11_SetMircDir",
         "FiSH11_FileListKeysItem",
+        "FiSH11_GetKeyFingerprint",
         "INI_GetBool",
         "INI_GetString",
         "INI_GetInt",
@@ -362,6 +363,7 @@ fn display_help() {
     println!("  getratchetstate         Get the ratchet state for a channel");
     println!("  setmanualchannelkey     Set a manual channel encryption key");
     println!("  setnetwork              Set the current IRC network");
+    println!("  getkeyfingerprint       Get the fingerprint of a key");
     println!("  setkeyfromplaintext     Set a key from plaintext");
     println!("");
     println!("Examples:");
@@ -375,6 +377,7 @@ fn display_help() {
     println!("  fish_11_cli fish_11.dll ini_getint mark_position 0");
     println!("  fish_11_cli fish_11.dll initchannelkey #secret alice bob");
     println!("  fish_11_cli fish_11.dll setkeyttl alice");
+    println!("  fish_11_cli fish_11.dll getkeyfingerprint alice");
     println!("  fish_11_cli fish_11.dll setnetwork EFNet");
 }
 
@@ -533,6 +536,7 @@ fn main() {
         "getratchetstate" => "FiSH11_GetRatchetState",
         "setmanualchannelkey" => "FiSH11_SetManualChannelKey",
         "setnetwork" => "FiSH11_SetNetwork",
+        "getkeyfingerprint" => "FiSH11_GetKeyFingerprint",
         "setkeyfromplaintext" => "FiSH11_SetKeyFromPlaintext",
         // Removed functions that don't exist in the DLL:
         // "importkey" => "FiSH11_ImportKey",  // Not in DLL
