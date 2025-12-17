@@ -11,7 +11,7 @@ use std::env;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{atomic::{AtomicBool, Ordering}, Mutex};
 use std::time::{Duration, Instant};
 
 use platform_types::{BOOL, DWORD, HWND, LIB_NAME};
@@ -51,13 +51,13 @@ fn display_version() {
     );
 }
 
-// Global flag to control output verbosity
-static QUIET_MODE: AtomicBool = AtomicBool::new(false);
+// Global flag to control output verbosity - using Mutex for thread safety
+static QUIET_MODE: Mutex<bool> = Mutex::new(false);
 
 // Macro for conditional printing based on quiet mode
 macro_rules! info_print {
     ($($arg:tt)*) => {
-        if !unsafe { QUIET_MODE.load(Ordering::Relaxed) } {
+        if !*QUIET_MODE.lock().unwrap() {
             println!($($arg)*);
         }
     };
@@ -112,6 +112,19 @@ fn call_dll_function(
     // We need to copy the parameters to a mutable buffer since many functions
     // both read from and write to the data parameter
     let buffer_size = fish_11_core::globals::DLL_BUFFER_SIZE;
+    
+    // Security validation: prevent excessively large buffer allocations
+    const MAX_SAFE_BUFFER_SIZE: usize = 16 * 1024 * 1024; // 16MB
+    if buffer_size > MAX_SAFE_BUFFER_SIZE {
+        return Err(format!("Buffer size {} exceeds maximum safe limit of {} bytes", buffer_size, MAX_SAFE_BUFFER_SIZE).into());
+    }
+    
+    // Also ensure buffer size is reasonable for our use case
+    const MIN_REASONABLE_BUFFER_SIZE: usize = 1024; // 1KB
+    if buffer_size < MIN_REASONABLE_BUFFER_SIZE {
+        return Err(format!("Buffer size {} is too small (minimum: {} bytes)", buffer_size, MIN_REASONABLE_BUFFER_SIZE).into());
+    }
+    
     let mut data_buffer = vec![0u8; buffer_size];
 
     // Copy parameters to data buffer
@@ -157,7 +170,7 @@ fn call_dll_function(
                 last_report = Instant::now();
                 let elapsed = start.elapsed();
                 if elapsed > Duration::from_secs(2) {
-                    if !unsafe { QUIET_MODE.load(Ordering::Relaxed) } {
+                    if !*QUIET_MODE.lock().unwrap() {
                         println!(
                             "Still waiting... ({:.1?} elapsed, timeout at {:?})",
                             elapsed, timeout
@@ -490,7 +503,7 @@ fn main() {
         match args[arg_index].as_str() {
             "-q" | "--quiet" => {
                 // Set quiet mode
-                QUIET_MODE.store(true, Ordering::Relaxed);
+                *QUIET_MODE.lock().unwrap() = true;
                 arg_index += 1;
             }
             "-v" | "--version" => {
