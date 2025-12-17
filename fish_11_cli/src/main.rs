@@ -375,6 +375,49 @@ fn display_help() {
     println!("  fish_11_cli fish_11.dll setnetwork EFNet");
 }
 
+/// Validate that the command has the required arguments
+fn validate_command_args(command: &str, args: &[String]) -> Result<(), String> {
+    let arg_count = args.len();
+    match command {
+        "genkey" | "delkey" | "getkey" | "getkeyfingerprint" | "getkeyttl" | "setkeyttl" | "exchangekey" | "processkey" => {
+            if arg_count < 1 {
+                let mut msg = format!("Command '{}' requires a target (channel or nickname).", command);
+                if command == "genkey" || command == "delkey" || command == "getkey" {
+                     msg.push_str("\nTip: if you are specifying a channel (e.g. #channel) in PowerShell, invoke it with quotes (\"#channel\") to prevent it from being treated as a comment (duh).");
+                }
+                return Err(msg);
+            }
+        }
+        "setkey" | "setkeyfromplaintext" => {
+            if arg_count < 2 {
+                return Err(format!("Command '{}' requires a target and a key.", command));
+            }
+        }
+        "encrypt" | "decrypt" => {
+            if arg_count < 2 {
+                return Err(format!("Command '{}' requires a target and a message.", command));
+            }
+        }
+        "initchannelkey" => {
+             if arg_count < 1 {
+                return Err(format!("Command '{}' requires a channel.", command));
+            }
+        }
+        "setmanualchannelkey" => {
+             if arg_count < 2 {
+                return Err(format!("Command '{}' requires a channel and a key.", command));
+            }
+        }
+        "ini_getbool" | "ini_getstring" | "ini_getint" => {
+             if arg_count < 1 {
+                return Err(format!("Command '{}' requires a config key name.", command));
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 fn main() {
     // Create debug log
     let debug_log_path = std::path::Path::new("fish11_cli_debug.log");
@@ -545,6 +588,13 @@ fn main() {
     };
 
     info_print!("Calling function: {}", function_name);
+
+    // Validate arguments
+    let cmd_args = if processed_args.len() > 2 { &processed_args[2..] } else { &[] };
+    if let Err(e) = validate_command_args(&command, cmd_args) {
+        println!("Error: {}", e);
+        return;
+    }
 
     // Special case for listkeys to validate config file first
     if function_name == "FiSH11_FileListKeys" && processed_args.len() > 2 {
