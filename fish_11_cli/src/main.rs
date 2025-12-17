@@ -283,49 +283,72 @@ fn call_dll_function(
             len += 1;
         }
 
-        // Check if we have any content
-        if len == 0 || (len == 1 && data_buffer[0] == 0) {
-            // For listkeys specifically, check the secondary buffer
-            if function_name == "FiSH11_FileListKeys" {
-                // Check parms buffer as well
-                let mut parms_len = 0;
-                while parms_len < buffer_size && parms_buffer[parms_len] != 0 {
-                    parms_len += 1;
-                }
+        // For robust buffer handling, check both data and parms buffers
+        let data_len = len; // length from the original data buffer check
 
-                if parms_len > 0 {
-                    match std::str::from_utf8(&parms_buffer[..parms_len]) {
-                        Ok(s) => {
-                            if !s.is_empty() {
-                                return Ok(s.to_string());
-                            }
-                        }
-                        Err(_) => {
-                            // Ignore errors in secondary buffer
-                        }
+        // Also check the length of the secondary parms buffer
+        let mut parms_len = 0;
+        while parms_len < buffer_size && parms_buffer[parms_len] != 0 {
+            parms_len += 1;
+        }
+
+        // Determine the best buffer to use based on content availability
+        if data_len == 0 && parms_len > 0 {
+            // If main buffer is empty but parms buffer has data, use parms buffer
+            match std::str::from_utf8(&parms_buffer[..parms_len]) {
+                Ok(s) => {
+                    if !s.is_empty() {
+                        s.to_string()
+                    } else if function_name == "FiSH11_FileListKeys" {
+                        "FiSH_11 : no keys stored.".to_string()
+                    } else {
+                        "Function completed but returned no output.".to_string()
                     }
                 }
-
-                // If we couldn't get data from the buffers but know the response from the DLL,
-                // use a hardcoded message
-                return Ok("No keys stored.".to_string());
-            } else {
-                "Function completed but returned no output.".to_string()
+                Err(_) => {
+                    if function_name == "FiSH11_FileListKeys" {
+                        "FiSH_11 : error processing data.".to_string()
+                    } else {
+                        "Function completed but returned invalid data in parms buffer.".to_string()
+                    }
+                }
             }
-        } else {
-            // Convert to string
-            match std::str::from_utf8(&data_buffer[..len]) {
+        } else if data_len > 0 {
+            // Use the main data buffer if it has content
+            match std::str::from_utf8(&data_buffer[..data_len]) {
                 Ok(s) => {
                     if s.is_empty() && function_name == "FiSH11_FileListKeys" {
-                        "No keys found or invalid config path specified.".to_string()
+                        "FiSH_11 : no keys stored.".to_string()
                     } else {
                         s.to_string()
                     }
                 }
                 Err(e) => {
                     info_print!("Warning : failed to decode result: {}", e);
-                    format!("Function completed but returned invalid UTF-8 data (length: {})", len)
+                    format!(
+                        "Function completed but returned invalid UTF-8 data (length: {})",
+                        data_len
+                    )
                 }
+            }
+        } else if parms_len > 0 {
+            // Fallback: if data_len was 0 after initial check but parms has content
+            match std::str::from_utf8(&parms_buffer[..parms_len]) {
+                Ok(s) => s.to_string(),
+                Err(_) => {
+                    if function_name == "FiSH11_FileListKeys" {
+                        "FiSH_11 : rrror processing data.".to_string()
+                    } else {
+                        "Function completed but returned invalid data in parms buffer.".to_string()
+                    }
+                }
+            }
+        } else {
+            // No content in either buffer
+            if function_name == "FiSH11_FileListKeys" {
+                "FiSH_11 : no keys stored.".to_string()
+            } else {
+                "Function completed but returned no output.".to_string()
             }
         }
     } else {
