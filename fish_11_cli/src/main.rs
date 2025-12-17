@@ -15,6 +15,8 @@ use std::time::{Duration, Instant};
 
 use platform_types::{BOOL, DWORD, HWND, LIB_NAME};
 
+use fish_11_core::globals::{BUILD_DATE, BUILD_NUMBER, BUILD_TIME, BUILD_VERSION};
+
 mod helpers_cli;
 use crate::helpers_cli::{get_output_format, process_mirc_output, validate_config_file};
 
@@ -24,7 +26,29 @@ const DEFAULT_TIMEOUT_SECONDS: u64 = 5;
 // Special timeout for listkeys command (which may take longer with large key databases)
 const DEFAULT_LISTKEYS_TIMEOUT_SECONDS: u64 = 10;
 
-pub const FISH_11_VERSION: &str = env!("CARGO_PKG_VERSION");
+// Use the centralized version string from the core library
+pub fn cli_version() -> String {
+    format!(
+        "v{} (compiled {} at {})",
+        fish_11_core::globals::BUILD_VERSION,
+        fish_11_core::globals::BUILD_DATE.as_str(),
+        fish_11_core::globals::BUILD_TIME.as_str()
+    )
+}
+
+/// Display version information in the format expected for -v/--version flags
+fn display_version() {
+    let build_type = if cfg!(debug_assertions) { "debug" } else { "release" };
+
+    println!(
+        "FiSH_11_cli {} (build {}-{}) *** Compiled {} at {} *** Written by [GuY], licensed under the GPL-v3 or above",
+        fish_11_core::globals::BUILD_VERSION,
+        fish_11_core::globals::BUILD_NUMBER.as_str(),
+        build_type,
+        fish_11_core::globals::BUILD_DATE.as_str(),
+        fish_11_core::globals::BUILD_TIME.as_str()
+    );
+}
 
 // Global flag to control output verbosity
 static QUIET_MODE: AtomicBool = AtomicBool::new(false);
@@ -205,7 +229,6 @@ fn call_dll_function(
         while len < buffer_size && data_buffer[len] != 0 {
             len += 1;
         }
-        // We now handle the DLL output directly without relying on debug logs
 
         // Check if we have any content
         if len == 0 || (len == 1 && data_buffer[0] == 0) {
@@ -232,7 +255,7 @@ fn call_dll_function(
 
                 // If we couldn't get data from the buffers but know the response from the DLL,
                 // use a hardcoded message
-                return Ok("/echo -a FiSH: No keys stored.".to_string());
+                return Ok("No keys stored.".to_string());
             } else {
                 "Function completed but returned no output.".to_string()
             }
@@ -304,13 +327,7 @@ fn list_exports(dll_path: &str) -> Result<(), Box<dyn std::error::Error>> {
         "FiSH11_SetManualChannelKey",
         "FiSH11_SetNetwork",
         "FiSH11_SetKeyFromPlaintext",
-        // Functions that were in CLI but not found in DLL:
-        // "FiSH11_ImportKey",  // Not in DLL
-        // "FiSH11_ExportKey",  // Not in DLL
-        // "FiSH11_SetPasswordHash",  // Not in DLL
-        // "FiSH11_VerifyPasswordHash",  // Not in DLL
-        // "FiSH11_GetKeyInfo",  // Not in DLL
-        // "FiSH11_ReKeyAll",  // Not in DLL
+
     ] {
         let found = unsafe {
             dll.get::<DllFunctionFn>(func_name.as_bytes()).is_ok()
@@ -331,41 +348,52 @@ fn list_exports(dll_path: &str) -> Result<(), Box<dyn std::error::Error>> {
 
 /// Display a help message with command usage information
 fn display_help() {
-    println!("FiSH_11 CLI v{} - Command line interface for FiSH_11 DLL", FISH_11_VERSION);
-    println!("Usage:");
-    println!("  fish_11_cli [options] <dll_path> <command> [parameters...]");
+    let build_type = if cfg!(debug_assertions) { "debug" } else { "release" };
+
+    println!(
+        "FiSH_11_cli {} (build {})                  Written by [GuY], licensed under the GPL-v3 or above\n
+        Version {}                                  Compiled {} at {}\n",
+        BUILD_VERSION,
+        BUILD_NUMBER.as_str(),
+        build_type,
+        BUILD_DATE.as_str(),
+        BUILD_TIME.as_str()
+
+    );
+    println!("Usage : fish_11_cli [options] <dll_path> <command> [parameters...]");
     println!();
-    println!("Options:");
+    println!("[Options]");
     println!("  -q, --quiet     Minimize output messages (useful for scripts)");
+    println!("  -v, --version   Display version information");
     println!();
-    println!("Commands:");
-    println!("  help                    Show this help message");
-    println!("  list                    List available functions in the DLL");
-    println!("  getversion              Get the DLL version");
-    println!("  genkey                  Generate a new encryption key for a target");
-    println!("  setkey                  Set a specific key for a target");
-    println!("  getkey                  Get the key for a target");
-    println!("  delkey                  Delete a key for a target");
-    println!("  listkeys                List all stored keys");
-    println!("  listkeysitem            List a specific key item");
-    println!("  encrypt                 Encrypt a message");
-    println!("  decrypt                 Decrypt a message");
-    println!("  testcrypt               Test encryption/decryption cycle");
-    println!("  getconfigpath           Get the configuration file path");
-    println!("  setmircdir              Set the mIRC directory");
-    println!("  ini_getbool             Get a boolean value from the config file");
-    println!("  ini_getstring           Get a string value from the config file");
-    println!("  ini_getint              Get an integer value from the config file");
-    println!("  initchannelkey          Initialize a channel encryption key");
-    println!("  processchannelkey       Process a received channel key");
-    println!("  getkeyttl               Get the time-to-live for a key");
-    println!("  getratchetstate         Get the ratchet state for a channel");
-    println!("  setmanualchannelkey     Set a manual channel encryption key");
-    println!("  setnetwork              Set the current IRC network");
-    println!("  getkeyfingerprint       Get the fingerprint of a key");
-    println!("  setkeyfromplaintext     Set a key from plaintext");
+    println!("<Commands>");
+    println!("  -h,   --help                 Show this help message");
+    println!("  -l,   --list                 List available functions in the DLL");
+    println!("  -gv,  --getversion           Get the DLL version");
+    println!("  -gk,  --genkey               Generate a new encryption key for a target");
+    println!("  -sk,  --setkey               Set a specific key for a target");
+    println!("  -gk,  --getkey               Get the key for a target");
+    println!("  -dk,  --delkey               Delete a key for a target");
+    println!("  -lk,  --listkeys             List all stored keys");
+    println!("  -li,  --listkeysitem         List a specific key item");
+    println!("  -e,   --encrypt              Encrypt a message");
+    println!("  -d,   --decrypt              Decrypt a message");
+    println!("  -tc,  --testcrypt            Test encryption/decryption cycle");
+    println!("  -gcp, --getconfigpath        Get the configuration file path");
+    println!("  -sm,  --setmircdir           Set the mIRC directory");
+    println!("  -ib,  --ini_getbool          Get a boolean value from the config file");
+    println!("  -is,  --ini_getstring        Get a string value from the config file");
+    println!("  -ii,  --ini_getint           Get an integer value from the config file");
+    println!("  -ik,  --initchannelkey       Initialize a channel encryption key");
+    println!("  -pk,  --processchannelkey    Process a received channel key");
+    println!("  -kt,  --getkeyttl            Get the time-to-live for a key");
+    println!("  -rs,  --getratchetstate      Get the ratchet state for a channel");
+    println!("  -smk, --setmanualchannelkey  Set a manual channel encryption key");
+    println!("  -sn,  --setnetwork           Set the current IRC network");
+    println!("  -kf,  --getkeyfingerprint    Get the fingerprint of a key");
+    println!("  -skp, --setkeyfromplaintext  Set a key from plaintext");
     println!();
-    println!("Examples:");
+    println!("Examples :");
     println!("  fish_11_cli fish_11.dll getversion");
     println!("  fish_11_cli fish_11.dll genkey #channel");
     println!("  fish_11_cli fish_11.dll encrypt #channel \"Secret message\"");
@@ -454,6 +482,11 @@ fn main() {
                 // Set quiet mode
                 QUIET_MODE.store(true, Ordering::Relaxed);
                 arg_index += 1;
+            }
+            "-v" | "--version" => {
+                // Display version and exit
+                display_version();
+                return;
             }
             _ => {
                 // Not an option, add to processed args
@@ -582,13 +615,7 @@ fn main() {
         "setnetwork" => "FiSH11_SetNetwork",
         "getkeyfingerprint" => "FiSH11_GetKeyFingerprint",
         "setkeyfromplaintext" => "FiSH11_SetKeyFromPlaintext",
-        // Removed functions that don't exist in the DLL:
-        // "importkey" => "FiSH11_ImportKey",  // Not in DLL
-        // "exportkey" => "FiSH11_ExportKey",  // Not in DLL
-        // "setpassword" => "FiSH11_SetPasswordHash",  // Not in DLL
-        // "verifypassword" => "FiSH11_VerifyPasswordHash",  // Not in DLL
-        // "getkeyinfo" => "FiSH11_GetKeyInfo",  // Not in DLL
-        // "rekeyall" => "FiSH11_ReKeyAll",  // Not in DLL
+
         _ => {
             println!("Unknown command: {}", command);
             display_help();
