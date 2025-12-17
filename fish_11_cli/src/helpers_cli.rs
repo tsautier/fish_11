@@ -21,7 +21,7 @@ macro_rules! info_print {
 pub fn process_mirc_output(output: &str, format: OutputFormat) -> String {
     // Only log debug info if output is not empty
     if !output.is_empty() {
-        info_print!("Processing output in format: {:?}", format);
+        info_print!("Processing output in format : {:?}", format);
     }
 
     // Special case for listkeys when no output is returned
@@ -145,20 +145,20 @@ pub fn validate_config_file(file_path: &str) -> bool {
 
     if !path.exists() {
         // Errors should always be printed
-        println!("Error: config file '{}' does not exist", file_path);
+        println!("Error : config file '{}' does not exist", file_path);
         return false;
     }
 
     if !path.is_file() {
          // Errors should always be printed
-        println!("Error: '{}' is not a file", file_path);
+        println!("Error : '{}' is not a file", file_path);
         return false;
     }
 
     // Check if the file has a valid extension (.ini)
     let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
     if extension.to_lowercase() != "ini" {
-        info_print!("Warning: config file '{}' does not have .ini extension", file_path);
+        info_print!("Warning : config file '{}' does not have .ini extension", file_path);
         // Continue anyway, it might still work
     }
 
@@ -173,18 +173,18 @@ pub fn validate_config_file(file_path: &str) -> bool {
                         info_print!("Config file '{}' exists and is readable", file_path);
                         true
                     } else {
-                        info_print!("Warning: Config file '{}' is empty", file_path);
+                        info_print!("Warning : config file '{}' is empty", file_path);
                         true
                     }
                 }
                 Err(e) => {
-                    println!("Error: cannot read from config file '{}': {}", file_path, e);
+                    println!("Error : cannot read from config file '{}': {}", file_path, e);
                     false
                 }
             }
         }
         Err(e) => {
-            println!("Error: cannot open config file '{}': {}", file_path, e);
+            println!("Error : cannot open config file '{}': {}", file_path, e);
             false
         }
     }

@@ -167,7 +167,7 @@ fn call_dll_function(
     let elapsed = start_time.elapsed();
 
     // Log the result and buffer info
-    info_print!("DLL function returned code: {}", result);
+    info_print!("DLL function returned code : {}", result);
 
     // For debugging, examine the first few bytes of the buffer
     unsafe {
