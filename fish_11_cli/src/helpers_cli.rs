@@ -1,6 +1,6 @@
-use std::io::Read;
-use std::path::{Path, Component};
 use std::ffi::OsStr;
+use std::io::Read;
+use std::path::{Component, Path};
 
 #[cfg(windows)]
 //use crate::DllFunctionFn;
@@ -14,9 +14,9 @@ fn is_safe_path<P: AsRef<Path>>(path: P) -> bool {
     // Use Components iterator to check each path component
     for component in path.components() {
         match component {
-            Component::ParentDir => return false,  // "../" component found
-            Component::CurDir => continue,         // "./" component - skip
-            Component::Normal(_) => continue,      // Normal component - safe
+            Component::ParentDir => return false, // "../" component found
+            Component::CurDir => continue,        // "./" component - skip
+            Component::Normal(_) => continue,     // Normal component - safe
             Component::RootDir | Component::Prefix(_) => continue, // Root/prefix is OK
         }
     }
@@ -170,7 +170,10 @@ pub fn validate_config_file(file_path: &str) -> bool {
     // Check for path traversal attacks
     if !is_safe_path(path) {
         if !crate::is_quiet_mode() {
-            println!("Error : config file path '{}' contains directory traversal sequences", file_path);
+            println!(
+                "Error : config file path '{}' contains directory traversal sequences",
+                file_path
+            );
         }
         return false;
     }

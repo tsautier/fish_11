@@ -358,6 +358,48 @@ fn call_dll_function(
     Ok(output)
 }
 
+/// Validates user input to prevent buffer overflow
+/// Checks if the input length is within safe limits
+fn validate_input_length(input: &str) -> Result<(), String> {
+    const MAX_INPUT_LENGTH: usize = 8192; // Safe limit for most operations
+
+    if input.len() > MAX_INPUT_LENGTH {
+        return Err(format!(
+            "Input too long : {} characters (max: {})",
+            input.len(),
+            MAX_INPUT_LENGTH
+        ));
+    }
+
+    Ok(())
+}
+
+/// Validates user input to prevent command injection
+/// Filters out potentially dangerous characters and sequences
+fn validate_input_content(input: &str) -> Result<(), String> {
+    // Check for null bytes which could cause issues
+    if input.contains('\0') {
+        return Err("Input contains null byte which is not allowed".to_string());
+    }
+
+    // Check for potentially dangerous sequences
+    if input.contains("..\\") || input.contains("../") || input.contains("%00") {
+        return Err("Input contains potentially dangerous path traversal sequences".to_string());
+    }
+
+    // Additional checks could be added here as needed
+
+    Ok(())
+}
+
+/// Validates user input completely
+/// Performs all security checks on user input
+fn validate_user_input(input: &str) -> Result<(), String> {
+    validate_input_length(input)?;
+    validate_input_content(input)?;
+    Ok(())
+}
+
 /// List all exported functions from the specified DLL
 fn list_exports(dll_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     info_print!("Loading DLL: {}", dll_path);
@@ -854,7 +896,15 @@ fn main() {
 
     // Use our enhanced call_dll_function
     let params = if processed_args.len() > 2 {
-        processed_args[2..].join(" ").replace('$', "$$")
+        let raw_params = processed_args[2..].join(" ");
+
+        // Validate the user input before passing it to the DLL
+        if let Err(validation_error) = validate_user_input(&raw_params) {
+            println!("Error: Invalid input - {}", validation_error);
+            return;
+        }
+
+        raw_params.replace('$', "$$")
     } else {
         String::new()
     };
