@@ -150,14 +150,16 @@ pub fn validate_config_file(file_path: &str) -> bool {
     let path = Path::new(file_path);
 
     if !path.exists() {
-        // Errors should always be printed
-        println!("Error : config file '{}' does not exist", file_path);
+        if !crate::is_quiet_mode() {
+            println!("Error : config file '{}' does not exist", file_path);
+        }
         return false;
     }
 
     if !path.is_file() {
-        // Errors should always be printed
-        println!("Error : '{}' is not a file", file_path);
+        if !crate::is_quiet_mode() {
+            println!("Error : '{}' is not a file", file_path);
+        }
         return false;
     }
 
@@ -184,13 +186,17 @@ pub fn validate_config_file(file_path: &str) -> bool {
                     }
                 }
                 Err(e) => {
-                    println!("Error : cannot read from config file '{}': {}", file_path, e);
+                    if !crate::is_quiet_mode() {
+                        println!("Error : cannot read from config file '{}': {}", file_path, e);
+                    }
                     false
                 }
             }
         }
         Err(e) => {
-            println!("Error : cannot open config file '{}': {}", file_path, e);
+            if !crate::is_quiet_mode() {
+                println!("Error : cannot open config file '{}': {}", file_path, e);
+            }
             false
         }
     }

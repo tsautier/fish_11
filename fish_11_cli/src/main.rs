@@ -58,7 +58,7 @@ fn display_version() {
 static QUIET_MODE: Mutex<bool> = Mutex::new(false);
 
 /// Helper function to safely get the quiet mode value
-fn is_quiet_mode() -> bool {
+pub fn is_quiet_mode() -> bool {
     match QUIET_MODE.lock() {
         Ok(guard) => *guard,
         Err(_) => {
@@ -822,8 +822,10 @@ fn main() {
     if function_name == "FiSH11_FileListKeys" && processed_args.len() > 2 {
         let config_path = &processed_args[2];
         if !validate_config_file(config_path) {
-            println!("Warning : the config file may not be valid or accessible.");
-            println!("Continuing with the operation, but it may fail.");
+            if !is_quiet_mode() {
+                println!("Warning : the config file may not be valid or accessible.");
+                println!("Continuing with the operation, but it may fail.");
+            }
         }
     }
 
