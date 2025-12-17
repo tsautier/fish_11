@@ -26,6 +26,7 @@ FiSH_11 is a modern implementation of an IRC encryption plugin/addon, fully writ
 
 - [x] Cross compilation
 - [x] Generate a xxx.so file for Linux
+- [x] CLI in windows/linux can call the .dll/.so library transparently
 
 #### Encryption
 
@@ -34,18 +35,18 @@ FiSH_11 is a modern implementation of an IRC encryption plugin/addon, fully writ
 - [x] HKDF key derivation for enhanced security
 - [x] SHA-256 key fingerprinting for verification
 - [x] Memory zeroization and other security hardening features
+- [x] Session key expiration/TTL management: automatic expiration of exchange keys after configurable interval (default 24h).
+
 
 ### Work in progress features and/or still bugged
 
 - [ ] Full working mIRC script integration (`fish_11.mrc`)
-- [x] Command-line interface (`fish_11_cli`) for testing and integration
-- [x] FCEP-1 channel encryption protocol (multi-user)
-- [ ] key rotation / TTL management: add functionality for automatic key rotation with configurable intervals.
+- [x] WiP : command-line interface (`fish_11_cli`) for testing and integration
+- [x] WiP : FCEP-1 channel encryption protocol (multi-user)
 - [x] fuzzing integration: add `cargo-fuzz` (`libfuzzer`) to the project to systematically test for security vulnerabilities in parsing and cryptographic functions.
 - [x] cross-platform library: mature the `fish_11_core` library and provide stable C-APIs for easy integration on Linux and other systems.
-- [x] Refactor the logging engine for fish11_core, fish11_dll and fish11_inject
-- [ ] CLI in linux can call the .so library
-- [ ] CLI in windows can call the .dll library
+- [x] WiP : refactor the logging engine for fish11_core, fish11_dll and fish11_inject
+
 - [ ] irc bnc parsing/detection support
 
 ### Current limitations

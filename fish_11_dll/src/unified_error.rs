@@ -369,6 +369,7 @@ impl From<FishError> for DllError {
             FishError::NonAsciiCharacter(c) => {
                 DllError::NonAsciiCharacter { char: c, context: "ASCII validation".to_string() }
             }
+            FishError::KeyExpired(nick) => DllError::KeyExpired { nickname: nick },
         }
     }
 }

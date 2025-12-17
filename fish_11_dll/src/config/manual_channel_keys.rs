@@ -14,13 +14,18 @@ use secrecy::ExposeSecret;
 
 /// Sets a manual channel key in the configuration after encrypting it.
 ///
+/// IMPORTANT SECURITY NOTE: The key must be a cryptographically strong 32-byte key,
+/// NOT a password or passphrase. This function does NOT perform key stretching.
+/// If you need to use a password, you must derive a proper 32-byte key using
+/// a key derivation function (PBKDF2, Argon2, etc.) before calling this function.
+///
 /// This function stores a fixed channel key encrypted using a master key derived
 /// from the user's X25519 keypair. The encrypted key will be persisted to the
 /// configuration file and can be decrypted when needed.
 ///
 /// # Arguments
 /// * `channel_name` - The IRC channel name (must start with # or &)
-/// * `key` - The 32-byte symmetric key to store
+/// * `key` - The 32-byte symmetric key to store (must be cryptographically strong)
 /// * `overwrite` - Whether to overwrite an existing key
 ///
 /// # Channel Name Normalization

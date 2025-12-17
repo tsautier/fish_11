@@ -453,8 +453,9 @@ pub fn format_public_key(public_key: &[u8; 32]) -> String {
 pub fn extract_public_key(formatted: &str) -> Result<[u8; 32]> {
     const PREFIX: &str = "X25519_INIT:";
 
-    // Check if the string has the correct prefix
-    if !formatted.starts_with(PREFIX) {
+    // Check if the string has the correct prefix using constant-time comparison
+    // to prevent timing attacks that could leak information about the prefix
+    if !formatted.len() >= PREFIX.len() || !constant_time_compare(formatted.as_bytes(), PREFIX.as_bytes()) {
         return Err(FishError::InvalidInput(
             "Formatted key does not have the correct prefix".to_string(),
         ));
@@ -604,6 +605,67 @@ mod tests {
         );
         // Public key should not be all zeros
         assert!(!keypair.public_key.iter().all(|&b| b == 0), "Public key should not be all zeros");
+    }
+
+    #[test]
+    fn test_constant_time_compare() {
+        // Test equal values
+        let a = b"hello";
+        let b = b"hello";
+        assert!(constant_time_compare(a, b));
+
+        // Test different values
+        let a = b"hello";
+        let b = b"world";
+        assert!(!constant_time_compare(a, b));
+
+        // Test different lengths (should return false)
+        let a = b"hello";
+        let b = b"hello!";
+        assert!(!constant_time_compare(a, b));
+
+        // Test empty arrays
+        let a = b"";
+        let b = b"";
+        assert!(constant_time_compare(a, b));
+
+        // Test with cryptographic values
+        let key1 = [42u8; 32];
+        let key2 = [42u8; 32];
+        assert!(constant_time_compare(&key1, &key2));
+
+        let key1 = [42u8; 32];
+        let key2 = [43u8; 32];
+        assert!(!constant_time_compare(&key1, &key2));
+    }
+
+    #[test]
+    fn test_extract_public_key_with_constant_time() {
+        // Create a valid key for testing
+        let keypair = generate_keypair();
+        let valid_key = format!("X25519_INIT:{}", base64_encode(&keypair.public_key));
+        let result = extract_public_key(&valid_key);
+        assert!(result.is_ok());
+
+        // Test invalid prefix (should fail with constant time)
+        let invalid_prefix = "INVALID_INIT:SGVsbG8gV29ybGQhISEhIQ==";
+        let result = extract_public_key(invalid_prefix);
+        assert!(result.is_err());
+
+        // Test wrong prefix (should fail with constant time)
+        let wrong_prefix = "X25519_WRONG:SGVsbG8gV29ybGQhISEhIQ==";
+        let result = extract_public_key(wrong_prefix);
+        assert!(result.is_err());
+
+        // Test empty prefix (should fail with constant time)
+        let empty_prefix = "SGVsbG8gV29ybGQhISEhIQ==";
+        let result = extract_public_key(empty_prefix);
+        assert!(result.is_err());
+
+        // Test too short after prefix
+        let short_key = "X25519_INIT:SGVsbG8="; // Only 8 bytes instead of 32
+        let result = extract_public_key(short_key);
+        assert!(result.is_err());
     }
 
     #[test]
