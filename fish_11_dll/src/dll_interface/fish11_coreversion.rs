@@ -13,7 +13,7 @@ dll_function_identifier!(FiSH11_GetVersion, _data, {
 
     // Return raw version info for script to display
     let version_info = format!(
-        "FiSH_11 core dll version {} (build {}) *** Compiled {} at {} *** Written by [GuY], licensed under the GPL-v3|{}",
+        "FiSH_11 core dll version {} (build {}) *** Compiled {} at {} ZULU *** Written by [GuY], licensed under the GPL-v3|{}",
         BUILD_VERSION,
         BUILD_NUMBER.as_str(),
         BUILD_DATE.as_str(),

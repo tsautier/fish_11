@@ -6,6 +6,7 @@
 //! Written by [GuY], 2025. Licenced under GPL v3.
 
 mod platform_types;
+use term_size;
 use std::env;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
@@ -137,6 +138,7 @@ fn call_dll_function(
     };
 
     info_print!("Starting function call (timeout set to {:?})...", timeout);
+
     let start_time = Instant::now();
     // Use a separate thread to detect and report potential hangs
     let is_complete = Arc::new(AtomicBool::new(false));
@@ -327,7 +329,6 @@ fn list_exports(dll_path: &str) -> Result<(), Box<dyn std::error::Error>> {
         "FiSH11_SetManualChannelKey",
         "FiSH11_SetNetwork",
         "FiSH11_SetKeyFromPlaintext",
-
     ] {
         let found = unsafe {
             dll.get::<DllFunctionFn>(func_name.as_bytes()).is_ok()
@@ -347,19 +348,28 @@ fn list_exports(dll_path: &str) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Display a help message with command usage information
+
+fn print_two_columns_aligned(left: &str, right: &str, right_start: usize) {
+    let left_len = left.chars().count();
+    let spaces = if right_start > left_len { right_start - left_len } else { 1 };
+    print!("{}{}", left, " ".repeat(spaces));
+    println!("{}", right);
+}
+
 fn display_help() {
     let build_type = if cfg!(debug_assertions) { "debug" } else { "release" };
-
-    println!(
-        "FiSH_11_cli {} (build {})                  Written by [GuY], licensed under the GPL-v3 or above\n
-        Version {}                                  Compiled {} at {}\n",
-        BUILD_VERSION,
-        BUILD_NUMBER.as_str(),
-        build_type,
-        BUILD_DATE.as_str(),
-        BUILD_TIME.as_str()
-
+    let col = 45;
+    print_two_columns_aligned(
+        &format!("FiSH_11_cli {} (build {})", BUILD_VERSION, BUILD_NUMBER.as_str()),
+        "Written by [GuY], licensed under the GPL-v3 or above",
+        col
     );
+    print_two_columns_aligned(
+        &format!("Version {}", build_type),
+        &format!("Compiled {} at {} ZULU", BUILD_DATE.as_str(), BUILD_TIME.as_str()),
+        col
+    );
+    println!("");
     println!("Usage : fish_11_cli [options] <dll_path> <command> [parameters...]");
     println!();
     println!("[Options]");
@@ -487,6 +497,127 @@ fn main() {
                 // Display version and exit
                 display_version();
                 return;
+            }
+            // Short flags for commands
+            "-h" | "--help" => {
+                // Map to help command
+                processed_args.push("help".to_string());
+                arg_index += 1;
+            }
+            "-l" | "--list" => {
+                // Map to list command
+                processed_args.push("list".to_string());
+                arg_index += 1;
+            }
+            "-gv" | "--getversion" => {
+                // Map to getversion command
+                processed_args.push("getversion".to_string());
+                arg_index += 1;
+            }
+            "-gk" | "--genkey" | "--getkey" => {
+                // Map to genkey command (also covers getkey)
+                processed_args.push("genkey".to_string());
+                arg_index += 1;
+            }
+            "-sk" | "--setkey" => {
+                // Map to setkey command
+                processed_args.push("setkey".to_string());
+                arg_index += 1;
+            }
+            "-dk" | "--delkey" => {
+                // Map to delkey command
+                processed_args.push("delkey".to_string());
+                arg_index += 1;
+            }
+            "-lk" | "--listkeys" => {
+                // Map to listkeys command
+                processed_args.push("listkeys".to_string());
+                arg_index += 1;
+            }
+            "-li" | "--listkeysitem" => {
+                // Map to listkeysitem command
+                processed_args.push("listkeysitem".to_string());
+                arg_index += 1;
+            }
+            "-e" | "--encrypt" => {
+                // Map to encrypt command
+                processed_args.push("encrypt".to_string());
+                arg_index += 1;
+            }
+            "-d" | "--decrypt" => {
+                // Map to decrypt command
+                processed_args.push("decrypt".to_string());
+                arg_index += 1;
+            }
+            "-tc" | "--testcrypt" => {
+                // Map to testcrypt command
+                processed_args.push("testcrypt".to_string());
+                arg_index += 1;
+            }
+            "-gcp" | "--getconfigpath" => {
+                // Map to getconfigpath command
+                processed_args.push("getconfigpath".to_string());
+                arg_index += 1;
+            }
+            "-sm" | "--setmircdir" => {
+                // Map to setmircdir command
+                processed_args.push("setmircdir".to_string());
+                arg_index += 1;
+            }
+            "-ib" | "--ini_getbool" => {
+                // Map to ini_getbool command
+                processed_args.push("ini_getbool".to_string());
+                arg_index += 1;
+            }
+            "-is" | "--ini_getstring" => {
+                // Map to ini_getstring command
+                processed_args.push("ini_getstring".to_string());
+                arg_index += 1;
+            }
+            "-ii" | "--ini_getint" => {
+                // Map to ini_getint command
+                processed_args.push("ini_getint".to_string());
+                arg_index += 1;
+            }
+            "-ik" | "--initchannelkey" => {
+                // Map to initchannelkey command
+                processed_args.push("initchannelkey".to_string());
+                arg_index += 1;
+            }
+            "-pk" | "--processchannelkey" => {
+                // Map to processchannelkey command
+                processed_args.push("processchannelkey".to_string());
+                arg_index += 1;
+            }
+            "-kt" | "--getkeyttl" => {
+                // Map to getkeyttl command
+                processed_args.push("getkeyttl".to_string());
+                arg_index += 1;
+            }
+            "-rs" | "--getratchetstate" => {
+                // Map to getratchetstate command
+                processed_args.push("getratchetstate".to_string());
+                arg_index += 1;
+            }
+            "-smk" | "--setmanualchannelkey" => {
+                // Map to setmanualchannelkey command
+                processed_args.push("setmanualchannelkey".to_string());
+                arg_index += 1;
+            }
+            "-sn" | "--setnetwork" => {
+                // Map to setnetwork command
+                processed_args.push("setnetwork".to_string());
+                arg_index += 1;
+            }
+            "-kf" | "--getkeyfingerprint" => {
+                // Map to getkeyfingerprint command
+                processed_args.push("getkeyfingerprint".to_string());
+                arg_index += 1;
+            }
+            "-skp" | "--setkeyfromplaintext" => {
+                // Map to setkeyfromplaintext command
+                processed_args.push("setkeyfromplaintext".to_string());
+                arg_index += 1;
             }
             _ => {
                 // Not an option, add to processed args

@@ -111,8 +111,8 @@ pub unsafe extern "system" fn DllMain(
                 if !LOGGER_INITIALIZED.load(Ordering::SeqCst) {
                     init_logger();
                 }
-                info!("=== DllMain: DLL_PROCESS_ATTACH ===");
-                info!("DllMain: h_module = {:?}", h_module);
+                info!("=== DllMain : DLL_PROCESS_ATTACH ===");
+                info!("DllMain() : h_module = {:?}", h_module);
             }
 
             // Initialize the engine container so other DLLs can register themselves.
@@ -120,93 +120,93 @@ pub unsafe extern "system" fn DllMain(
                 Ok(mut engines) => {
                     if engines.is_none() {
                         *engines = Some(Arc::new(InjectEngines::new()));
-                        info!("DllMain: InjectEngines container initialized successfully.");
+                        info!("DllMain() : InjectEngines container initialized successfully.");
                     }
                 }
                 Err(e) => {
-                    error!("DllMain: failed to lock ENGINES to initialize: {}", e);
+                    error!("DllMain() : failed to lock ENGINES to initialize: {}", e);
                 }
             }
 
             // Store module handle
             #[cfg(debug_assertions)]
-            info!("DllMain: acquiring DLL_HANDLE_PTR lock...");
+            info!("DllMain() : acquiring DLL_HANDLE_PTR lock...");
 
             match DLL_HANDLE_PTR.lock() {
                 Ok(mut handle) => {
                     *handle = Some(SendHMODULE(h_module));
                     #[cfg(debug_assertions)]
-                    info!("DllMain: module handle stored successfully");
+                    info!("DllMain() : module handle stored successfully");
                 }
                 Err(e) => {
                     #[cfg(debug_assertions)]
-                    error!("DllMain: failed to lock DLL_HANDLE_PTR: {}", e);
+                    error!("DllMain() : failed to lock DLL_HANDLE_PTR: {}", e);
                     return 0; // Return FALSE
                 }
             }
 
             #[cfg(debug_assertions)]
-            info!("DllMain: initializing logger (if not already done)...");
+            info!("DllMain() : initializing logger (if not already done)...");
 
             init_logger();
 
             info!("***");
             info!(
-                "FiSH_11 inject v{} (build date: {}, build time: {})",
+                "FiSH_11 inject v{} (build date : {}, build time : {} ZULU)",
                 fish_11_core::globals::CRATE_VERSION,
                 fish_11_core::globals::BUILD_DATE.as_str(),
                 fish_11_core::globals::BUILD_TIME.as_str()
             );
             info!("***");
-            info!("The DLL is loaded successfully. Now it's time to h00k some calls baby !");
+            info!("The DLL is loaded successfully. Now it's time to h00k some calls bayby !");
 
             #[cfg(debug_assertions)]
-            info!("DllMain: and how about to install SSL patches ?");
+            info!("DllMain() : and how about to install SSL patches ?");
 
             // NOTE: experimental SSL inline patching was previously called here.
             // It has been disabled due to instability and the code has been moved to /experimental/ssl_inline_patch.rs for reference.
             // The stable hooking mechanism in hook_ssl.rs is used instead.
 
             #[cfg(debug_assertions)]
-            info!("DllMain: setting LOADED flag to true...");
+            info!("DllMain() : setting LOADED flag to true...");
 
             // Mark as loaded
             LOADED.store(true, Ordering::SeqCst);
 
             #[cfg(debug_assertions)]
-            info!("=== DllMain: DLL_PROCESS_ATTACH completed successfully ===");
+            info!("=== DllMain() : DLL_PROCESS_ATTACH completed successfully ===");
 
             1
         }
         0 => {
             // DLL_PROCESS_DETACH
             #[cfg(debug_assertions)]
-            info!("=== DllMain: DLL_PROCESS_DETACH ===");
+            info!("=== DllMain() : DLL_PROCESS_DETACH ===");
 
             // Cleanup
             if LOADED.swap(false, Ordering::SeqCst) {
-                info!("DllMain(): process is detaching. Cleaning up...");
+                info!("DllMain() : process is detaching. Cleaning up...");
 
                 #[cfg(debug_assertions)]
-                info!("DllMain: uninstalling SSL patches...");
+                info!("DllMain() : uninstalling SSL patches...");
 
                 // NOTE: uninstall for experimental SSL inline patching was previously called here.
                 // The code has been moved to /experimental/ssl_inline_patch.rs for reference.
 
                 #[cfg(debug_assertions)]
-                info!("DllMain: cleaning up hooks...");
+                info!("DllMain : cleaning up hooks...");
 
                 cleanup_hooks();
 
                 #[cfg(debug_assertions)]
-                info!("DllMain: cleanup complete");
+                info!("DllMain() : cleanup complete");
             } else {
                 #[cfg(debug_assertions)]
-                info!("DllMain: DLL was not loaded, skipping cleanup");
+                info!("DllMain() : DLL was not loaded, skipping cleanup");
             }
 
             #[cfg(debug_assertions)]
-            info!("=== DllMain: DLL_PROCESS_DETACH completed ===");
+            info!("=== DllMain() : DLL_PROCESS_DETACH completed ===");
 
             1
         }
@@ -216,7 +216,7 @@ pub unsafe extern "system" fn DllMain(
             {
                 let thread_id = GetCurrentThreadId();
                 info!(
-                    "DllMain: DLL_THREAD_ATTACH - a new thread is being created (Thread ID: {}).",
+                    "DllMain() : DLL_THREAD_ATTACH - a new thread is being created (Thread ID: {}).",
                     thread_id
                 );
             }
@@ -228,7 +228,7 @@ pub unsafe extern "system" fn DllMain(
             {
                 let thread_id = GetCurrentThreadId();
                 info!(
-                    "DllMain: DLL_THREAD_DETACH - a thread is exiting cleanly (Thread ID: {}).",
+                    "DllMain() : DLL_THREAD_DETACH - a thread is exiting cleanly (Thread ID: {}).",
                     thread_id
                 );
             }
@@ -236,7 +236,7 @@ pub unsafe extern "system" fn DllMain(
         }
         _ => {
             #[cfg(debug_assertions)]
-            info!("DllMain: unknown reason code: {}", ul_reason_for_call);
+            info!("DllMain() : unknown reason code: {}", ul_reason_for_call);
             1
         }
     }
