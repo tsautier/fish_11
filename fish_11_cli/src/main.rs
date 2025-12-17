@@ -86,7 +86,7 @@ fn call_dll_function(
 
     // We need to copy the parameters to a mutable buffer since many functions
     // both read from and write to the data parameter
-    let buffer_size = 8192;
+    let buffer_size = fish_11_core::globals::DLL_BUFFER_SIZE;
     let mut data_buffer = vec![0u8; buffer_size];
 
     // Copy parameters to data buffer
@@ -535,7 +535,7 @@ fn main() {
         m_keep: 1,    // BOOL (TRUE)
         m_unicode: 0, // BOOL (FALSE)
         m_beta: 0,
-        m_bytes: 8192,
+        m_bytes: fish_11_core::globals::DLL_BUFFER_SIZE as DWORD,
     };
 
     // Call LoadDll if found
