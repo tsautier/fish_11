@@ -28,7 +28,7 @@ pub const DEFAULT_MIRC_BUFFER_SIZE: usize = 4096;
 // Maximum buffer size we will ever report to callers (including content, we'll
 // subtract one for the null terminator in get_buffer_size()). This prevents
 // accidentally writing too much to caller buffers; mIRC historically uses 900.
-// BUT 
+// BUT
 // modern mIRC versions support larger buffers, so we align this with DLL_BUFFER_SIZE.
 pub const MAX_MIRC_BUFFER_SIZE: usize = DLL_BUFFER_SIZE;
 

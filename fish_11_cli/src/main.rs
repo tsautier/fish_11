@@ -131,13 +131,12 @@ fn call_dll_function(
                 last_report = Instant::now();
                 let elapsed = start.elapsed();
                 if elapsed > Duration::from_secs(2) {
-
-                     if !unsafe { QUIET_MODE.load(Ordering::Relaxed) } {
+                    if !unsafe { QUIET_MODE.load(Ordering::Relaxed) } {
                         println!(
                             "Still waiting... ({:.1?} elapsed, timeout at {:?})",
                             elapsed, timeout
                         );
-                     }
+                    }
                 }
             }
         }
@@ -173,14 +172,15 @@ fn call_dll_function(
     unsafe {
         let preview_size = 20.min(buffer_size);
         if preview_size > 0 {
-            let bytes: Vec<u8> = std::slice::from_raw_parts(data_ptr as *const u8, preview_size).to_vec();
-            
+            let bytes: Vec<u8> =
+                std::slice::from_raw_parts(data_ptr as *const u8, preview_size).to_vec();
+
             if !QUIET_MODE.load(Ordering::Relaxed) {
                 println!("Buffer first {} bytes : {:?}", preview_size, bytes);
 
                 // Try to convert to string
                 if let Ok(preview) = std::str::from_utf8(&bytes) {
-                     println!("Buffer preview as string : {}", preview);
+                    println!("Buffer preview as string : {}", preview);
                 }
             }
         }
@@ -280,7 +280,7 @@ fn list_exports(dll_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     for func_name in [
         "FiSH11_GetVersion",
         "FiSH11_GenKey",
-        "FiSH11_FileDelKey",  // Changed from FiSH11_DelKey
+        "FiSH11_FileDelKey", // Changed from FiSH11_DelKey
         "FiSH11_SetKey",
         "FiSH11_FileGetKey",
         "FiSH11_FileListKeys",
@@ -384,11 +384,13 @@ fn display_help() {
 fn validate_command_args(command: &str, args: &[String]) -> Result<(), String> {
     let arg_count = args.len();
     match command {
-        "genkey" | "delkey" | "getkey" | "getkeyfingerprint" | "getkeyttl" | "setkeyttl" | "exchangekey" | "processkey" => {
+        "genkey" | "delkey" | "getkey" | "getkeyfingerprint" | "getkeyttl" | "setkeyttl"
+        | "exchangekey" | "processkey" => {
             if arg_count < 1 {
-                let mut msg = format!("Command '{}' requires a target (channel or nickname).", command);
+                let mut msg =
+                    format!("Command '{}' requires a target (channel or nickname).", command);
                 if command == "genkey" || command == "delkey" || command == "getkey" {
-                     msg.push_str("\nTip: if you are specifying a channel (e.g. #channel) in PowerShell, invoke it with quotes (\"#channel\") to prevent it from being treated as a comment (duh).");
+                    msg.push_str("\nTip: if you are specifying a channel (e.g. #channel) in PowerShell, invoke it with quotes (\"#channel\") to prevent it from being treated as a comment (duh).");
                 }
                 return Err(msg);
             }
@@ -404,17 +406,17 @@ fn validate_command_args(command: &str, args: &[String]) -> Result<(), String> {
             }
         }
         "initchannelkey" => {
-             if arg_count < 1 {
+            if arg_count < 1 {
                 return Err(format!("Command '{}' requires a channel.", command));
             }
         }
         "setmanualchannelkey" => {
-             if arg_count < 2 {
+            if arg_count < 2 {
                 return Err(format!("Command '{}' requires a channel and a key.", command));
             }
         }
         "ini_getbool" | "ini_getstring" | "ini_getint" => {
-             if arg_count < 1 {
+            if arg_count < 1 {
                 return Err(format!("Command '{}' requires a config key name.", command));
             }
         }
@@ -500,7 +502,9 @@ fn main() {
         Ok(dll) => dll,
         Err(e) => {
             println!("Failed to load DLL '{}' : {}", dll_path, e);
-            println!("Make sure the DLL exists and is compatible with this version of FiSH_11 CLI.");
+            println!(
+                "Make sure the DLL exists and is compatible with this version of FiSH_11 CLI."
+            );
             return;
         }
     };
@@ -553,7 +557,7 @@ fn main() {
     let function_name = match command.as_str() {
         "getversion" => "FiSH11_GetVersion",
         "genkey" => "FiSH11_GenKey",
-        "delkey" => "FiSH11_FileDelKey",  // Changed from FiSH11_DelKey
+        "delkey" => "FiSH11_FileDelKey", // Changed from FiSH11_DelKey
         "setkey" => "FiSH11_SetKey",
         "getkey" => "FiSH11_FileGetKey",
         "listkeys" => "FiSH11_FileListKeys",
@@ -654,62 +658,67 @@ fn main() {
                         }
                     }
 
-                if !displayed_something && !output.is_empty() {
+                    if !displayed_something && !output.is_empty() {
                         println!("Raw output: {}", output);
                     }
                 }
             } else if function_name == "FiSH11_GenKey" {
-                 // For genkey, we want to display the generated key if in quiet mode, 
-                 // or include it in the output otherwise.
-                 
-                 // First, display the success message if NOT in quiet mode
-                 if !unsafe { QUIET_MODE.load(Ordering::Relaxed) } {
-                     let format = get_output_format(function_name);
-                     let formatted_output = process_mirc_output(&output, format);
-                     println!("{}", formatted_output);
-                 }
+                // For genkey, we want to display the generated key if in quiet mode,
+                // or include it in the output otherwise.
 
-                 // Now retrieve the key
-                 // The params for genkey are "target [network]", for getkey it's "target"
-                 // We need to extract just the target
-                 let target = params.split_whitespace().next().unwrap_or(&params);
-                 
-                 match call_dll_function(&dll, "FiSH11_FileGetKey", target) {
-                     Ok(key_output) => {
-                         let valid_key = key_output.contains("+OK ") || key_output.len() > 10; // Simple validation check
-                         
-                         if unsafe { QUIET_MODE.load(Ordering::Relaxed) } {
-                             // quiet mode: print ONLY the key
-                             if valid_key {
-                                 // The output might be formatted, clean it up if needed.
-                                 // FiSH11_FileGetKey usually returns just the key string or similar.
-                                 // But let's check if it's mIRC formatted.
-                                 let clean_key = process_mirc_output(&key_output, get_output_format("FiSH11_FileGetKey"));
-                                 println!("{}", clean_key.trim());
-                             } else {
-                                 // If we couldn't get the key, print nothing or error?
-                                 // User requested "ONLY the key", so maybe stderr if failed?
-                                 eprintln!("Error: Failed to retrieve generated key.");
-                             }
-                         } else {
-                             // Normal mode: print the key clearly
-                             let clean_key = process_mirc_output(&key_output, get_output_format("FiSH11_FileGetKey"));
-                             println!("Key: {}", clean_key.trim());
-                         }
-                     },
-                     Err(e) => {
-                         println!("Error retrieving generated key: {}", e);
-                     }
-                 }
+                // First, display the success message if NOT in quiet mode
+                if !unsafe { QUIET_MODE.load(Ordering::Relaxed) } {
+                    let format = get_output_format(function_name);
+                    let formatted_output = process_mirc_output(&output, format);
+                    println!("{}", formatted_output);
+                }
 
+                // Now retrieve the key
+                // The params for genkey are "target [network]", for getkey it's "target"
+                // We need to extract just the target
+                let target = params.split_whitespace().next().unwrap_or(&params);
+
+                match call_dll_function(&dll, "FiSH11_FileGetKey", target) {
+                    Ok(key_output) => {
+                        let valid_key = key_output.contains("+OK ") || key_output.len() > 10; // Simple validation check
+
+                        if unsafe { QUIET_MODE.load(Ordering::Relaxed) } {
+                            // quiet mode: print ONLY the key
+                            if valid_key {
+                                // The output might be formatted, clean it up if needed.
+                                // FiSH11_FileGetKey usually returns just the key string or similar.
+                                // But let's check if it's mIRC formatted.
+                                let clean_key = process_mirc_output(
+                                    &key_output,
+                                    get_output_format("FiSH11_FileGetKey"),
+                                );
+                                println!("{}", clean_key.trim());
+                            } else {
+                                // If we couldn't get the key, print nothing or error?
+                                // User requested "ONLY the key", so maybe stderr if failed?
+                                eprintln!("Error: Failed to retrieve generated key.");
+                            }
+                        } else {
+                            // Normal mode: print the key clearly
+                            let clean_key = process_mirc_output(
+                                &key_output,
+                                get_output_format("FiSH11_FileGetKey"),
+                            );
+                            println!("Key: {}", clean_key.trim());
+                        }
+                    }
+                    Err(e) => {
+                        println!("Error retrieving generated key: {}", e);
+                    }
+                }
             } else {
                 // For other functions, use the normal formatter
-                
+
                 // If quiet mode is on, we print ONLY the RESULT, not the formatting
                 if unsafe { QUIET_MODE.load(Ordering::Relaxed) } {
-                     let format = get_output_format(function_name);
-                     let formatted_output = process_mirc_output(&output, format);
-                     println!("{}", formatted_output.trim());
+                    let format = get_output_format(function_name);
+                    let formatted_output = process_mirc_output(&output, format);
+                    println!("{}", formatted_output.trim());
                 } else {
                     let format = get_output_format(function_name);
                     let formatted_output = process_mirc_output(&output, format);

@@ -312,7 +312,10 @@ pub unsafe extern "system" fn hooked_send(
             } else if current_state != SocketState::IrcIdentified {
                 // Socket is already in a different state (TlsHandshake, Closed, etc.)
                 // Log this as it might indicate unexpected protocol behavior
-                debug!("Socket {}: IRC command detected but socket is in {} state", s, current_state);
+                debug!(
+                    "Socket {}: IRC command detected but socket is in {} state",
+                    s, current_state
+                );
             }
 
             if let Ok(utf8_str) = std::str::from_utf8(data_slice) {
@@ -423,7 +426,7 @@ pub unsafe extern "system" fn hooked_connect(
     if result == 0 {
         // Connection successful
         debug!("Socket {}: connection established", s);
-        
+
         // Only transition to Connected if not already in a more advanced state
         let current_state = socket_info.get_state();
         if current_state == SocketState::Initializing {
@@ -431,7 +434,10 @@ pub unsafe extern "system" fn hooked_connect(
             socket_info.set_state(SocketState::Connected);
         } else if current_state != SocketState::Connected {
             // Log unexpected state transitions
-            debug!("Socket {}: connection established but socket was in {} state", s, current_state);
+            debug!(
+                "Socket {}: connection established but socket was in {} state",
+                s, current_state
+            );
         }
 
         // Check if this is likely to be a TLS connection (e.g., port 6697)
@@ -670,7 +676,7 @@ mod tests {
         // Test that we don't accidentally regress from IrcIdentified
         let socket_info3 = SocketInfo::new(67890u32, engines.clone());
         socket_info3.set_state(SocketState::IrcIdentified);
-        
+
         // Simulate the condition check from hooked_send
         let current_state = socket_info3.get_state();
         if current_state == SocketState::Initializing || current_state == SocketState::Connected {

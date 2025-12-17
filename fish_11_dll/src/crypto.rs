@@ -455,7 +455,9 @@ pub fn extract_public_key(formatted: &str) -> Result<[u8; 32]> {
 
     // Check if the string has the correct prefix using constant-time comparison
     // to prevent timing attacks that could leak information about the prefix
-    if !formatted.len() >= PREFIX.len() || !constant_time_compare(formatted.as_bytes(), PREFIX.as_bytes()) {
+    if !formatted.len() >= PREFIX.len()
+        || !constant_time_compare(formatted.as_bytes(), PREFIX.as_bytes())
+    {
         return Err(FishError::InvalidInput(
             "Formatted key does not have the correct prefix".to_string(),
         ));

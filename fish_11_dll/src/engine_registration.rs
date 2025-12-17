@@ -65,7 +65,10 @@ unsafe extern "C" fn on_outgoing(socket: u32, line: *const c_char, _len: usize) 
 
     // Check for truncated lines (should end with \r\n for IRC protocol)
     if !c_str.ends_with("\r\n") && !c_str.ends_with("\n") {
-        log_warn!("Engine: received potentially truncated line (missing IRC line ending): {}", c_str);
+        log_warn!(
+            "Engine: received potentially truncated line (missing IRC line ending): {}",
+            c_str
+        );
         // Continue processing but log the warning
     }
 
@@ -115,7 +118,10 @@ unsafe extern "C" fn on_incoming(socket: u32, line: *const c_char, _len: usize) 
 
     // Check for truncated lines (should end with \r\n for IRC protocol)
     if !c_str.ends_with("\r\n") && !c_str.ends_with("\n") {
-        log_warn!("Engine: received potentially truncated incoming line (missing IRC line ending): {}", c_str);
+        log_warn!(
+            "Engine: received potentially truncated incoming line (missing IRC line ending): {}",
+            c_str
+        );
         // Continue processing but log the warning
     }
 
@@ -869,7 +875,8 @@ pub fn register_engine() {
         if get_network_name_fn.is_null() {
             log_error!("GetNetworkName function not found in fish_11_inject.dll.");
         } else {
-            let get_network_name_fn_ptr: GetNetworkNameFn = std::mem::transmute(get_network_name_fn);
+            let get_network_name_fn_ptr: GetNetworkNameFn =
+                std::mem::transmute(get_network_name_fn);
             if let Err(_) = GET_NETWORK_NAME_FN.set(get_network_name_fn_ptr) {
                 log_error!("GetNetworkName function already set, this should not happen.");
             }

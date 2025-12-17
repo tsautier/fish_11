@@ -121,12 +121,13 @@ fn get_key_internal(config: &FishConfig, nickname: &str, network: Option<&str>) 
                     let now = Local::now().naive_local();
                     let duration = now.signed_duration_since(key_date);
                     let elapsed_seconds = duration.num_seconds();
-                    
+
                     // Get configured TTL (defaulting to 24h if not set)
                     let key_lifetime_seconds = config.fish11.key_ttl.unwrap_or(86400); // 86400 = 24h
-                    
+
                     // Add grace period to account for clock drift
-                    let remaining_seconds = key_lifetime_seconds + KEY_EXPIRY_GRACE_PERIOD - elapsed_seconds;
+                    let remaining_seconds =
+                        key_lifetime_seconds + KEY_EXPIRY_GRACE_PERIOD - elapsed_seconds;
 
                     if remaining_seconds <= 0 {
                         return Err(FishError::KeyExpired(nick.to_string()));
@@ -182,7 +183,7 @@ fn get_key_internal(config: &FishConfig, nickname: &str, network: Option<&str>) 
                 if let Some(ref key_str) = entry_data.key {
                     // Check for expiration
                     check_expiration(entry_data, &normalized_nick)?;
-                    
+
                     log_debug!(
                         "Key found with network fallback for '{}' (found in '{}')",
                         normalized_nick,

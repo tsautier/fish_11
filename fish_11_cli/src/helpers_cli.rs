@@ -150,7 +150,7 @@ pub fn validate_config_file(file_path: &str) -> bool {
     }
 
     if !path.is_file() {
-         // Errors should always be printed
+        // Errors should always be printed
         println!("Error : '{}' is not a file", file_path);
         return false;
     }
@@ -189,5 +189,3 @@ pub fn validate_config_file(file_path: &str) -> bool {
         }
     }
 }
-
-
