@@ -112,7 +112,7 @@ fn call_dll_function(
         Duration::from_secs(DEFAULT_TIMEOUT_SECONDS)
     };
 
-    println!("Starting function call (timeout set to {:?})...", timeout);
+    info_print!("Starting function call (timeout set to {:?})...", timeout);
     let start_time = Instant::now();
     // Use a separate thread to detect and report potential hangs
     let is_complete = Arc::new(AtomicBool::new(false));
@@ -131,22 +131,25 @@ fn call_dll_function(
                 last_report = Instant::now();
                 let elapsed = start.elapsed();
                 if elapsed > Duration::from_secs(2) {
-                    println!(
-                        "Still waiting... ({:.1?} elapsed, timeout at {:?})",
-                        elapsed, timeout
-                    );
+
+                     if !unsafe { QUIET_MODE.load(Ordering::Relaxed) } {
+                        println!(
+                            "Still waiting... ({:.1?} elapsed, timeout at {:?})",
+                            elapsed, timeout
+                        );
+                     }
                 }
             }
         }
 
         // If we reach here and the operation isn't complete, the timeout has been reached
         if !is_complete_clone.load(Ordering::SeqCst) {
-            println!("WARNING: Function execution timed out after {:?}.", timeout);
-            println!("The DLL function may have hung. You can press Ctrl+C to cancel.");
+            println!("WARNING : function execution timed out after {:?}.", timeout);
+            println!("The DLL function may have hung, press Ctrl+c to break.");
         }
     });
     // Call the function
-    println!("Calling DLL function {} with parameters: '{}'", function_name, params);
+    info_print!("Calling DLL function {} with parameters : '{}'", function_name, params);
 
     let result = function(
         std::ptr::null_mut(), // mWnd
@@ -164,33 +167,35 @@ fn call_dll_function(
     let elapsed = start_time.elapsed();
 
     // Log the result and buffer info
-    println!("DLL function returned code: {}", result);
+    info_print!("DLL function returned code: {}", result);
 
     // For debugging, examine the first few bytes of the buffer
     unsafe {
         let preview_size = 20.min(buffer_size);
         if preview_size > 0 {
             let bytes: Vec<u8> = std::slice::from_raw_parts(data_ptr as *const u8, preview_size).to_vec();
+            
+            if !QUIET_MODE.load(Ordering::Relaxed) {
+                println!("Buffer first {} bytes : {:?}", preview_size, bytes);
 
-            println!("Buffer first {} bytes: {:?}", preview_size, bytes);
-
-            // Try to convert to string
-            if let Ok(preview) = std::str::from_utf8(&bytes) {
-                println!("Buffer preview as string: {}", preview);
+                // Try to convert to string
+                if let Ok(preview) = std::str::from_utf8(&bytes) {
+                     println!("Buffer preview as string : {}", preview);
+                }
             }
         }
     }
 
     if elapsed > Duration::from_secs(1) {
-        println!("Function call completed in {:.2?}", elapsed);
+        info_print!("Function call completed in {:.2?}", elapsed);
 
         // Special handling for potentially slow operations
         if function_name == "FiSH11_FileListKeys" {
-            println!("Note: Processing large key databases can take time.");
+            info_print!("Note : processing large key databases can take time.");
         }
     } // Check the result based on actual mIRC return codes
     if result != 3 && result != 2 && result != 0 && result != 1 {
-        println!("Warning: DLL function returned unusual value: {}", result);
+        info_print!("Warning: DLL function returned unusual value: {}", result);
         // Continue anyway - some functions might use different return codes
     } // Convert buffer to String (handle null terminator)
     let output = if result == 3 || result == 2 || result == 0 || result == 1 {
@@ -242,7 +247,7 @@ fn call_dll_function(
                     }
                 }
                 Err(e) => {
-                    println!("Warning: Failed to decode result: {}", e);
+                    info_print!("Warning : failed to decode result: {}", e);
                     format!("Function completed but returned invalid UTF-8 data (length: {})", len)
                 }
             }
@@ -268,8 +273,8 @@ fn list_exports(dll_path: &str) -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    println!("Available FiSH 11 functions:");
-    println!("---------------------------");
+    println!("Available FiSH_11 functions :");
+    println!("----------------------------");
 
     // Manually try to get handle for known FiSH11 functions and print which ones are available
     for func_name in [
@@ -326,12 +331,12 @@ fn list_exports(dll_path: &str) -> Result<(), Box<dyn std::error::Error>> {
 
 /// Display a help message with command usage information
 fn display_help() {
-    println!("FiSH 11 CLI v{} - Command Line Interface for FiSH11 DLL", FISH_11_VERSION);
+    println!("FiSH_11 CLI v{} - Command line interface for FiSH_11 DLL", FISH_11_VERSION);
     println!("Usage:");
     println!("  fish_11_cli [options] <dll_path> <command> [parameters...]");
     println!();
     println!("Options:");
-    println!("  -q, --quiet     Minimize output messages");
+    println!("  -q, --quiet     Minimize output messages (useful for scripts)");
     println!();
     println!("Commands:");
     println!("  help                    Show this help message");
@@ -369,9 +374,9 @@ fn display_help() {
     println!("  fish_11_cli fish_11.dll ini_getbool process_incoming 1");
     println!("  fish_11_cli fish_11.dll ini_getstring plain_prefix \"\"");
     println!("  fish_11_cli fish_11.dll ini_getint mark_position 0");
-    println!("  fish_11_cli fish_11.dll initchannelkey #secret alice bob");
-    println!("  fish_11_cli fish_11.dll setkeyttl alice");
-    println!("  fish_11_cli fish_11.dll getkeyfingerprint alice");
+    println!("  fish_11_cli fish_11.dll initchannelkey #secret Alice Bob");
+    println!("  fish_11_cli fish_11.dll setkeyttl Alice");
+    println!("  fish_11_cli fish_11.dll getkeyfingerprint Alice");
     println!("  fish_11_cli fish_11.dll setnetwork EFNet");
 }
 
@@ -464,7 +469,7 @@ fn main() {
 
     // At this point we should have at least the DLL path and command
     if processed_args.len() < 2 {
-        println!("Error: Missing required arguments");
+        println!("Error : missing required arguments");
         display_help();
         return;
     }
@@ -494,8 +499,8 @@ fn main() {
     let dll = match unsafe { libloading::Library::new(dll_path) } {
         Ok(dll) => dll,
         Err(e) => {
-            println!("Failed to load DLL '{}': {}", dll_path, e);
-            println!("Make sure the DLL exists and is compatible with this application.");
+            println!("Failed to load DLL '{}' : {}", dll_path, e);
+            println!("Make sure the DLL exists and is compatible with this version of FiSH_11 CLI.");
             return;
         }
     };
@@ -512,11 +517,11 @@ fn main() {
             }
             Err(_) => match dll.get::<DllLoadFn>(b"_LoadDll@4") {
                 Ok(func) => {
-                    info_print!("Found LoadDll with mangled name '_LoadDll@4'");
+                    info_print!("Found LoadDll() with mangled name '_LoadDll@4'");
                     Some(func)
                 }
                 Err(_) => {
-                    info_print!("Warning: LoadDll function not found with expected name patterns");
+                    info_print!("Warning : LoadDll() not found with expected name patterns");
                     None
                 }
             },
@@ -538,7 +543,7 @@ fn main() {
         let result = load_fn(&mut load_info);
 
         if result != 1 {
-            info_print!("Warning: LoadDll returned unexpected value: {}", result);
+            info_print!("Warning: LoadDll() returned unexpected value: {}", result);
         } else {
             info_print!("Successfully initialized DLL with LoadDll");
         }
@@ -600,7 +605,7 @@ fn main() {
     if function_name == "FiSH11_FileListKeys" && processed_args.len() > 2 {
         let config_path = &processed_args[2];
         if !validate_config_file(config_path) {
-            println!("Warning: The config file may not be valid or accessible.");
+            println!("Warning : the config file may not be valid or accessible.");
             println!("Continuing with the operation, but it may fail.");
         }
     }
@@ -637,7 +642,7 @@ fn main() {
                             let content = line.trim_start_matches("/echo -a ");
 
                             // Skip duplicating header if we already printed it
-                            if content == "FiSH Keys:" && displayed_something {
+                            if content == "FiSH Keys :" && displayed_something {
                                 continue;
                             }
 
@@ -649,21 +654,72 @@ fn main() {
                         }
                     }
 
-                    // If nothing was displayed but we had output, show it raw
-                    if !displayed_something && !output.is_empty() {
+                if !displayed_something && !output.is_empty() {
                         println!("Raw output: {}", output);
                     }
                 }
+            } else if function_name == "FiSH11_GenKey" {
+                 // For genkey, we want to display the generated key if in quiet mode, 
+                 // or include it in the output otherwise.
+                 
+                 // First, display the success message if NOT in quiet mode
+                 if !unsafe { QUIET_MODE.load(Ordering::Relaxed) } {
+                     let format = get_output_format(function_name);
+                     let formatted_output = process_mirc_output(&output, format);
+                     println!("{}", formatted_output);
+                 }
+
+                 // Now retrieve the key
+                 // The params for genkey are "target [network]", for getkey it's "target"
+                 // We need to extract just the target
+                 let target = params.split_whitespace().next().unwrap_or(&params);
+                 
+                 match call_dll_function(&dll, "FiSH11_FileGetKey", target) {
+                     Ok(key_output) => {
+                         let valid_key = key_output.contains("+OK ") || key_output.len() > 10; // Simple validation check
+                         
+                         if unsafe { QUIET_MODE.load(Ordering::Relaxed) } {
+                             // quiet mode: print ONLY the key
+                             if valid_key {
+                                 // The output might be formatted, clean it up if needed.
+                                 // FiSH11_FileGetKey usually returns just the key string or similar.
+                                 // But let's check if it's mIRC formatted.
+                                 let clean_key = process_mirc_output(&key_output, get_output_format("FiSH11_FileGetKey"));
+                                 println!("{}", clean_key.trim());
+                             } else {
+                                 // If we couldn't get the key, print nothing or error?
+                                 // User requested "ONLY the key", so maybe stderr if failed?
+                                 eprintln!("Error: Failed to retrieve generated key.");
+                             }
+                         } else {
+                             // Normal mode: print the key clearly
+                             let clean_key = process_mirc_output(&key_output, get_output_format("FiSH11_FileGetKey"));
+                             println!("Key: {}", clean_key.trim());
+                         }
+                     },
+                     Err(e) => {
+                         println!("Error retrieving generated key: {}", e);
+                     }
+                 }
+
             } else {
                 // For other functions, use the normal formatter
-                let format = get_output_format(function_name);
-                let formatted_output = process_mirc_output(&output, format);
-                println!("{}", formatted_output);
+                
+                // If quiet mode is on, we print ONLY the RESULT, not the formatting
+                if unsafe { QUIET_MODE.load(Ordering::Relaxed) } {
+                     let format = get_output_format(function_name);
+                     let formatted_output = process_mirc_output(&output, format);
+                     println!("{}", formatted_output.trim());
+                } else {
+                    let format = get_output_format(function_name);
+                    let formatted_output = process_mirc_output(&output, format);
+                    println!("{}", formatted_output);
+                }
             }
         }
         Err(e) => {
             // Always show errors even in quiet mode
-            println!("Error calling function: {}", e);
+            println!("Error calling function : {}", e);
             println!("Try using the 'list' command to see available functions.");
         }
     }

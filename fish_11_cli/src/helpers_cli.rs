@@ -6,9 +6,12 @@ use crate::DllFunctionFn;
 use crate::{OutputFormat, QUIET_MODE, display_help};
 
 // Macro for conditional printing based on quiet mode
+// Macro for conditional printing based on quiet mode
+// Note: This needs to match the behavior of the macro in main.rs
+// We assume QUIET_MODE is available via crate::QUIET_MODE
 macro_rules! info_print {
     ($($arg:tt)*) => {
-        if unsafe { !QUIET_MODE } {
+        if !unsafe { crate::QUIET_MODE.load(std::sync::atomic::Ordering::Relaxed) } {
             println!($($arg)*);
         }
     };
@@ -18,7 +21,7 @@ macro_rules! info_print {
 pub fn process_mirc_output(output: &str, format: OutputFormat) -> String {
     // Only log debug info if output is not empty
     if !output.is_empty() {
-        println!("Processing output in format: {:?}", format);
+        info_print!("Processing output in format: {:?}", format);
     }
 
     // Special case for listkeys when no output is returned
@@ -44,7 +47,7 @@ pub fn process_mirc_output(output: &str, format: OutputFormat) -> String {
 
         OutputFormat::KeyList => {
             // Process multiline output with multiple /echo commands (like from FiSH11_FileListKeys)
-            println!("DEBUG - Processing as KeyList format");
+            info_print!("DEBUG - Processing as KeyList format");
 
             // Special case for empty or whitespace-only output
             if output.trim().is_empty() {
@@ -58,7 +61,7 @@ pub fn process_mirc_output(output: &str, format: OutputFormat) -> String {
                 output.split('\n').collect::<Vec<&str>>()
             };
 
-            println!("DEBUG - Split into {} lines", lines.len());
+            info_print!("DEBUG - Split into {} lines", lines.len());
 
             if lines.is_empty() {
                 return "No keys found.".to_string();
@@ -120,7 +123,7 @@ pub fn process_mirc_output(output: &str, format: OutputFormat) -> String {
 
 /// Helper function to determine which output format to use based on function name
 pub fn get_output_format(function_name: &str) -> OutputFormat {
-    println!("DEBUG - Selecting output format for function: {}", function_name);
+    info_print!("DEBUG - Selecting output format for function: {}", function_name);
     match function_name {
         "FiSH11_FileListKeys" => OutputFormat::KeyList,
         "FiSH11_Help" => OutputFormat::MircEcho,
@@ -141,11 +144,13 @@ pub fn validate_config_file(file_path: &str) -> bool {
     let path = Path::new(file_path);
 
     if !path.exists() {
+        // Errors should always be printed
         println!("Error: config file '{}' does not exist", file_path);
         return false;
     }
 
     if !path.is_file() {
+         // Errors should always be printed
         println!("Error: '{}' is not a file", file_path);
         return false;
     }
@@ -153,7 +158,7 @@ pub fn validate_config_file(file_path: &str) -> bool {
     // Check if the file has a valid extension (.ini)
     let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
     if extension.to_lowercase() != "ini" {
-        println!("Warning: config file '{}' does not have .ini extension", file_path);
+        info_print!("Warning: config file '{}' does not have .ini extension", file_path);
         // Continue anyway, it might still work
     }
 
@@ -165,10 +170,10 @@ pub fn validate_config_file(file_path: &str) -> bool {
             match file.read(&mut buffer) {
                 Ok(bytes_read) => {
                     if bytes_read > 0 {
-                        println!("Config file '{}' exists and is readable", file_path);
+                        info_print!("Config file '{}' exists and is readable", file_path);
                         true
                     } else {
-                        println!("Warning: Config file '{}' is empty", file_path);
+                        info_print!("Warning: Config file '{}' is empty", file_path);
                         true
                     }
                 }
