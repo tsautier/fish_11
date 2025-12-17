@@ -2,8 +2,8 @@ use std::io::Read;
 use std::path::Path;
 
 #[cfg(windows)]
-use crate::DllFunctionFn;
-use crate::{OutputFormat, QUIET_MODE, display_help};
+//use crate::DllFunctionFn;
+use crate::{OutputFormat, display_help};
 
 // Macro for conditional printing based on quiet mode
 // Macro for conditional printing based on quiet mode
@@ -11,7 +11,13 @@ use crate::{OutputFormat, QUIET_MODE, display_help};
 // We assume QUIET_MODE is available via crate::QUIET_MODE
 macro_rules! info_print {
     ($($arg:tt)*) => {
-        if !unsafe { crate::QUIET_MODE.load(std::sync::atomic::Ordering::Relaxed) } {
+        if let Ok(guard) = crate::QUIET_MODE.lock() {
+            if !*guard {
+                println!($($arg)*);
+            }
+        } else {
+            // If the mutex is poisoned, default to printing (not quiet)
+            eprintln!("Warning: QUIET_MODE mutex was poisoned, defaulting to not quiet");
             println!($($arg)*);
         }
     };

@@ -6,12 +6,15 @@
 //! Written by [GuY], 2025. Licenced under GPL v3.
 
 mod platform_types;
-use term_size;
+//use term_size;
 use std::env;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
 use std::sync::Arc;
-use std::sync::{atomic::{AtomicBool, Ordering}, Mutex};
+use std::sync::{
+    Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::{Duration, Instant};
 
 use platform_types::{BOOL, DWORD, HWND, LIB_NAME};
@@ -54,10 +57,27 @@ fn display_version() {
 // Global flag to control output verbosity - using Mutex for thread safety
 static QUIET_MODE: Mutex<bool> = Mutex::new(false);
 
+/// Helper function to safely get the quiet mode value
+fn is_quiet_mode() -> bool {
+    match QUIET_MODE.lock() {
+        Ok(guard) => *guard,
+        Err(_) => {
+            eprintln!("Warning: QUIET_MODE mutex was poisoned, defaulting to not quiet");
+            false
+        }
+    }
+}
+
 // Macro for conditional printing based on quiet mode
 macro_rules! info_print {
     ($($arg:tt)*) => {
-        if !*QUIET_MODE.lock().unwrap() {
+        if let Ok(guard) = QUIET_MODE.lock() {
+            if !*guard {
+                println!($($arg)*);
+            }
+        } else {
+            // If the mutex is poisoned, default to printing (not quiet)
+            eprintln!("Warning : QUIET_MODE mutex was poisoned, defaulting to not quiet");
             println!($($arg)*);
         }
     };
@@ -112,19 +132,27 @@ fn call_dll_function(
     // We need to copy the parameters to a mutable buffer since many functions
     // both read from and write to the data parameter
     let buffer_size = fish_11_core::globals::DLL_BUFFER_SIZE;
-    
+
     // Security validation: prevent excessively large buffer allocations
     const MAX_SAFE_BUFFER_SIZE: usize = 16 * 1024 * 1024; // 16MB
     if buffer_size > MAX_SAFE_BUFFER_SIZE {
-        return Err(format!("Buffer size {} exceeds maximum safe limit of {} bytes", buffer_size, MAX_SAFE_BUFFER_SIZE).into());
+        return Err(format!(
+            "Buffer size {} exceeds maximum safe limit of {} bytes",
+            buffer_size, MAX_SAFE_BUFFER_SIZE
+        )
+        .into());
     }
-    
+
     // Also ensure buffer size is reasonable for our use case
     const MIN_REASONABLE_BUFFER_SIZE: usize = 1024; // 1KB
     if buffer_size < MIN_REASONABLE_BUFFER_SIZE {
-        return Err(format!("Buffer size {} is too small (minimum: {} bytes)", buffer_size, MIN_REASONABLE_BUFFER_SIZE).into());
+        return Err(format!(
+            "Buffer size {} is too small (minimum: {} bytes)",
+            buffer_size, MIN_REASONABLE_BUFFER_SIZE
+        )
+        .into());
     }
-    
+
     let mut data_buffer = vec![0u8; buffer_size];
 
     // Copy parameters to data buffer
@@ -170,7 +198,17 @@ fn call_dll_function(
                 last_report = Instant::now();
                 let elapsed = start.elapsed();
                 if elapsed > Duration::from_secs(2) {
-                    if !*QUIET_MODE.lock().unwrap() {
+                    if let Ok(guard) = QUIET_MODE.lock() {
+                        if !*guard {
+                            println!(
+                                "Still waiting... ({:.1?} elapsed, timeout at {:?})",
+                                elapsed, timeout
+                            );
+                        }
+                    } else {
+                        eprintln!(
+                            "Warning: QUIET_MODE mutex was poisoned, defaulting to not quiet"
+                        );
                         println!(
                             "Still waiting... ({:.1?} elapsed, timeout at {:?})",
                             elapsed, timeout
@@ -214,7 +252,7 @@ fn call_dll_function(
             let bytes: Vec<u8> =
                 std::slice::from_raw_parts(data_ptr as *const u8, preview_size).to_vec();
 
-            if !QUIET_MODE.load(Ordering::Relaxed) {
+            if !is_quiet_mode() {
                 println!("Buffer first {} bytes : {:?}", preview_size, bytes);
 
                 // Try to convert to string
@@ -375,12 +413,12 @@ fn display_help() {
     print_two_columns_aligned(
         &format!("FiSH_11_cli {} (build {})", BUILD_VERSION, BUILD_NUMBER.as_str()),
         "Written by [GuY], licensed under the GPL-v3 or above",
-        col
+        col,
     );
     print_two_columns_aligned(
         &format!("Version {}", build_type),
         &format!("Compiled {} at {} ZULU", BUILD_DATE.as_str(), BUILD_TIME.as_str()),
-        col
+        col,
     );
     println!("");
     println!("Usage : fish_11_cli [options] <dll_path> <command> [parameters...]");
@@ -503,7 +541,11 @@ fn main() {
         match args[arg_index].as_str() {
             "-q" | "--quiet" => {
                 // Set quiet mode
-                *QUIET_MODE.lock().unwrap() = true;
+                if let Ok(mut guard) = QUIET_MODE.lock() {
+                    *guard = true;
+                } else {
+                    eprintln!("Warning: QUIET_MODE mutex was poisoned during update");
+                }
                 arg_index += 1;
             }
             "-v" | "--version" => {
@@ -838,7 +880,7 @@ fn main() {
                 // or include it in the output otherwise.
 
                 // First, display the success message if NOT in quiet mode
-                if !unsafe { QUIET_MODE.load(Ordering::Relaxed) } {
+                if !is_quiet_mode() {
                     let format = get_output_format(function_name);
                     let formatted_output = process_mirc_output(&output, format);
                     println!("{}", formatted_output);
@@ -853,7 +895,7 @@ fn main() {
                     Ok(key_output) => {
                         let valid_key = key_output.contains("+OK ") || key_output.len() > 10; // Simple validation check
 
-                        if unsafe { QUIET_MODE.load(Ordering::Relaxed) } {
+                        if is_quiet_mode() {
                             // quiet mode: print ONLY the key
                             if valid_key {
                                 // The output might be formatted, clean it up if needed.
@@ -886,7 +928,7 @@ fn main() {
                 // For other functions, use the normal formatter
 
                 // If quiet mode is on, we print ONLY the RESULT, not the formatting
-                if unsafe { QUIET_MODE.load(Ordering::Relaxed) } {
+                if is_quiet_mode() {
                     let format = get_output_format(function_name);
                     let formatted_output = process_mirc_output(&output, format);
                     println!("{}", formatted_output.trim());
