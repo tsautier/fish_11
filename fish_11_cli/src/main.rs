@@ -458,6 +458,32 @@ fn validate_dll_path(dll_path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Validates command name to prevent injection of malicious commands
+fn validate_command_name(command: &str) -> Result<(), String> {
+    // Check for null bytes which could cause issues
+    if command.contains('\0') {
+        return Err("Command contains null byte which is not allowed".to_string());
+    }
+
+    // Check for potentially dangerous sequences
+    if command.contains("..\\") || command.contains("../") || command.contains("%00") {
+        return Err("Command contains potentially dangerous path traversal sequences".to_string());
+    }
+
+    // Check for potential command injection attempts
+    if command.contains('|') || command.contains('`') || command.contains('&') || command.contains(';') {
+        return Err("Command contains potentially dangerous shell command characters".to_string());
+    }
+
+    // Additional checks could be added here as needed
+    // For example, only allow alphanumeric characters and underscores/dashes
+    if !command.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '/') {
+        return Err("Command contains invalid characters".to_string());
+    }
+
+    Ok(())
+}
+
 /// List all exported functions from the specified DLL
 fn list_exports(dll_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     info_print!("Loading DLL: {}", dll_path);
@@ -822,8 +848,13 @@ fn main() {
                 arg_index += 1;
             }
             _ => {
-                // Not an option, add to processed args
-                processed_args.push(args[arg_index].clone());
+                // Not an option, add to processed args after validation
+                let arg = args[arg_index].clone();
+                if let Err(e) = validate_command_name(&arg) {
+                    println!("Invalid argument: {}", e);
+                    return;
+                }
+                processed_args.push(arg);
                 arg_index += 1;
             }
         }
@@ -851,6 +882,12 @@ fn main() {
     // Extract the DLL path and command - safe to access since we checked length above
     let dll_path = &processed_args[0];
     let command = processed_args[1].to_lowercase();
+
+    // Validate the command to prevent injection attacks
+    if let Err(e) = validate_command_name(&command) {
+        println!("Invalid command: {}", e);
+        return;
+    }
 
     // Special command to display help
     if command == "help" {
