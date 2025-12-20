@@ -110,10 +110,8 @@ struct LoadInfo {
 
 // Function signatures for the DLL functions
 type DllLoadFn = extern "system" fn(*mut LoadInfo) -> c_int;
-type DllFunctionFn =
-    extern "system" fn(HWND, HWND, *mut c_char, *mut c_char, c_int, c_int) -> c_int;
+type DllFunctionFn = extern "system" fn(HWND, HWND, *mut c_char, usize, *mut c_char, usize, c_int, c_int) -> c_int;
 
-/// Enhanced version of call_dll_function that handles timeouts and detects hanging operations
 /// This is used when the direct DLL call might hang (like FiSH11_FileListKeys with large DBs)
 fn call_dll_function(
     dll: &libloading::Library,
@@ -249,7 +247,9 @@ fn call_dll_function(
         std::ptr::null_mut(), // mWnd
         std::ptr::null_mut(), // aWnd
         data_ptr,             // data (input/output)
+        data_buffer.len(),    // size of data buffer
         parms_ptr,            // parms (additional params)
+        parms_buffer.len(),   // size of parms buffer
         1,                    // show (1 = show output, 0 = don't show)
         0,                    // nopause (0 = normal pause behavior)
     );

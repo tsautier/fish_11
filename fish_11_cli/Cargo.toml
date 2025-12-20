@@ -12,7 +12,6 @@ fish_11_core = { path = "../fish_11_core" }
 
 term_size = "0.3"
 
-
 # Platform-specific dependencies
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winuser", "windef", "libloaderapi"] }
