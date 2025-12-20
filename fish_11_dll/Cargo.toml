@@ -8,8 +8,10 @@ authors = ["GuY"]
 
 [lib]
 name = "fish_11"
-# We are building a DLL, but also rlib for fuzzing/testing
-crate-type = ["cdylib", "rlib"]
+# Building appropriate library type based on platform
+# On Linux/BSD: static library (a) + rlib for linking
+# On Windows: dynamic library (dll) + rlib for linking
+crate-type = ["staticlib", "cdylib", "rlib"]
 
 [dependencies]
 lazy_static = "1.4"
