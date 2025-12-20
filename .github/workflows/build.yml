@@ -26,23 +26,12 @@ jobs:
       with:
         targets: ${{ matrix.target }}
     
-    - name: Cache cargo registry
-      uses: actions/cache@v4
+    - name: Setup Rust cache
+      uses: Swatinem/rust-cache@v2
       with:
-        path: ~/.cargo/registry
-        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-    
-    - name: Cache cargo index
-      uses: actions/cache@v4
-      with:
-        path: ~/.cargo/git
-        key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-    
-    - name: Cache target directory
-      uses: actions/cache@v4
-      with:
-        path: target
-        key: ${{ runner.os }}-target-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ matrix.target }}
+        shared-key: "rust-cache"
+        cache-on-failure: true
       
     - name: Build fish_11 CLI (Release)
       run: cargo build --release --package fish_11_cli --target ${{ matrix.target }}
