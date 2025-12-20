@@ -80,11 +80,12 @@ This is a list of desired features and improvements. Contributions are welcome !
 - **[FCEP-1 protocol](./docs/FCEP-1.md)**: technical details of the channel encryption protocol.
 - **[Fuzzing guide](./fuzz/README.md)**: instructions for running security fuzz tests (requires Linux/WSL).
 
-
 ## Contributing
-[Contributing](./CONTRIBUTING.md)** and help are welcome !
+
+[Contributing](./CONTRIBUTING.md) and help are welcome !
+
 Reporting issues or feature requests is done on GitHub.
 
 ## License
 
-FiSH_11 is free and open source, released under the GNU GPL v3 [License](./LICENSE) . You can inspect, modify, and redistribute it freely as long as derivative works remain open source.
+FiSH_11 is free and open source, released under the GNU GPL v3 [License](./LICENSE). You can inspect, modify, and redistribute it freely as long as derivative works remain open source.
