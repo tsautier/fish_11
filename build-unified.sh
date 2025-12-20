@@ -170,7 +170,7 @@ setup_target() {
             ;;
     esac
 
-    echo "[INFO] Build target: $TARGET"
+    
     echo "$TARGET"
     return 0
 }
@@ -178,25 +178,10 @@ setup_target() {
 build_project() {
     TARGET=$1
 
-    echo "[INFO] Starting build for $TARGET..."
+    log_info "Starting build for $TARGET..."
 
-    # Target-specific configuration
-    case "$TARGET" in
-        *-linux-*)    EXTRA_FLAGS="--features linux-support";;
-        *-apple-*)    EXTRA_FLAGS="--features macos-support";;
-        *-freebsd*)   EXTRA_FLAGS="--features bsd-support";;
-        *-openbsd*)   EXTRA_FLAGS="--features bsd-support";;
-        *-netbsd*)    EXTRA_FLAGS="--features bsd-support";;
-        *-dragonfly*) EXTRA_FLAGS="--features bsd-support";;
-        *)            EXTRA_FLAGS="";;
-    esac
-
-    # Build in release mode
-    if [ -n "$EXTRA_FLAGS" ]; then
-        cargo build --release --target "$TARGET" $EXTRA_FLAGS --color never
-    else
-        cargo build --release --target "$TARGET" --color never
-    fi
+    
+    cargo build --release --target "$TARGET" --color never
 
     if [ $? -ne 0 ]; then
         log_error "Build failed."

@@ -280,7 +280,7 @@ pub extern "C" fn LoadDll(load: *mut LOADINFO) -> BOOL {
         let _ = crate::logging::init_logger(log::LevelFilter::Info);
     }
 
-    log_debug!("LoadDll called for FiSH v{}", crate::FISH_11_VERSION);
+    log_debug!("LoadDll called for FiSH v{}", fish_11_core::globals::BUILD_VERSION);
     crate::logging::log_function_entry("LoadDll", None::<i32>);
 
     crate::config::init_config();
@@ -318,7 +318,7 @@ pub extern "C" fn LoadDll(load: *mut LOADINFO) -> BOOL {
 
     log::info!(
         "FiSH_11 v{} initialized successfully (version {})",
-        crate::FISH_11_VERSION,
+        fish_11_core::globals::BUILD_VERSION,
         mirc_version
     );
     log_debug!("EXIT: LoadDll - returned TRUE");
