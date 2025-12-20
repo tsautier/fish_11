@@ -157,8 +157,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
         info!("LoadDll() : first load, preparing version message...");
 
         // Prepare version string as a command
-        let version_cmd =
-            format!("*** FiSH_11 inject v{} loaded successfully. ***", BUILD_VERSION);
+        let version_cmd = format!("*** FiSH_11 inject v{} loaded successfully. ***", BUILD_VERSION);
 
         if let Ok(c_cmd) = CString::new(version_cmd) {
             let current_max_len = *MAX_MIRC_RETURN_BYTES.lock().unwrap();

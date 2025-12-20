@@ -399,7 +399,7 @@ fn validate_input_content(input: &str) -> Result<(), String> {
     if input.contains("\\r") || input.contains("\\n") || input.contains("\\t") {
         // Check for actual control characters
         if input.chars().any(|c| {
-            matches!(c, '\x00'..='\x1F') || c == '\x7F'  // Control characters
+            matches!(c, '\x00'..='\x1F') || c == '\x7F' // Control characters
         }) {
             return Err("Input contains potentially harmful control characters".to_string());
         }
@@ -447,7 +447,11 @@ fn validate_dll_path(dll_path: &str) -> Result<(), String> {
     }
 
     // Ensure the path doesn't contain potentially dangerous characters
-    if dll_path.contains('|') || dll_path.contains('`') || dll_path.contains('&') || dll_path.contains(';') {
+    if dll_path.contains('|')
+        || dll_path.contains('`')
+        || dll_path.contains('&')
+        || dll_path.contains(';')
+    {
         return Err("DLL path contains dangerous characters".to_string());
     }
 
@@ -463,10 +467,12 @@ fn list_exports(dll_path: &str) -> Result<(), Box<dyn std::error::Error>> {
         Ok(dll) => {
             info_print!("DLL loaded successfully: {}", dll_path);
             dll
-        },
+        }
         Err(e) => {
             eprintln!("Failed to load DLL '{}': {}", dll_path, e);
-            eprintln!("Make sure the DLL exists, is accessible, and is compatible with this application.");
+            eprintln!(
+                "Make sure the DLL exists, is accessible, and is compatible with this application."
+            );
 
             // Provide more specific error context
             let path = std::path::Path::new(dll_path);
@@ -515,11 +521,9 @@ fn list_exports(dll_path: &str) -> Result<(), Box<dyn std::error::Error>> {
         "FiSH11_SetKeyFromPlaintext",
     ] {
         // More robust approach to avoid potential panics
-        let found = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            unsafe {
-                dll.get::<DllFunctionFn>(func_name.as_bytes()).is_ok()
-                    || dll.get::<DllFunctionFn>(format!("_{}@24", func_name).as_bytes()).is_ok()
-            }
+        let found = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            dll.get::<DllFunctionFn>(func_name.as_bytes()).is_ok()
+                || dll.get::<DllFunctionFn>(format!("_{}@24", func_name).as_bytes()).is_ok()
         })) {
             Ok(result) => result,
             Err(_) => {
@@ -1154,11 +1158,11 @@ mod tests {
     fn test_invalid_utf8_byte_sequences() {
         // Test invalid UTF-8 byte sequences
         let invalid_sequences = vec![
-            vec![0xFF],           // Invalid start byte
-            vec![0xC0, 0x80],     // Overlong encoding
-            vec![0xC0],           // Incomplete sequence
-            vec![0xE0, 0x80],     // Incomplete 3-byte sequence
-            vec![0xF0, 0x80, 0x80], // Incomplete 4-byte sequence
+            vec![0xFF],                   // Invalid start byte
+            vec![0xC0, 0x80],             // Overlong encoding
+            vec![0xC0],                   // Incomplete sequence
+            vec![0xE0, 0x80],             // Incomplete 3-byte sequence
+            vec![0xF0, 0x80, 0x80],       // Incomplete 4-byte sequence
             vec![0x80, 0x80, 0x80, 0x80], // Continuation bytes with no start
         ];
 
@@ -1184,7 +1188,7 @@ mod tests {
     #[test]
     fn test_buffer_utf8_decoding_failure() {
         // Test the internal UTF-8 decoding for data buffer (failure case)
-        let invalid_buffer = vec![0xFF, 0xFE, 0xFD];  // Invalid UTF-8 sequence
+        let invalid_buffer = vec![0xFF, 0xFE, 0xFD]; // Invalid UTF-8 sequence
         let data_len = invalid_buffer.len();
 
         match std::str::from_utf8(&invalid_buffer[..data_len]) {
@@ -1199,11 +1203,8 @@ mod tests {
     fn test_hex_representation_of_bytes() {
         // Test that bytes are properly converted to hex representation
         let test_bytes = vec![0x48, 0x65, 0x6C, 0x6C, 0x6F]; // "Hello" in hex
-        let hex_repr = test_bytes
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<Vec<_>>()
-            .join(" ");
+        let hex_repr =
+            test_bytes.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
 
         assert_eq!(hex_repr, "48 65 6c 6c 6f");
     }
@@ -1212,11 +1213,8 @@ mod tests {
     fn test_hex_representation_of_invalid_utf8() {
         // Test hex representation of invalid UTF-8 bytes
         let invalid_bytes = vec![0xFF, 0xFE, 0xFD, 0x00, 0xC0];
-        let hex_repr = invalid_bytes
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<Vec<_>>()
-            .join(" ");
+        let hex_repr =
+            invalid_bytes.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
 
         assert_eq!(hex_repr, "ff fe fd 00 c0");
     }
@@ -1243,18 +1241,18 @@ mod tests {
     fn test_boundary_utf8_sequences() {
         // Test boundary cases for UTF-8 sequences
         let boundary_cases = vec![
-            vec![0x00], // Null byte
-            vec![0x7F], // Last ASCII character
-            vec![0xC2, 0x80], // First 2-byte sequence
-            vec![0xDF, 0xBF], // Last 2-byte sequence
+            vec![0x00],             // Null byte
+            vec![0x7F],             // Last ASCII character
+            vec![0xC2, 0x80],       // First 2-byte sequence
+            vec![0xDF, 0xBF],       // Last 2-byte sequence
             vec![0xE0, 0xA0, 0x80], // First 3-byte sequence
             vec![0xEF, 0xBF, 0xBF], // Last 3-byte sequence (non-characters)
         ];
 
         for case in boundary_cases {
             match std::str::from_utf8(&case) {
-                Ok(_) => {}, // Some of these are valid
-                Err(_) => {}, // Some of these are invalid, which is also valid behavior to test
+                Ok(_) => {}  // Some of these are valid
+                Err(_) => {} // Some of these are invalid, which is also valid behavior to test
             }
         }
     }
@@ -1270,11 +1268,8 @@ mod tests {
 
         // Create the hex representation as done in the code
         let problematic_bytes = &invalid_buffer[..data_len.min(50)];
-        let hex_repr = problematic_bytes
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect::<Vec<_>>()
-            .join(" ");
+        let hex_repr =
+            problematic_bytes.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
 
         // Verify hex representation is correct
         assert_eq!(hex_repr, "ff fe fd 00 c0");
