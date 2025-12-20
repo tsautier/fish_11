@@ -772,19 +772,25 @@ fn main() {
     }
 
     // Handle special help command
-    if processed_args.is_empty() || processed_args[0] == "help" {
+    if processed_args.is_empty() {
+        display_help();
+        return;
+    }
+
+    if processed_args[0] == "help" {
         display_help();
         return;
     }
 
     // At this point we should have at least the DLL path and command
+    // Check length BEFORE accessing indices to prevent potential panic
     if processed_args.len() < 2 {
         println!("Error : missing required arguments");
         display_help();
         return;
     }
 
-    // Extract the DLL path and command
+    // Extract the DLL path and command - safe to access since we checked length above
     let dll_path = &processed_args[0];
     let command = processed_args[1].to_lowercase();
 
