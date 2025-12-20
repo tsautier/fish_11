@@ -280,20 +280,27 @@ fn call_dll_function(
     info_print!("DLL function returned code : {}", result);
 
     // For debugging, examine the first few bytes of the buffer
-    unsafe {
-        let preview_size = 20.min(buffer_size);
-        if preview_size > 0 {
-            let bytes: Vec<u8> =
-                std::slice::from_raw_parts(data_ptr as *const u8, preview_size).to_vec();
+    // First, make sure we have a safe buffer size to work with
+    if buffer_size > 0 {
+        unsafe {
+            let preview_size = 20.min(buffer_size);
+            if preview_size > 0 {
+                let bytes: Vec<u8> =
+                    std::slice::from_raw_parts(data_ptr as *const u8, preview_size).to_vec();
 
-            if !is_quiet_mode() {
-                println!("Buffer first {} bytes : {:?}", preview_size, bytes);
+                if !is_quiet_mode() {
+                    println!("Buffer first {} bytes : {:?}", preview_size, bytes);
 
-                // Try to convert to string
-                if let Ok(preview) = std::str::from_utf8(&bytes) {
-                    println!("Buffer preview as string : {}", preview);
+                    // Try to convert to string
+                    if let Ok(preview) = std::str::from_utf8(&bytes) {
+                        println!("Buffer preview as string : {}", preview);
+                    }
                 }
             }
+        }
+    } else {
+        if !is_quiet_mode() {
+            println!("Warning: buffer size is 0, cannot preview");
         }
     }
 
@@ -312,18 +319,21 @@ fn call_dll_function(
     let output = if result == 3 || result == 2 || result == 0 || result == 1 {
         // Process any valid return code - the buffer may still contain useful data
         // Find the length of the string (up to null terminator)
-        let mut len = 0;
-        while len < buffer_size && data_buffer[len] != 0 {
-            len += 1;
+        let mut data_len = 0;
+        // Ensure buffer_size is larger than 0 to avoid potential out-of-bounds access
+        if buffer_size > 0 {
+            while data_len < buffer_size && data_buffer[data_len] != 0 {
+                data_len += 1;
+            }
         }
-
-        // For robust buffer handling, check both data and parms buffers
-        let data_len = len; // length from the original data buffer check
 
         // Also check the length of the secondary parms buffer
         let mut parms_len = 0;
-        while parms_len < buffer_size && parms_buffer[parms_len] != 0 {
-            parms_len += 1;
+        // Again, ensure buffer_size is larger than 0 to avoid potential out-of-bounds access
+        if buffer_size > 0 {
+            while parms_len < buffer_size && parms_buffer[parms_len] != 0 {
+                parms_len += 1;
+            }
         }
 
         // Determine the best buffer to use based on content availability
