@@ -387,6 +387,26 @@ fn validate_input_content(input: &str) -> Result<(), String> {
         return Err("Input contains potentially dangerous path traversal sequences".to_string());
     }
 
+    // Check for potential command injection attempts
+    if input.contains('|') || input.contains('`') || input.contains('&') || input.contains(';') {
+        return Err("Input contains potentially dangerous shell command characters".to_string());
+    }
+
+    // Check for potential escape sequences that could be harmful
+    if input.contains("\\r") || input.contains("\\n") || input.contains("\\t") {
+        // Check for actual control characters
+        if input.chars().any(|c| {
+            matches!(c, '\x00'..='\x1F') || c == '\x7F'  // Control characters
+        }) {
+            return Err("Input contains potentially harmful control characters".to_string());
+        }
+    }
+
+    // Check for potential injection of mIRC commands
+    if input.starts_with('/') || input.contains("/msg") || input.contains("/echo") {
+        return Err("Input contains potentially harmful mIRC command sequences".to_string());
+    }
+
     // Additional checks could be added here as needed
 
     Ok(())
@@ -397,6 +417,37 @@ fn validate_input_content(input: &str) -> Result<(), String> {
 fn validate_user_input(input: &str) -> Result<(), String> {
     validate_input_length(input)?;
     validate_input_content(input)?;
+    Ok(())
+}
+
+/// Validates DLL path to prevent path traversal and other security issues
+fn validate_dll_path(dll_path: &str) -> Result<(), String> {
+    // Check for null bytes
+    if dll_path.contains('\0') {
+        return Err("DLL path contains null byte".to_string());
+    }
+
+    // Check for path traversal attempts
+    if dll_path.contains("../") || dll_path.contains("..\\") {
+        return Err("DLL path contains path traversal sequences".to_string());
+    }
+
+    // Ensure the path has a valid DLL extension
+    let path = std::path::Path::new(dll_path);
+    if let Some(extension) = path.extension() {
+        let ext = extension.to_string_lossy().to_lowercase();
+        if ext != "dll" {
+            return Err(format!("Invalid file extension: {} (expected .dll)", ext));
+        }
+    } else {
+        return Err("DLL path must have a .dll extension".to_string());
+    }
+
+    // Ensure the path doesn't contain potentially dangerous characters
+    if dll_path.contains('|') || dll_path.contains('`') || dll_path.contains('&') || dll_path.contains(';') {
+        return Err("DLL path contains dangerous characters".to_string());
+    }
+
     Ok(())
 }
 
@@ -809,6 +860,12 @@ fn main() {
                 return;
             }
         }
+    }
+
+    // Validate the DLL path before loading
+    if let Err(e) = validate_dll_path(dll_path) {
+        println!("Invalid DLL path: {}", e);
+        return;
     }
 
     // Load the DLL
