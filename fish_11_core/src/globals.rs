@@ -22,12 +22,15 @@ pub const FISH_INJECT_ENGINE_VERSION: u32 = 1;
 // Default maximum bytes that can be returned to mIRC
 // Default maximum bytes that can be returned to mIRC. We still cap
 // the runtime-reported buffer size to a safe maximum below.
+pub const DLL_BUFFER_SIZE: usize = 8192;
 pub const DEFAULT_MIRC_BUFFER_SIZE: usize = 4096;
 
 // Maximum buffer size we will ever report to callers (including content, we'll
 // subtract one for the null terminator in get_buffer_size()). This prevents
 // accidentally writing too much to caller buffers; mIRC historically uses 900.
-pub const MAX_MIRC_BUFFER_SIZE: usize = 900;
+// BUT
+// modern mIRC versions support larger buffers, so we align this with DLL_BUFFER_SIZE.
+pub const MAX_MIRC_BUFFER_SIZE: usize = DLL_BUFFER_SIZE;
 
 /// Timeout duration for key exchange operations in seconds
 pub const KEY_EXCHANGE_TIMEOUT_SECONDS: u64 = 10;

@@ -113,13 +113,13 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
     info!("Setting up socket hooks...");
 
     #[cfg(debug_assertions)]
-    info!("LoadDll: Calling install_hooks()...");
+    info!("LoadDll() : Calling install_hooks()...");
 
     if let Err(e) = install_hooks() {
         error!("Failed to set up Winsock hooks: {}", e);
 
         #[cfg(debug_assertions)]
-        error!("LoadDll: install_hooks() failed with error: {}", e);
+        error!("LoadDll() : install_hooks() failed with error: {}", e);
 
         unsafe {
             MessageBoxW(
@@ -134,31 +134,30 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
         li.m_keep = 0; // Tell mIRC to unload us
 
         #[cfg(debug_assertions)]
-        error!("LoadDll: returning MIRC_HALT due to hook installation failure");
+        error!("LoadDll() : returning MIRC_HALT due to hook installation failure");
 
         return MIRC_HALT; // Indicate failure
     }
 
     #[cfg(debug_assertions)]
-    info!("LoadDll: install_hooks() completed successfully");
+    info!("LoadDll() : install_hooks() completed successfully");
 
     #[cfg(debug_assertions)]
-    info!("LoadDll: installing SSL inline patches...");
+    info!("LoadDll() : installing SSL inline patches...");
 
     #[cfg(debug_assertions)]
-    info!("LoadDll: SSL inline patches installation completed");
+    info!("LoadDll() : SSL inline patches installation completed");
 
     #[cfg(debug_assertions)]
-    info!("LoadDll: checking VERSION_SHOWN flag...");
+    info!("LoadDll() : checking VERSION_SHOWN flag...");
 
     // Show version info once if not already shown
     if !VERSION_SHOWN.swap(true, Ordering::Relaxed) {
         #[cfg(debug_assertions)]
-        info!("LoadDll: first load, preparing version message...");
+        info!("LoadDll() : first load, preparing version message...");
 
         // Prepare version string as a command
-        let version_cmd =
-            format!("/echo -ts *** FiSH_11 inject v{} loaded successfully. ***", BUILD_VERSION);
+        let version_cmd = format!("*** FiSH_11 inject v{} loaded successfully. ***", BUILD_VERSION);
 
         if let Ok(c_cmd) = CString::new(version_cmd) {
             let current_max_len = *MAX_MIRC_RETURN_BYTES.lock().unwrap();
@@ -181,18 +180,18 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
                 warn!("Version info command too long for mIRC buffer.");
                 #[cfg(debug_assertions)]
                 warn!(
-                    "LoadDll: version command too long (len: {} > max: {})",
+                    "LoadDll() : version command too long (len: {} > max: {})",
                     c_cmd.as_bytes_with_nul().len(),
                     current_max_len
                 );
             }
         } else {
             #[cfg(debug_assertions)]
-            error!("LoadDll: failed to create CString for version command");
+            error!("LoadDll(): failed to create CString for version command");
         }
     } else {
         #[cfg(debug_assertions)]
-        info!("LoadDll: VERSION_SHOWN already true, skipping version message");
+        info!("LoadDll() : VERSION_SHOWN already true, skipping version message");
     }
 
     info!("=== LoadDll() finished successfully ===");

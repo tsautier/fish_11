@@ -1,12 +1,12 @@
+use chrono::{Duration, Local, NaiveDateTime};
+use fish_11::config::config_access::{read_config, write_config};
+use fish_11::config::models::EntryData;
 use fish_11::config::{
-    get_key, set_key, set_configured_key_ttl, get_configured_key_ttl,
-    key_management::KeyStatus, get_key_status,
+    get_configured_key_ttl, get_key, get_key_status, key_management::KeyStatus,
+    set_configured_key_ttl, set_key,
 };
 use fish_11::error::FishError;
 use fish_11::utils::generate_random_bytes;
-use fish_11::config::models::EntryData;
-use fish_11::config::config_access::{write_config, read_config};
-use chrono::{Local, Duration, NaiveDateTime};
 use std::thread;
 use std::time::Duration as StdDuration;
 
@@ -34,14 +34,14 @@ fn test_session_expiry() {
     {
         let mut guard = write_config().expect("Failed to acquire write lock");
         let config = guard.config_mut();
-        
+
         // Find the entry for this user (using default network)
-        // Note: set_key might use 'default' or resolved network. 
+        // Note: set_key might use 'default' or resolved network.
         // Since we didn't specify network, it likely went to 'default' or current global.
         // We'll search for it.
-        
+
         let mut found = false;
-        
+
         for (key_string, entry) in config.entries.iter_mut() {
             if key_string.contains(nickname) {
                 // Set date to 25 hours ago (expired, as default/min TTL is likely <= 24h)
@@ -61,7 +61,7 @@ fn test_session_expiry() {
     match retrieved_expired {
         Err(FishError::KeyExpired(_)) => {
             // Expected
-        },
+        }
         Ok(_) => panic!("Key should have expired but was returned successfully"),
         Err(e) => panic!("Expected KeyExpired error, got: {:?}", e),
     }
@@ -69,7 +69,7 @@ fn test_session_expiry() {
     // 6. Set a FRESH key for the same user
     let new_key_bytes = generate_random_bytes(32);
     let new_key: [u8; 32] = new_key_bytes.try_into().expect("Key length mismatch");
-    
+
     let result_new = set_key(nickname, &new_key, None, true, true);
     assert!(result_new.is_ok(), "Failed to set new key");
 
@@ -92,7 +92,7 @@ fn test_manual_key_does_not_expire() {
     {
         let mut guard = write_config().expect("Failed to acquire write lock");
         let config = guard.config_mut();
-        
+
         for (key_string, entry) in config.entries.iter_mut() {
             if key_string.contains(nickname) {
                 let past_time = Local::now() - Duration::days(365); // 1 year ago

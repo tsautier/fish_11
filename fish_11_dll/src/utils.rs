@@ -218,26 +218,26 @@ mod tests {
         assert_eq!(normalize_target("@%+#test"), "#test");
         assert_eq!(normalize_target("~@#channel"), "#channel");
         assert_eq!(normalize_target("@%+~#complex"), "#complex");
-        
+
         // Test mixed status prefixes
         assert_eq!(normalize_target("@%+#test"), "#test");
-        
+
         // Test invalid/malformed prefixes (should remain unchanged)
         assert_eq!(normalize_target("@invalid"), "@invalid");
         assert_eq!(normalize_target("@#"), "#");
-        
+
         // Test whitespace handling
         assert_eq!(normalize_target("   @#test   "), "#test");
         assert_eq!(normalize_target("\t@%+#test\n"), "#test");
-        
+
         // Test regular channels (no prefixes)
         assert_eq!(normalize_target("#test"), "#test");
         assert_eq!(normalize_target("&test"), "&test");
-        
+
         // Test private messages (no channel prefixes)
         assert_eq!(normalize_target("bob"), "bob");
         assert_eq!(normalize_target("@bob"), "@bob"); // Not a channel, so unchanged
-        
+
         // Test empty and whitespace-only
         assert_eq!(normalize_target(""), "");
         assert_eq!(normalize_target("   "), "");

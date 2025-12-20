@@ -6,14 +6,20 @@
 //! Written by [GuY], 2025. Licenced under GPL v3.
 
 mod platform_types;
+//use term_size;
 use std::env;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{
+    Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::{Duration, Instant};
 
 use platform_types::{BOOL, DWORD, HWND, LIB_NAME};
+
+use fish_11_core::globals::{BUILD_DATE, BUILD_NUMBER, BUILD_TIME, BUILD_VERSION};
 
 mod helpers_cli;
 use crate::helpers_cli::{get_output_format, process_mirc_output, validate_config_file};
@@ -24,15 +30,54 @@ const DEFAULT_TIMEOUT_SECONDS: u64 = 5;
 // Special timeout for listkeys command (which may take longer with large key databases)
 const DEFAULT_LISTKEYS_TIMEOUT_SECONDS: u64 = 10;
 
-pub const FISH_11_VERSION: &str = env!("CARGO_PKG_VERSION");
+// Use the centralized version string from the core library
+pub fn cli_version() -> String {
+    format!(
+        "v{} (compiled {} at {})",
+        fish_11_core::globals::BUILD_VERSION,
+        fish_11_core::globals::BUILD_DATE.as_str(),
+        fish_11_core::globals::BUILD_TIME.as_str()
+    )
+}
 
-// Global flag to control output verbosity
-static QUIET_MODE: AtomicBool = AtomicBool::new(false);
+/// Display version information in the format expected for -v/--version flags
+fn display_version() {
+    let build_type = if cfg!(debug_assertions) { "debug" } else { "release" };
+
+    println!(
+        "FiSH_11_cli {} (build {}-{}) *** Compiled {} at {} *** Written by [GuY], licensed under the GPL-v3 or above",
+        fish_11_core::globals::BUILD_VERSION,
+        fish_11_core::globals::BUILD_NUMBER.as_str(),
+        build_type,
+        fish_11_core::globals::BUILD_DATE.as_str(),
+        fish_11_core::globals::BUILD_TIME.as_str()
+    );
+}
+
+// Global flag to control output verbosity - using Mutex for thread safety
+static QUIET_MODE: Mutex<bool> = Mutex::new(false);
+
+/// Helper function to safely get the quiet mode value
+pub fn is_quiet_mode() -> bool {
+    match QUIET_MODE.lock() {
+        Ok(guard) => *guard,
+        Err(_) => {
+            eprintln!("Warning: QUIET_MODE mutex was poisoned, defaulting to not quiet");
+            false
+        }
+    }
+}
 
 // Macro for conditional printing based on quiet mode
 macro_rules! info_print {
     ($($arg:tt)*) => {
-        if !unsafe { QUIET_MODE.load(Ordering::Relaxed) } {
+        if let Ok(guard) = QUIET_MODE.lock() {
+            if !*guard {
+                println!($($arg)*);
+            }
+        } else {
+            // If the mutex is poisoned, default to printing (not quiet)
+            eprintln!("Warning : QUIET_MODE mutex was poisoned, defaulting to not quiet");
             println!($($arg)*);
         }
     };
@@ -86,7 +131,28 @@ fn call_dll_function(
 
     // We need to copy the parameters to a mutable buffer since many functions
     // both read from and write to the data parameter
-    let buffer_size = 8192;
+    let buffer_size = fish_11_core::globals::DLL_BUFFER_SIZE;
+
+    // Security validation: prevent excessively large buffer allocations
+    const MAX_SAFE_BUFFER_SIZE: usize = 16 * 1024 * 1024; // 16MB
+    if buffer_size > MAX_SAFE_BUFFER_SIZE {
+        return Err(format!(
+            "Buffer size {} exceeds maximum safe limit of {} bytes",
+            buffer_size, MAX_SAFE_BUFFER_SIZE
+        )
+        .into());
+    }
+
+    // Also ensure buffer size is reasonable for our use case
+    const MIN_REASONABLE_BUFFER_SIZE: usize = 1024; // 1KB
+    if buffer_size < MIN_REASONABLE_BUFFER_SIZE {
+        return Err(format!(
+            "Buffer size {} is too small (minimum: {} bytes)",
+            buffer_size, MIN_REASONABLE_BUFFER_SIZE
+        )
+        .into());
+    }
+
     let mut data_buffer = vec![0u8; buffer_size];
 
     // Copy parameters to data buffer
@@ -112,7 +178,8 @@ fn call_dll_function(
         Duration::from_secs(DEFAULT_TIMEOUT_SECONDS)
     };
 
-    println!("Starting function call (timeout set to {:?})...", timeout);
+    info_print!("Starting function call (timeout set to {:?})...", timeout);
+
     let start_time = Instant::now();
     // Use a separate thread to detect and report potential hangs
     let is_complete = Arc::new(AtomicBool::new(false));
@@ -131,22 +198,34 @@ fn call_dll_function(
                 last_report = Instant::now();
                 let elapsed = start.elapsed();
                 if elapsed > Duration::from_secs(2) {
-                    println!(
-                        "Still waiting... ({:.1?} elapsed, timeout at {:?})",
-                        elapsed, timeout
-                    );
+                    if let Ok(guard) = QUIET_MODE.lock() {
+                        if !*guard {
+                            println!(
+                                "Still waiting... ({:.1?} elapsed, timeout at {:?})",
+                                elapsed, timeout
+                            );
+                        }
+                    } else {
+                        eprintln!(
+                            "Warning: QUIET_MODE mutex was poisoned, defaulting to not quiet"
+                        );
+                        println!(
+                            "Still waiting... ({:.1?} elapsed, timeout at {:?})",
+                            elapsed, timeout
+                        );
+                    }
                 }
             }
         }
 
         // If we reach here and the operation isn't complete, the timeout has been reached
         if !is_complete_clone.load(Ordering::SeqCst) {
-            println!("WARNING: Function execution timed out after {:?}.", timeout);
-            println!("The DLL function may have hung. You can press Ctrl+C to cancel.");
+            println!("WARNING : function execution timed out after {:?}.", timeout);
+            println!("The DLL function may have hung, press Ctrl+c to break.");
         }
     });
     // Call the function
-    println!("Calling DLL function {} with parameters: '{}'", function_name, params);
+    info_print!("Calling DLL function {} with parameters : '{}'", function_name, params);
 
     let result = function(
         std::ptr::null_mut(), // mWnd
@@ -164,33 +243,36 @@ fn call_dll_function(
     let elapsed = start_time.elapsed();
 
     // Log the result and buffer info
-    println!("DLL function returned code: {}", result);
+    info_print!("DLL function returned code : {}", result);
 
     // For debugging, examine the first few bytes of the buffer
     unsafe {
         let preview_size = 20.min(buffer_size);
         if preview_size > 0 {
-            let bytes: Vec<u8> = std::slice::from_raw_parts(data_ptr as *const u8, preview_size).to_vec();
+            let bytes: Vec<u8> =
+                std::slice::from_raw_parts(data_ptr as *const u8, preview_size).to_vec();
 
-            println!("Buffer first {} bytes: {:?}", preview_size, bytes);
+            if !is_quiet_mode() {
+                println!("Buffer first {} bytes : {:?}", preview_size, bytes);
 
-            // Try to convert to string
-            if let Ok(preview) = std::str::from_utf8(&bytes) {
-                println!("Buffer preview as string: {}", preview);
+                // Try to convert to string
+                if let Ok(preview) = std::str::from_utf8(&bytes) {
+                    println!("Buffer preview as string : {}", preview);
+                }
             }
         }
     }
 
     if elapsed > Duration::from_secs(1) {
-        println!("Function call completed in {:.2?}", elapsed);
+        info_print!("Function call completed in {:.2?}", elapsed);
 
         // Special handling for potentially slow operations
         if function_name == "FiSH11_FileListKeys" {
-            println!("Note: Processing large key databases can take time.");
+            info_print!("Note : processing large key databases can take time.");
         }
     } // Check the result based on actual mIRC return codes
     if result != 3 && result != 2 && result != 0 && result != 1 {
-        println!("Warning: DLL function returned unusual value: {}", result);
+        info_print!("Warning: DLL function returned unusual value: {}", result);
         // Continue anyway - some functions might use different return codes
     } // Convert buffer to String (handle null terminator)
     let output = if result == 3 || result == 2 || result == 0 || result == 1 {
@@ -200,51 +282,76 @@ fn call_dll_function(
         while len < buffer_size && data_buffer[len] != 0 {
             len += 1;
         }
-        // We now handle the DLL output directly without relying on debug logs
 
-        // Check if we have any content
-        if len == 0 || (len == 1 && data_buffer[0] == 0) {
-            // For listkeys specifically, check the secondary buffer
-            if function_name == "FiSH11_FileListKeys" {
-                // Check parms buffer as well
-                let mut parms_len = 0;
-                while parms_len < buffer_size && parms_buffer[parms_len] != 0 {
-                    parms_len += 1;
-                }
+        // For robust buffer handling, check both data and parms buffers
+        let data_len = len; // length from the original data buffer check
 
-                if parms_len > 0 {
-                    match std::str::from_utf8(&parms_buffer[..parms_len]) {
-                        Ok(s) => {
-                            if !s.is_empty() {
-                                return Ok(s.to_string());
-                            }
-                        }
-                        Err(_) => {
-                            // Ignore errors in secondary buffer
-                        }
-                    }
-                }
+        // Also check the length of the secondary parms buffer
+        let mut parms_len = 0;
+        while parms_len < buffer_size && parms_buffer[parms_len] != 0 {
+            parms_len += 1;
+        }
 
-                // If we couldn't get data from the buffers but know the response from the DLL,
-                // use a hardcoded message
-                return Ok("/echo -a FiSH: No keys stored.".to_string());
-            } else {
-                "Function completed but returned no output.".to_string()
-            }
-        } else {
-            // Convert to string
-            match std::str::from_utf8(&data_buffer[..len]) {
+        // Determine the best buffer to use based on content availability
+        // Prefer the data buffer, but use parms buffer if data buffer is empty
+        if data_len > 0 {
+            // Use the main data buffer if it has content
+            match std::str::from_utf8(&data_buffer[..data_len]) {
                 Ok(s) => {
                     if s.is_empty() && function_name == "FiSH11_FileListKeys" {
-                        "No keys found or invalid config path specified.".to_string()
+                        "FiSH_11 : no keys stored.".to_string()
                     } else {
                         s.to_string()
                     }
                 }
                 Err(e) => {
-                    println!("Warning: Failed to decode result: {}", e);
-                    format!("Function completed but returned invalid UTF-8 data (length: {})", len)
+                    info_print!("Warning : failed to decode result from data buffer: {}", e);
+                    // Show hex representation of problematic bytes
+                    let problematic_bytes = &data_buffer[..data_len.min(50)]; // Limit to first 50 bytes for display
+                    let hex_repr = problematic_bytes
+                        .iter()
+                        .map(|b| format!("{:02x}", b))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    format!(
+                        "Function completed but returned invalid UTF-8 data in data buffer (length: {}, first bytes as hex: {})",
+                        data_len, hex_repr
+                    )
                 }
+            }
+        } else if parms_len > 0 {
+            // Use the parms buffer if the main buffer is empty but parms has data
+            match std::str::from_utf8(&parms_buffer[..parms_len]) {
+                Ok(s) => {
+                    if !s.is_empty() {
+                        s.to_string()
+                    } else if function_name == "FiSH11_FileListKeys" {
+                        "FiSH_11 : no keys stored.".to_string()
+                    } else {
+                        "Function completed but returned no output.".to_string()
+                    }
+                }
+                Err(e) => {
+                    info_print!("Warning : failed to decode result from parms buffer: {}", e);
+                    // Show hex representation of problematic bytes
+                    let problematic_bytes = &parms_buffer[..parms_len.min(50)]; // Limit to first 50 bytes for display
+                    let hex_repr = problematic_bytes
+                        .iter()
+                        .map(|b| format!("{:02x}", b))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    format!(
+                        "Function completed but returned invalid UTF-8 data in parms buffer (length: {}, first bytes as hex: {})",
+                        parms_len, hex_repr
+                    )
+                }
+            }
+        } else {
+            // No content in either buffer
+            if function_name == "FiSH11_FileListKeys" {
+                "FiSH_11 : no keys stored.".to_string()
+            } else {
+                "Function completed but returned no output.".to_string()
             }
         }
     } else {
@@ -254,28 +361,141 @@ fn call_dll_function(
     Ok(output)
 }
 
+/// Validates user input to prevent buffer overflow
+/// Checks if the input length is within safe limits
+fn validate_input_length(input: &str) -> Result<(), String> {
+    const MAX_INPUT_LENGTH: usize = 8192; // Safe limit for most operations
+
+    if input.len() > MAX_INPUT_LENGTH {
+        return Err(format!(
+            "Input too long : {} characters (max: {})",
+            input.len(),
+            MAX_INPUT_LENGTH
+        ));
+    }
+
+    Ok(())
+}
+
+/// Validates user input to prevent command injection
+/// Filters out potentially dangerous characters and sequences
+fn validate_input_content(input: &str) -> Result<(), String> {
+    // Check for null bytes which could cause issues
+    if input.contains('\0') {
+        return Err("Input contains null byte which is not allowed".to_string());
+    }
+
+    // Check for potentially dangerous sequences
+    if input.contains("..\\") || input.contains("../") || input.contains("%00") {
+        return Err("Input contains potentially dangerous path traversal sequences".to_string());
+    }
+
+    // Check for potential command injection attempts
+    if input.contains('|') || input.contains('`') || input.contains('&') || input.contains(';') {
+        return Err("Input contains potentially dangerous shell command characters".to_string());
+    }
+
+    // Check for potential escape sequences that could be harmful
+    if input.contains("\\r") || input.contains("\\n") || input.contains("\\t") {
+        // Check for actual control characters
+        if input.chars().any(|c| {
+            matches!(c, '\x00'..='\x1F') || c == '\x7F' // Control characters
+        }) {
+            return Err("Input contains potentially harmful control characters".to_string());
+        }
+    }
+
+    // Check for potential injection of mIRC commands
+    if input.starts_with('/') || input.contains("/msg") || input.contains("/echo") {
+        return Err("Input contains potentially harmful mIRC command sequences".to_string());
+    }
+
+    // Additional checks could be added here as needed
+
+    Ok(())
+}
+
+/// Validates user input completely
+/// Performs all security checks on user input
+fn validate_user_input(input: &str) -> Result<(), String> {
+    validate_input_length(input)?;
+    validate_input_content(input)?;
+    Ok(())
+}
+
+/// Validates DLL path to prevent path traversal and other security issues
+fn validate_dll_path(dll_path: &str) -> Result<(), String> {
+    // Check for null bytes
+    if dll_path.contains('\0') {
+        return Err("DLL path contains null byte".to_string());
+    }
+
+    // Check for path traversal attempts
+    if dll_path.contains("../") || dll_path.contains("..\\") {
+        return Err("DLL path contains path traversal sequences".to_string());
+    }
+
+    // Ensure the path has a valid DLL extension
+    let path = std::path::Path::new(dll_path);
+    if let Some(extension) = path.extension() {
+        let ext = extension.to_string_lossy().to_lowercase();
+        if ext != "dll" {
+            return Err(format!("Invalid file extension: {} (expected .dll)", ext));
+        }
+    } else {
+        return Err("DLL path must have a .dll extension".to_string());
+    }
+
+    // Ensure the path doesn't contain potentially dangerous characters
+    if dll_path.contains('|')
+        || dll_path.contains('`')
+        || dll_path.contains('&')
+        || dll_path.contains(';')
+    {
+        return Err("DLL path contains dangerous characters".to_string());
+    }
+
+    Ok(())
+}
+
 /// List all exported functions from the specified DLL
 fn list_exports(dll_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     info_print!("Loading DLL: {}", dll_path);
 
-    // Try to load the DLL
+    // Try to load the DLL with improved error handling
     let dll = match unsafe { libloading::Library::new(dll_path) } {
-        Ok(dll) => dll,
+        Ok(dll) => {
+            info_print!("DLL loaded successfully: {}", dll_path);
+            dll
+        }
         Err(e) => {
-            println!("Failed to load DLL '{}': {}", dll_path, e);
-            println!("Make sure the DLL exists and is compatible with this application.");
-            return Err("DLL load failed".into());
+            eprintln!("Failed to load DLL '{}': {}", dll_path, e);
+            eprintln!(
+                "Make sure the DLL exists, is accessible, and is compatible with this application."
+            );
+
+            // Provide more specific error context
+            let path = std::path::Path::new(dll_path);
+            if !path.exists() {
+                eprintln!("Error: The specified DLL file does not exist at the given path.");
+            } else if !path.is_file() {
+                eprintln!("Error: The specified path is not a file.");
+            } else {
+                eprintln!("Error: The file may be corrupted or incompatible with this platform.");
+            }
+
+            return Err(format!("DLL load failed: {}", e).into());
         }
     };
 
-    println!("Available FiSH 11 functions:");
-    println!("---------------------------");
+    println!("Available FiSH_11 functions :");
+    println!("----------------------------");
 
     // Manually try to get handle for known FiSH11 functions and print which ones are available
     for func_name in [
         "FiSH11_GetVersion",
         "FiSH11_GenKey",
-        "FiSH11_FileDelKey",  // Changed from FiSH11_DelKey
+        "FiSH11_FileDelKey", // Changed from FiSH11_DelKey
         "FiSH11_SetKey",
         "FiSH11_FileGetKey",
         "FiSH11_FileListKeys",
@@ -299,17 +519,18 @@ fn list_exports(dll_path: &str) -> Result<(), Box<dyn std::error::Error>> {
         "FiSH11_SetManualChannelKey",
         "FiSH11_SetNetwork",
         "FiSH11_SetKeyFromPlaintext",
-        // Functions that were in CLI but not found in DLL:
-        // "FiSH11_ImportKey",  // Not in DLL
-        // "FiSH11_ExportKey",  // Not in DLL
-        // "FiSH11_SetPasswordHash",  // Not in DLL
-        // "FiSH11_VerifyPasswordHash",  // Not in DLL
-        // "FiSH11_GetKeyInfo",  // Not in DLL
-        // "FiSH11_ReKeyAll",  // Not in DLL
     ] {
-        let found = unsafe {
+        // More robust approach to avoid potential panics
+        let found = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
             dll.get::<DllFunctionFn>(func_name.as_bytes()).is_ok()
                 || dll.get::<DllFunctionFn>(format!("_{}@24", func_name).as_bytes()).is_ok()
+        })) {
+            Ok(result) => result,
+            Err(_) => {
+                // If there's a panic during DLL function access, log and continue
+                eprintln!("Warning: Error accessing function {} - may be incompatible", func_name);
+                false
+            }
         };
 
         if found {
@@ -325,42 +546,62 @@ fn list_exports(dll_path: &str) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Display a help message with command usage information
+
+fn print_two_columns_aligned(left: &str, right: &str, right_start: usize) {
+    let left_len = left.chars().count();
+    let spaces = if right_start > left_len { right_start - left_len } else { 1 };
+    print!("{}{}", left, " ".repeat(spaces));
+    println!("{}", right);
+}
+
 fn display_help() {
-    println!("FiSH 11 CLI v{} - Command Line Interface for FiSH11 DLL", FISH_11_VERSION);
-    println!("Usage:");
-    println!("  fish_11_cli [options] <dll_path> <command> [parameters...]");
+    let build_type = if cfg!(debug_assertions) { "debug" } else { "release" };
+    let col = 45;
+    print_two_columns_aligned(
+        &format!("FiSH_11_cli {} (build {})", BUILD_VERSION, BUILD_NUMBER.as_str()),
+        "Written by [GuY], licensed under the GPL-v3 or above",
+        col,
+    );
+    print_two_columns_aligned(
+        &format!("Version {}", build_type),
+        &format!("Compiled {} at {} ZULU", BUILD_DATE.as_str(), BUILD_TIME.as_str()),
+        col,
+    );
+    println!("");
+    println!("Usage : fish_11_cli [options] <dll_path> <command> [parameters...]");
     println!();
-    println!("Options:");
-    println!("  -q, --quiet     Minimize output messages");
+    println!("[Options]");
+    println!("  -q, --quiet     Minimize output messages (useful for scripts)");
+    println!("  -v, --version   Display version information");
     println!();
-    println!("Commands:");
-    println!("  help                    Show this help message");
-    println!("  list                    List available functions in the DLL");
-    println!("  getversion              Get the DLL version");
-    println!("  genkey                  Generate a new encryption key for a target");
-    println!("  setkey                  Set a specific key for a target");
-    println!("  getkey                  Get the key for a target");
-    println!("  delkey                  Delete a key for a target");
-    println!("  listkeys                List all stored keys");
-    println!("  listkeysitem            List a specific key item");
-    println!("  encrypt                 Encrypt a message");
-    println!("  decrypt                 Decrypt a message");
-    println!("  testcrypt               Test encryption/decryption cycle");
-    println!("  getconfigpath           Get the configuration file path");
-    println!("  setmircdir              Set the mIRC directory");
-    println!("  ini_getbool             Get a boolean value from the config file");
-    println!("  ini_getstring           Get a string value from the config file");
-    println!("  ini_getint              Get an integer value from the config file");
-    println!("  initchannelkey          Initialize a channel encryption key");
-    println!("  processchannelkey       Process a received channel key");
-    println!("  getkeyttl               Get the time-to-live for a key");
-    println!("  getratchetstate         Get the ratchet state for a channel");
-    println!("  setmanualchannelkey     Set a manual channel encryption key");
-    println!("  setnetwork              Set the current IRC network");
-    println!("  getkeyfingerprint       Get the fingerprint of a key");
-    println!("  setkeyfromplaintext     Set a key from plaintext");
+    println!("<Commands>");
+    println!("  -h,   --help                 Show this help message");
+    println!("  -l,   --list                 List available functions in the DLL");
+    println!("  -gv,  --getversion           Get the DLL version");
+    println!("  -gk,  --genkey               Generate a new encryption key for a target");
+    println!("  -sk,  --setkey               Set a specific key for a target");
+    println!("  -gk,  --getkey               Get the key for a target");
+    println!("  -dk,  --delkey               Delete a key for a target");
+    println!("  -lk,  --listkeys             List all stored keys");
+    println!("  -li,  --listkeysitem         List a specific key item");
+    println!("  -e,   --encrypt              Encrypt a message");
+    println!("  -d,   --decrypt              Decrypt a message");
+    println!("  -tc,  --testcrypt            Test encryption/decryption cycle");
+    println!("  -gcp, --getconfigpath        Get the configuration file path");
+    println!("  -sm,  --setmircdir           Set the mIRC directory");
+    println!("  -ib,  --ini_getbool          Get a boolean value from the config file");
+    println!("  -is,  --ini_getstring        Get a string value from the config file");
+    println!("  -ii,  --ini_getint           Get an integer value from the config file");
+    println!("  -ik,  --initchannelkey       Initialize a channel encryption key");
+    println!("  -pk,  --processchannelkey    Process a received channel key");
+    println!("  -kt,  --getkeyttl            Get the time-to-live for a key");
+    println!("  -rs,  --getratchetstate      Get the ratchet state for a channel");
+    println!("  -smk, --setmanualchannelkey  Set a manual channel encryption key");
+    println!("  -sn,  --setnetwork           Set the current IRC network");
+    println!("  -kf,  --getkeyfingerprint    Get the fingerprint of a key");
+    println!("  -skp, --setkeyfromplaintext  Set a key from plaintext");
     println!();
-    println!("Examples:");
+    println!("Examples :");
     println!("  fish_11_cli fish_11.dll getversion");
     println!("  fish_11_cli fish_11.dll genkey #channel");
     println!("  fish_11_cli fish_11.dll encrypt #channel \"Secret message\"");
@@ -369,10 +610,55 @@ fn display_help() {
     println!("  fish_11_cli fish_11.dll ini_getbool process_incoming 1");
     println!("  fish_11_cli fish_11.dll ini_getstring plain_prefix \"\"");
     println!("  fish_11_cli fish_11.dll ini_getint mark_position 0");
-    println!("  fish_11_cli fish_11.dll initchannelkey #secret alice bob");
-    println!("  fish_11_cli fish_11.dll setkeyttl alice");
-    println!("  fish_11_cli fish_11.dll getkeyfingerprint alice");
+    println!("  fish_11_cli fish_11.dll initchannelkey #secret Alice Bob");
+    println!("  fish_11_cli fish_11.dll setkeyttl Alice");
+    println!("  fish_11_cli fish_11.dll getkeyfingerprint Alice");
     println!("  fish_11_cli fish_11.dll setnetwork EFNet");
+}
+
+/// Validate that the command has the required arguments
+fn validate_command_args(command: &str, args: &[String]) -> Result<(), String> {
+    let arg_count = args.len();
+    match command {
+        "genkey" | "delkey" | "getkey" | "getkeyfingerprint" | "getkeyttl" | "setkeyttl"
+        | "exchangekey" | "processkey" => {
+            if arg_count < 1 {
+                let mut msg =
+                    format!("Command '{}' requires a target (channel or nickname).", command);
+                if command == "genkey" || command == "delkey" || command == "getkey" {
+                    msg.push_str("\nTip: if specifying a channel (e.g. #channel) in PowerShell, use quotes (\"#channel\") to avoid comment treatment.");
+                }
+                return Err(msg);
+            }
+        }
+        "setkey" | "setkeyfromplaintext" => {
+            if arg_count < 2 {
+                return Err(format!("Command '{}' requires a target and a key.", command));
+            }
+        }
+        "encrypt" | "decrypt" => {
+            if arg_count < 2 {
+                return Err(format!("Command '{}' requires a target and a message.", command));
+            }
+        }
+        "initchannelkey" => {
+            if arg_count < 1 {
+                return Err(format!("Command '{}' requires a channel.", command));
+            }
+        }
+        "setmanualchannelkey" => {
+            if arg_count < 2 {
+                return Err(format!("Command '{}' requires a channel and a key.", command));
+            }
+        }
+        "ini_getbool" | "ini_getstring" | "ini_getint" => {
+            if arg_count < 1 {
+                return Err(format!("Command '{}' requires a config key name.", command));
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 fn main() {
@@ -402,7 +688,137 @@ fn main() {
         match args[arg_index].as_str() {
             "-q" | "--quiet" => {
                 // Set quiet mode
-                QUIET_MODE.store(true, Ordering::Relaxed);
+                if let Ok(mut guard) = QUIET_MODE.lock() {
+                    *guard = true;
+                } else {
+                    eprintln!("Warning: QUIET_MODE mutex was poisoned during update");
+                }
+                arg_index += 1;
+            }
+            "-v" | "--version" => {
+                // Display version and exit
+                display_version();
+                return;
+            }
+            // Short flags for commands
+            "-h" | "--help" => {
+                // Map to help command
+                processed_args.push("help".to_string());
+                arg_index += 1;
+            }
+            "-l" | "--list" => {
+                // Map to list command
+                processed_args.push("list".to_string());
+                arg_index += 1;
+            }
+            "-gv" | "--getversion" => {
+                // Map to getversion command
+                processed_args.push("getversion".to_string());
+                arg_index += 1;
+            }
+            "-gk" | "--genkey" | "--getkey" => {
+                // Map to genkey command (also covers getkey)
+                processed_args.push("genkey".to_string());
+                arg_index += 1;
+            }
+            "-sk" | "--setkey" => {
+                // Map to setkey command
+                processed_args.push("setkey".to_string());
+                arg_index += 1;
+            }
+            "-dk" | "--delkey" => {
+                // Map to delkey command
+                processed_args.push("delkey".to_string());
+                arg_index += 1;
+            }
+            "-lk" | "--listkeys" => {
+                // Map to listkeys command
+                processed_args.push("listkeys".to_string());
+                arg_index += 1;
+            }
+            "-li" | "--listkeysitem" => {
+                // Map to listkeysitem command
+                processed_args.push("listkeysitem".to_string());
+                arg_index += 1;
+            }
+            "-e" | "--encrypt" => {
+                // Map to encrypt command
+                processed_args.push("encrypt".to_string());
+                arg_index += 1;
+            }
+            "-d" | "--decrypt" => {
+                // Map to decrypt command
+                processed_args.push("decrypt".to_string());
+                arg_index += 1;
+            }
+            "-tc" | "--testcrypt" => {
+                // Map to testcrypt command
+                processed_args.push("testcrypt".to_string());
+                arg_index += 1;
+            }
+            "-gcp" | "--getconfigpath" => {
+                // Map to getconfigpath command
+                processed_args.push("getconfigpath".to_string());
+                arg_index += 1;
+            }
+            "-sm" | "--setmircdir" => {
+                // Map to setmircdir command
+                processed_args.push("setmircdir".to_string());
+                arg_index += 1;
+            }
+            "-ib" | "--ini_getbool" => {
+                // Map to ini_getbool command
+                processed_args.push("ini_getbool".to_string());
+                arg_index += 1;
+            }
+            "-is" | "--ini_getstring" => {
+                // Map to ini_getstring command
+                processed_args.push("ini_getstring".to_string());
+                arg_index += 1;
+            }
+            "-ii" | "--ini_getint" => {
+                // Map to ini_getint command
+                processed_args.push("ini_getint".to_string());
+                arg_index += 1;
+            }
+            "-ik" | "--initchannelkey" => {
+                // Map to initchannelkey command
+                processed_args.push("initchannelkey".to_string());
+                arg_index += 1;
+            }
+            "-pk" | "--processchannelkey" => {
+                // Map to processchannelkey command
+                processed_args.push("processchannelkey".to_string());
+                arg_index += 1;
+            }
+            "-kt" | "--getkeyttl" => {
+                // Map to getkeyttl command
+                processed_args.push("getkeyttl".to_string());
+                arg_index += 1;
+            }
+            "-rs" | "--getratchetstate" => {
+                // Map to getratchetstate command
+                processed_args.push("getratchetstate".to_string());
+                arg_index += 1;
+            }
+            "-smk" | "--setmanualchannelkey" => {
+                // Map to setmanualchannelkey command
+                processed_args.push("setmanualchannelkey".to_string());
+                arg_index += 1;
+            }
+            "-sn" | "--setnetwork" => {
+                // Map to setnetwork command
+                processed_args.push("setnetwork".to_string());
+                arg_index += 1;
+            }
+            "-kf" | "--getkeyfingerprint" => {
+                // Map to getkeyfingerprint command
+                processed_args.push("getkeyfingerprint".to_string());
+                arg_index += 1;
+            }
+            "-skp" | "--setkeyfromplaintext" => {
+                // Map to setkeyfromplaintext command
+                processed_args.push("setkeyfromplaintext".to_string());
                 arg_index += 1;
             }
             _ => {
@@ -414,19 +830,25 @@ fn main() {
     }
 
     // Handle special help command
-    if processed_args.is_empty() || processed_args[0] == "help" {
+    if processed_args.is_empty() {
+        display_help();
+        return;
+    }
+
+    if processed_args[0] == "help" {
         display_help();
         return;
     }
 
     // At this point we should have at least the DLL path and command
+    // Check length BEFORE accessing indices to prevent potential panic
     if processed_args.len() < 2 {
-        println!("Error: Missing required arguments");
+        println!("Error : missing required arguments");
         display_help();
         return;
     }
 
-    // Extract the DLL path and command
+    // Extract the DLL path and command - safe to access since we checked length above
     let dll_path = &processed_args[0];
     let command = processed_args[1].to_lowercase();
 
@@ -447,12 +869,20 @@ fn main() {
         }
     }
 
+    // Validate the DLL path before loading
+    if let Err(e) = validate_dll_path(dll_path) {
+        println!("Invalid DLL path: {}", e);
+        return;
+    }
+
     // Load the DLL
     let dll = match unsafe { libloading::Library::new(dll_path) } {
         Ok(dll) => dll,
         Err(e) => {
-            println!("Failed to load DLL '{}': {}", dll_path, e);
-            println!("Make sure the DLL exists and is compatible with this application.");
+            println!("Failed to load DLL '{}' : {}", dll_path, e);
+            println!(
+                "Make sure the DLL exists and is compatible with this version of FiSH_11 CLI."
+            );
             return;
         }
     };
@@ -469,11 +899,11 @@ fn main() {
             }
             Err(_) => match dll.get::<DllLoadFn>(b"_LoadDll@4") {
                 Ok(func) => {
-                    info_print!("Found LoadDll with mangled name '_LoadDll@4'");
+                    info_print!("Found LoadDll() with mangled name '_LoadDll@4'");
                     Some(func)
                 }
                 Err(_) => {
-                    info_print!("Warning: LoadDll function not found with expected name patterns");
+                    info_print!("Warning : LoadDll() not found with expected name patterns");
                     None
                 }
             },
@@ -487,7 +917,7 @@ fn main() {
         m_keep: 1,    // BOOL (TRUE)
         m_unicode: 0, // BOOL (FALSE)
         m_beta: 0,
-        m_bytes: 8192,
+        m_bytes: fish_11_core::globals::DLL_BUFFER_SIZE as DWORD,
     };
 
     // Call LoadDll if found
@@ -495,7 +925,7 @@ fn main() {
         let result = load_fn(&mut load_info);
 
         if result != 1 {
-            info_print!("Warning: LoadDll returned unexpected value: {}", result);
+            info_print!("Warning: LoadDll() returned unexpected value: {}", result);
         } else {
             info_print!("Successfully initialized DLL with LoadDll");
         }
@@ -505,7 +935,7 @@ fn main() {
     let function_name = match command.as_str() {
         "getversion" => "FiSH11_GetVersion",
         "genkey" => "FiSH11_GenKey",
-        "delkey" => "FiSH11_FileDelKey",  // Changed from FiSH11_DelKey
+        "delkey" => "FiSH11_FileDelKey", // Changed from FiSH11_DelKey
         "setkey" => "FiSH11_SetKey",
         "getkey" => "FiSH11_FileGetKey",
         "listkeys" => "FiSH11_FileListKeys",
@@ -530,13 +960,7 @@ fn main() {
         "setnetwork" => "FiSH11_SetNetwork",
         "getkeyfingerprint" => "FiSH11_GetKeyFingerprint",
         "setkeyfromplaintext" => "FiSH11_SetKeyFromPlaintext",
-        // Removed functions that don't exist in the DLL:
-        // "importkey" => "FiSH11_ImportKey",  // Not in DLL
-        // "exportkey" => "FiSH11_ExportKey",  // Not in DLL
-        // "setpassword" => "FiSH11_SetPasswordHash",  // Not in DLL
-        // "verifypassword" => "FiSH11_VerifyPasswordHash",  // Not in DLL
-        // "getkeyinfo" => "FiSH11_GetKeyInfo",  // Not in DLL
-        // "rekeyall" => "FiSH11_ReKeyAll",  // Not in DLL
+
         _ => {
             println!("Unknown command: {}", command);
             display_help();
@@ -546,18 +970,35 @@ fn main() {
 
     info_print!("Calling function: {}", function_name);
 
+    // Validate arguments
+    let cmd_args = if processed_args.len() > 2 { &processed_args[2..] } else { &[] };
+    if let Err(e) = validate_command_args(&command, cmd_args) {
+        println!("Error: {}", e);
+        return;
+    }
+
     // Special case for listkeys to validate config file first
     if function_name == "FiSH11_FileListKeys" && processed_args.len() > 2 {
         let config_path = &processed_args[2];
         if !validate_config_file(config_path) {
-            println!("Warning: The config file may not be valid or accessible.");
-            println!("Continuing with the operation, but it may fail.");
+            if !is_quiet_mode() {
+                println!("Warning : the config file may not be valid or accessible.");
+                println!("Continuing with the operation, but it may fail.");
+            }
         }
     }
 
     // Use our enhanced call_dll_function
     let params = if processed_args.len() > 2 {
-        processed_args[2..].join(" ").replace('$', "$$")
+        let raw_params = processed_args[2..].join(" ");
+
+        // Validate the user input before passing it to the DLL
+        if let Err(validation_error) = validate_user_input(&raw_params) {
+            println!("Error: Invalid input - {}", validation_error);
+            return;
+        }
+
+        raw_params.replace('$', "$$")
     } else {
         String::new()
     };
@@ -587,7 +1028,7 @@ fn main() {
                             let content = line.trim_start_matches("/echo -a ");
 
                             // Skip duplicating header if we already printed it
-                            if content == "FiSH Keys:" && displayed_something {
+                            if content == "FiSH Keys :" && displayed_something {
                                 continue;
                             }
 
@@ -599,23 +1040,248 @@ fn main() {
                         }
                     }
 
-                    // If nothing was displayed but we had output, show it raw
                     if !displayed_something && !output.is_empty() {
                         println!("Raw output: {}", output);
                     }
                 }
+            } else if function_name == "FiSH11_GenKey" {
+                // For genkey, we want to display the generated key if in quiet mode,
+                // or include it in the output otherwise.
+
+                // First, display the success message if NOT in quiet mode
+                if !is_quiet_mode() {
+                    let format = get_output_format(function_name);
+                    let formatted_output = process_mirc_output(&output, format);
+                    println!("{}", formatted_output);
+                }
+
+                // Now retrieve the key
+                // The params for genkey are "target [network]", for getkey it's "target"
+                // We need to extract just the target
+                let target = params.split_whitespace().next().unwrap_or(&params);
+
+                match call_dll_function(&dll, "FiSH11_FileGetKey", target) {
+                    Ok(key_output) => {
+                        let valid_key = key_output.contains("+OK ") || key_output.len() > 10; // Simple validation check
+
+                        if is_quiet_mode() {
+                            // quiet mode: print ONLY the key
+                            if valid_key {
+                                // The output might be formatted, clean it up if needed.
+                                // FiSH11_FileGetKey usually returns just the key string or similar.
+                                // But let's check if it's mIRC formatted.
+                                let clean_key = process_mirc_output(
+                                    &key_output,
+                                    get_output_format("FiSH11_FileGetKey"),
+                                );
+                                println!("{}", clean_key.trim());
+                            } else {
+                                // If we couldn't get the key, print nothing or error?
+                                // User requested "ONLY the key", so maybe stderr if failed?
+                                eprintln!("Error: Failed to retrieve generated key.");
+                            }
+                        } else {
+                            // Normal mode: print the key clearly
+                            let clean_key = process_mirc_output(
+                                &key_output,
+                                get_output_format("FiSH11_FileGetKey"),
+                            );
+                            println!("Key: {}", clean_key.trim());
+                        }
+                    }
+                    Err(e) => {
+                        println!("Error retrieving generated key: {}", e);
+                    }
+                }
             } else {
                 // For other functions, use the normal formatter
-                let format = get_output_format(function_name);
-                let formatted_output = process_mirc_output(&output, format);
-                println!("{}", formatted_output);
+
+                // If quiet mode is on, we print ONLY the RESULT, not the formatting
+                if is_quiet_mode() {
+                    let format = get_output_format(function_name);
+                    let formatted_output = process_mirc_output(&output, format);
+                    println!("{}", formatted_output.trim());
+                } else {
+                    let format = get_output_format(function_name);
+                    let formatted_output = process_mirc_output(&output, format);
+                    println!("{}", formatted_output);
+                }
             }
         }
         Err(e) => {
             // Always show errors even in quiet mode
-            println!("Error calling function: {}", e);
+            println!("Error calling function : {}", e);
             println!("Try using the 'list' command to see available functions.");
         }
     }
     // Debug file handling removed - we now directly process output from the DLL
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_valid_utf8_string() {
+        // Test that valid UTF-8 strings are handled correctly
+        let valid_utf8 = "Hello, 世界! 🦀";
+        assert!(std::str::from_utf8(valid_utf8.as_bytes()).is_ok());
+        assert_eq!(valid_utf8, "Hello, 世界! 🦀");
+    }
+
+    #[test]
+    fn test_basic_ascii_utf8() {
+        // Test basic ASCII strings (subset of UTF-8)
+        let ascii = "Hello, World!";
+        assert!(std::str::from_utf8(ascii.as_bytes()).is_ok());
+        assert_eq!(ascii, "Hello, World!");
+    }
+
+    #[test]
+    fn test_utf8_multibyte_sequences() {
+        // Test various UTF-8 multibyte characters
+        let utf8_chars = [
+            ("Emoji", "🦀🎉🚀"),
+            ("Cyrillic", "Привет"),
+            ("Chinese", "你好世界"),
+            ("Arabic", "مرحبا"),
+            ("Symbols", "αβγδε∑∏"),
+        ];
+
+        for (desc, text) in utf8_chars.iter() {
+            assert!(std::str::from_utf8(text.as_bytes()).is_ok(), "Failed for {}", desc);
+            assert_eq!(*text, std::str::from_utf8(text.as_bytes()).unwrap());
+        }
+    }
+
+    #[test]
+    fn test_invalid_utf8_byte_sequences() {
+        // Test invalid UTF-8 byte sequences
+        let invalid_sequences = vec![
+            vec![0xFF],                   // Invalid start byte
+            vec![0xC0, 0x80],             // Overlong encoding
+            vec![0xC0],                   // Incomplete sequence
+            vec![0xE0, 0x80],             // Incomplete 3-byte sequence
+            vec![0xF0, 0x80, 0x80],       // Incomplete 4-byte sequence
+            vec![0x80, 0x80, 0x80, 0x80], // Continuation bytes with no start
+        ];
+
+        for seq in invalid_sequences {
+            assert!(std::str::from_utf8(&seq).is_err());
+        }
+    }
+
+    #[test]
+    fn test_buffer_utf8_decoding_success() {
+        // Test the internal UTF-8 decoding for data buffer (successful case)
+        let data_buffer = "Hello, UTF-8 World!".as_bytes().to_vec();
+        let data_len = data_buffer.len();
+
+        match std::str::from_utf8(&data_buffer[..data_len]) {
+            Ok(s) => {
+                assert_eq!(s, "Hello, UTF-8 World!");
+            }
+            Err(_) => panic!("Should have been valid UTF-8"),
+        }
+    }
+
+    #[test]
+    fn test_buffer_utf8_decoding_failure() {
+        // Test the internal UTF-8 decoding for data buffer (failure case)
+        let invalid_buffer = vec![0xFF, 0xFE, 0xFD]; // Invalid UTF-8 sequence
+        let data_len = invalid_buffer.len();
+
+        match std::str::from_utf8(&invalid_buffer[..data_len]) {
+            Ok(_) => panic!("Should have been invalid UTF-8"),
+            Err(e) => {
+                assert!(!e.to_string().is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn test_hex_representation_of_bytes() {
+        // Test that bytes are properly converted to hex representation
+        let test_bytes = vec![0x48, 0x65, 0x6C, 0x6C, 0x6F]; // "Hello" in hex
+        let hex_repr =
+            test_bytes.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
+
+        assert_eq!(hex_repr, "48 65 6c 6c 6f");
+    }
+
+    #[test]
+    fn test_hex_representation_of_invalid_utf8() {
+        // Test hex representation of invalid UTF-8 bytes
+        let invalid_bytes = vec![0xFF, 0xFE, 0xFD, 0x00, 0xC0];
+        let hex_repr =
+            invalid_bytes.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
+
+        assert_eq!(hex_repr, "ff fe fd 00 c0");
+    }
+
+    #[test]
+    fn test_empty_buffer_utf8_handling() {
+        // Test handling of empty buffers
+        let empty_buffer: Vec<u8> = vec![];
+        let result = std::str::from_utf8(&empty_buffer);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "");
+    }
+
+    #[test]
+    fn test_long_valid_utf8_string() {
+        // Test handling of longer valid UTF-8 strings
+        let long_string = "A".repeat(1000) + "世界" + "B".repeat(1000).as_str();
+        let result = std::str::from_utf8(long_string.as_bytes());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), &long_string);
+    }
+
+    #[test]
+    fn test_boundary_utf8_sequences() {
+        // Test boundary cases for UTF-8 sequences
+        let boundary_cases = vec![
+            vec![0x00],             // Null byte
+            vec![0x7F],             // Last ASCII character
+            vec![0xC2, 0x80],       // First 2-byte sequence
+            vec![0xDF, 0xBF],       // Last 2-byte sequence
+            vec![0xE0, 0xA0, 0x80], // First 3-byte sequence
+            vec![0xEF, 0xBF, 0xBF], // Last 3-byte sequence (non-characters)
+        ];
+
+        for case in boundary_cases {
+            match std::str::from_utf8(&case) {
+                Ok(_) => {}  // Some of these are valid
+                Err(_) => {} // Some of these are invalid, which is also valid behavior to test
+            }
+        }
+    }
+
+    #[test]
+    fn test_error_message_with_hex_output() {
+        // Test the complete error message generation
+        let invalid_buffer = vec![0xFF, 0xFE, 0xFD, 0x00, 0xC0];
+        let data_len = invalid_buffer.len();
+
+        let result = std::str::from_utf8(&invalid_buffer);
+        assert!(result.is_err());
+
+        // Create the hex representation as done in the code
+        let problematic_bytes = &invalid_buffer[..data_len.min(50)];
+        let hex_repr =
+            problematic_bytes.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
+
+        // Verify hex representation is correct
+        assert_eq!(hex_repr, "ff fe fd 00 c0");
+
+        // Create error message as done in the code
+        let error_msg = format!(
+            "Function completed but returned invalid UTF-8 data in data buffer (length: {}, first bytes as hex: {})",
+            data_len, hex_repr
+        );
+
+        assert!(error_msg.contains("invalid UTF-8 data in data buffer"));
+        assert!(error_msg.contains("length: 5"));
+        assert!(error_msg.contains("ff fe fd 00 c0"));
+    }
 }

@@ -324,7 +324,7 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
     );
 
     #[cfg(debug_assertions)]
-    println!("DEBUG: finished processing sections. Total entries loaded: {}", config.entries.len());
+    // println!("DEBUG: finished processing sections. Total entries loaded: {}", config.entries.len());
 
     log_warn!("=== load_config: TOTAL {:?} ===", total_start.elapsed());
     Ok(config)

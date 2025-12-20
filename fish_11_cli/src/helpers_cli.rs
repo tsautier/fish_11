@@ -1,14 +1,41 @@
+use std::ffi::OsStr;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Component, Path};
 
 #[cfg(windows)]
-use crate::DllFunctionFn;
-use crate::{OutputFormat, QUIET_MODE, display_help};
+//use crate::DllFunctionFn;
+use crate::{OutputFormat, display_help};
+
+/// Helper function to check if a path contains directory traversal sequences
+/// Returns true if the path is safe, false if it contains traversal attempts
+fn is_safe_path<P: AsRef<Path>>(path: P) -> bool {
+    let path = path.as_ref();
+
+    // Use Components iterator to check each path component
+    for component in path.components() {
+        match component {
+            Component::ParentDir => return false, // "../" component found
+            Component::CurDir => continue,        // "./" component - skip
+            Component::Normal(_) => continue,     // Normal component - safe
+            Component::RootDir | Component::Prefix(_) => continue, // Root/prefix is OK
+        }
+    }
+    true
+}
 
 // Macro for conditional printing based on quiet mode
+// Macro for conditional printing based on quiet mode
+// Note: This needs to match the behavior of the macro in main.rs
+// We assume QUIET_MODE is available via crate::QUIET_MODE
 macro_rules! info_print {
     ($($arg:tt)*) => {
-        if unsafe { !QUIET_MODE } {
+        if let Ok(guard) = crate::QUIET_MODE.lock() {
+            if !*guard {
+                println!($($arg)*);
+            }
+        } else {
+            // If the mutex is poisoned, default to printing (not quiet)
+            eprintln!("Warning: QUIET_MODE mutex was poisoned, defaulting to not quiet");
             println!($($arg)*);
         }
     };
@@ -18,7 +45,7 @@ macro_rules! info_print {
 pub fn process_mirc_output(output: &str, format: OutputFormat) -> String {
     // Only log debug info if output is not empty
     if !output.is_empty() {
-        println!("Processing output in format: {:?}", format);
+        info_print!("Processing output in format : {:?}", format);
     }
 
     // Special case for listkeys when no output is returned
@@ -44,7 +71,7 @@ pub fn process_mirc_output(output: &str, format: OutputFormat) -> String {
 
         OutputFormat::KeyList => {
             // Process multiline output with multiple /echo commands (like from FiSH11_FileListKeys)
-            println!("DEBUG - Processing as KeyList format");
+            info_print!("DEBUG - Processing as KeyList format");
 
             // Special case for empty or whitespace-only output
             if output.trim().is_empty() {
@@ -58,7 +85,7 @@ pub fn process_mirc_output(output: &str, format: OutputFormat) -> String {
                 output.split('\n').collect::<Vec<&str>>()
             };
 
-            println!("DEBUG - Split into {} lines", lines.len());
+            info_print!("DEBUG - Split into {} lines", lines.len());
 
             if lines.is_empty() {
                 return "No keys found.".to_string();
@@ -120,7 +147,7 @@ pub fn process_mirc_output(output: &str, format: OutputFormat) -> String {
 
 /// Helper function to determine which output format to use based on function name
 pub fn get_output_format(function_name: &str) -> OutputFormat {
-    println!("DEBUG - Selecting output format for function: {}", function_name);
+    info_print!("DEBUG - Selecting output format for function: {}", function_name);
     match function_name {
         "FiSH11_FileListKeys" => OutputFormat::KeyList,
         "FiSH11_Help" => OutputFormat::MircEcho,
@@ -140,20 +167,35 @@ pub fn get_output_format(function_name: &str) -> OutputFormat {
 pub fn validate_config_file(file_path: &str) -> bool {
     let path = Path::new(file_path);
 
+    // Check for path traversal attacks
+    if !is_safe_path(path) {
+        if !crate::is_quiet_mode() {
+            println!(
+                "Error : config file path '{}' contains directory traversal sequences",
+                file_path
+            );
+        }
+        return false;
+    }
+
     if !path.exists() {
-        println!("Error: config file '{}' does not exist", file_path);
+        if !crate::is_quiet_mode() {
+            println!("Error : config file '{}' does not exist", file_path);
+        }
         return false;
     }
 
     if !path.is_file() {
-        println!("Error: '{}' is not a file", file_path);
+        if !crate::is_quiet_mode() {
+            println!("Error : '{}' is not a file", file_path);
+        }
         return false;
     }
 
     // Check if the file has a valid extension (.ini)
     let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
     if extension.to_lowercase() != "ini" {
-        println!("Warning: config file '{}' does not have .ini extension", file_path);
+        info_print!("Warning : config file '{}' does not have .ini extension", file_path);
         // Continue anyway, it might still work
     }
 
@@ -165,24 +207,26 @@ pub fn validate_config_file(file_path: &str) -> bool {
             match file.read(&mut buffer) {
                 Ok(bytes_read) => {
                     if bytes_read > 0 {
-                        println!("Config file '{}' exists and is readable", file_path);
+                        info_print!("Config file '{}' exists and is readable", file_path);
                         true
                     } else {
-                        println!("Warning: Config file '{}' is empty", file_path);
+                        info_print!("Warning : config file '{}' is empty", file_path);
                         true
                     }
                 }
                 Err(e) => {
-                    println!("Error: cannot read from config file '{}': {}", file_path, e);
+                    if !crate::is_quiet_mode() {
+                        println!("Error : cannot read from config file '{}': {}", file_path, e);
+                    }
                     false
                 }
             }
         }
         Err(e) => {
-            println!("Error: cannot open config file '{}': {}", file_path, e);
+            if !crate::is_quiet_mode() {
+                println!("Error : cannot open config file '{}': {}", file_path, e);
+            }
             false
         }
     }
 }
-
-
