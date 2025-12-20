@@ -2,9 +2,18 @@ use std::ffi::OsStr;
 use std::io::Read;
 use std::path::{Component, Path};
 
-#[cfg(windows)]
-//use crate::DllFunctionFn;
-use crate::{OutputFormat, display_help};
+/// Helper enum to specify different output formatting styles
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OutputFormat {
+    /// Standard output - just print the string as-is
+    Standard,
+
+    /// Format mIRC /echo commands - extract and format the message part
+    MircEcho,
+
+    /// Format output from FiSH11_FileListKeys - handle multiple echo commands
+    KeyList,
+}
 
 /// Helper function to check if a path contains directory traversal sequences
 /// Returns true if the path is safe, false if it contains traversal attempts

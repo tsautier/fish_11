@@ -517,15 +517,16 @@ fn validate_dll_path(dll_path: &str) -> Result<(), String> {
         return Err("DLL path contains path traversal sequences".to_string());
     }
 
-    // Ensure the path has a valid DLL extension
+    // Ensure the path has a valid shared library extension (platform-specific)
     let path = std::path::Path::new(dll_path);
     if let Some(extension) = path.extension() {
         let ext = extension.to_string_lossy().to_lowercase();
-        if ext != "dll" {
-            return Err(format!("Invalid file extension: {} (expected .dll)", ext));
+        // Accept both Windows DLL and Linux shared library extensions
+        if ext != "dll" && ext != "so" {
+            return Err(format!("Invalid file extension: {} (expected .dll or .so)", ext));
         }
     } else {
-        return Err("DLL path must have a .dll extension".to_string());
+        return Err("DLL path must have a .dll or .so extension".to_string());
     }
 
     // Ensure the path doesn't contain potentially dangerous characters
@@ -563,7 +564,8 @@ fn validate_command_name(command: &str) -> Result<(), String> {
 
     // Additional checks could be added here as needed
     // For example, only allow alphanumeric characters and underscores/dashes
-    if !command.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '/') {
+    // Also allow common path characters like dots, slashes, and dots for file extensions
+    if !command.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '/' || c == '.' || c == ':') {
         return Err("Command contains invalid characters".to_string());
     }
 

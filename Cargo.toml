@@ -5,3 +5,7 @@ members = ["fish_11_dll", "fish_11_cli", "fish_11_inject", "fish_11_core"]
 # Uncomment the line below on Unix systems to enable fuzzing:
 # members = ["fish_11_dll", "fish_11_cli", "fish_11_inject", "fish_11_core", "fuzz"]
 resolver = "2"
+
+[workspace.metadata]
+# Configuration par défaut pour Windows
+default-target = "x86_64-pc-windows-msvc"

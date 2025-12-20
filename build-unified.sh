@@ -1,10 +1,10 @@
 #!/bin/sh
-# Script de build unifié pour FiSH 11 (Linux, BSD, macOS)
-# POSIX compliant - fonctionne avec sh, dash, etc.
+# Build script for FiSH_11 : Linux, BSD (macOS untested)
+# POSIX compliant => works with sh, dash, etc.
 
 set -e
 
-# Couleurs pour les messages (désactivables)
+# Colors for messages (disable if not in terminal)
 if [ -t 1 ]; then
     RED='\033[31m'
     GREEN='\033[32m'
@@ -19,7 +19,7 @@ else
     RESET=''
 fi
 
-# Fonctions utilitaires
+# Utility functions
 log_info() {
     printf "${BLUE}[INFO]${RESET} %s\n" "$1"
 }
@@ -62,94 +62,101 @@ check_command() {
 }
 
 check_rust_toolchain() {
-    log_info "Vérification de la toolchain Rust..."
-    
+    log_info "Checking Rust toolchain..."
+
     if ! check_command rustc; then
-        log_error "Rust (rustc) n'est pas installé."
+        log_error "Rust (rustc) is not installed."
         return 1
     fi
-    
+
     if ! check_command cargo; then
-        log_error "Cargo n'est pas installé."
+        log_error "Cargo is not installed."
         return 1
     fi
-    
+
     RUSTC_VERSION=$(rustc --version)
     CARGO_VERSION=$(cargo --version)
-    
-    log_info "Version de Rust: $RUSTC_VERSION"
-    log_info "Version de Cargo: $CARGO_VERSION"
-    
-    # Vérification version minimale (1.60+ recommandé)
-    RUSTC_MAJOR=$(echo "$RUSTC_VERSION" | sed 's/rustc //;s/\..*//;s/\..*//')
-    if [ "$RUSTC_MAJOR" -lt 60 ]; then
-        log_warning "Version de Rust ancienne (< 1.60). Certaines fonctionnalités peuvent ne pas être disponibles."
+
+    log_info "Rust version: $RUSTC_VERSION"
+    log_info "Cargo version: $CARGO_VERSION"
+
+    # Check minimum version (1.60+ recommended)
+    # Extract major.minor version numbers
+    RUST_VERSION_LINE=$(echo "$RUSTC_VERSION" | cut -d' ' -f2)
+    RUST_MAJOR=$(echo "$RUST_VERSION_LINE" | cut -d'.' -f1)
+    RUST_MINOR=$(echo "$RUST_VERSION_LINE" | cut -d'.' -f2)
+
+    # Calculate combined version number for comparison (major * 100 + minor)
+    COMBINED_VERSION=$((RUST_MAJOR * 100 + RUST_MINOR))
+
+    if [ $COMBINED_VERSION -lt 160 ]; then
+        log_warning "Old Rust version ($RUST_MAJOR.$RUST_MINOR < 1.60). Some features may not be available."
     fi
-    
+
     return 0
 }
 
 check_linker() {
     OS=$(detect_os)
-    
+
     case "$OS" in
         linux)
             if ! check_command gcc && ! check_command clang; then
-                log_error "Aucun linker disponible (gcc ou clang requis)."
+                log_error "No linker available (gcc or clang required)."
                 return 1
             fi
             ;;
         freebsd|openbsd|netbsd|dragonfly)
             if ! check_command cc; then
-                log_error "Linker système (cc) non trouvé."
+                log_error "System linker (cc) not found."
                 return 1
             fi
             ;;
         macos)
             if ! check_command clang; then
-                log_error "Clang non trouvé (requis pour macOS)."
+                log_error "Clang not found (required for macOS)."
                 return 1
             fi
             ;;
         *)
-            log_error "OS non supporté pour la détection du linker."
+            log_error "Unsupported OS for linker detection."
             return 1
             ;;
     esac
-    
+
     return 0
 }
 
 install_rust() {
-    log_info "Installation de Rust via rustup..."
-    
+    log_info "Installing Rust via rustup..."
+
     if ! check_command curl; then
-        log_error "curl est requis pour installer Rust."
+        log_error "curl is required to install Rust."
         return 1
     fi
-    
-    # Installation de rustup
+
+    # Installation of rustup
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-    
-    # Ajout au PATH pour la session courante
+
+    # Add to PATH for current session
     if [ -d "$HOME/.cargo/bin" ]; then
         PATH="$HOME/.cargo/bin:$PATH"
         export PATH
     fi
-    
+
     if ! check_rust_toolchain; then
-        log_error "Échec de l'installation de Rust."
+        log_error "Failed to install Rust."
         return 1
     fi
-    
-    log_success "Rust installé avec succès."
+
+    log_success "Rust installed successfully."
     return 0
 }
 
 setup_target() {
     OS=$(detect_os)
     ARCH=$(detect_arch)
-    
+
     case "$OS" in
         linux)    TARGET="${ARCH}-unknown-linux-gnu";;
         macos)    TARGET="${ARCH}-apple-darwin";;
@@ -158,65 +165,57 @@ setup_target() {
         netbsd)   TARGET="${ARCH}-unknown-netbsd";;
         dragonfly) TARGET="${ARCH}-unknown-dragonfly";;
         *)
-            log_error "OS non supporté: $OS"
+            log_error "Unsupported OS: $OS"
             return 1
             ;;
     esac
+
     
-    log_info "Cible de compilation: $TARGET"
     echo "$TARGET"
     return 0
 }
 
 build_project() {
     TARGET=$1
+
+    log_info "Starting build for $TARGET..."
+
     
-    log_info "Lancement de la compilation pour $TARGET..."
-    
-    # Configuration spécifique à la cible
-    case "$TARGET" in
-        *-linux-*)    EXTRA_FLAGS="--features linux-support";;
-        *-apple-*)    EXTRA_FLAGS="--features macos-support";;
-        *-freebsd*)   EXTRA_FLAGS="--features bsd-support";;
-        *-openbsd*)   EXTRA_FLAGS="--features bsd-support";;
-        *-netbsd*)    EXTRA_FLAGS="--features bsd-support";;
-        *-dragonfly*) EXTRA_FLAGS="--features bsd-support";;
-        *)            EXTRA_FLAGS="";;
-    esac
-    
-    # Compilation en mode release
-    cargo build --release --target "$TARGET" $EXTRA_FLAGS
-    
+    cargo build --release --target "$TARGET" --color never
+
     if [ $? -ne 0 ]; then
-        log_error "Échec de la compilation."
+        log_error "Build failed."
         return 1
     fi
-    
-    log_success "Compilation réussie!"
-    log_info "Binaire disponible dans: target/$TARGET/release/"
-    
+
+    echo "[SUCCESS] Build successful!"
+    echo "[INFO] Binary available in: target/$TARGET/release/"
+
     return 0
 }
 
 show_help() {
     cat <<EOF
-Utilisation: $0 [OPTIONS]
+Usage: $0 [OPTIONS]
+
+This script is designed for Linux/BSD/macOS builds.
+For Windows, simply use: cargo build --workspace
 
 Options:
-  -h, --help       Affiche cette aide
-  -i, --install    Installe Rust si non présent
-  -c, --check      Vérifie seulement l'environnement
-  -t, --target     Spécifie une cible manuellement (ex: x86_64-unknown-linux-gnu)
+  -h, --help       Show this help
+  -i, --install    Install Rust if not present
+  -c, --check      Check environment only
+  -t, --target     Specify target manually (e.g., x86_64-unknown-linux-gnu)
 
-Exemples:
-  $0                    # Compilation normale
-  $0 -i                 # Installe Rust si nécessaire puis compile
-  $0 -c                 # Vérifie seulement l'environnement
-  $0 -t aarch64-unknown-linux-gnu  # Compile pour une cible spécifique
+Examples:
+  $0                    # Normal build for current platform
+  $0 -i                 # Install Rust if needed then build
+  $0 -c                 # Check environment only
+  $0 -t aarch64-unknown-linux-gnu  # Build for specific target
 EOF
 }
 
-# Parsing des arguments
+# Parse arguments
 INSTALL_RUST=false
 CHECK_ONLY=false
 CUSTOM_TARGET=""
@@ -240,19 +239,27 @@ while [ $# -gt 0 ]; do
             shift 2
             ;;
         *)
-            log_error "Option inconnue: $1"
+            log_error "Unknown option: $1"
             show_help
             exit 1
             ;;
     esac
 done
 
-# Programme principal
-log_info "=== Script de build unifié pour FiSH 11 ==="
-log_info "OS détecté: $(uname -s)"
-log_info "Architecture: $(uname -m)"
+# Windows detection (this script is for Unix-like only)
+if [ "$(expr substr $(uname -s) 1 5)" = "MINGW" ] || [ "$(expr substr $(uname -s) 1 6)" = "CYGWIN" ]; then
+    log_error "This script is designed for Linux/BSD/macOS only."
+    log_error "On Windows, simply use: cargo build --workspace"
+    exit 1
+fi
 
-# Vérification de l'environnement
+# Main program
+# Log without colors for these messages to avoid cargo issues
+echo "=== FiSH_11 nuild script (Linux/BSD/macOS) ==="
+echo "Detected OS: $(uname -s)"
+echo "Architecture: $(uname -m)"
+
+# Check environment
 if ! check_linker; then
     exit 1
 fi
@@ -263,17 +270,17 @@ if ! check_rust_toolchain; then
             exit 1
         fi
     else
-        log_error "Rust n'est pas installé. Utilisez l'option -i pour l'installer."
+        log_error "Rust is not installed. Use -i option to install it."
         exit 1
     fi
 fi
 
 if [ "$CHECK_ONLY" = true ]; then
-    log_success "Environnement vérifié avec succès."
+    log_success "Environment checked successfully."
     exit 0
 fi
 
-# Détermination de la cible
+# Determine target
 if [ -n "$CUSTOM_TARGET" ]; then
     TARGET="$CUSTOM_TARGET"
 else
@@ -283,10 +290,10 @@ else
     fi
 fi
 
-# Compilation
+# Build
 if ! build_project "$TARGET"; then
     exit 1
 fi
 
-log_success "Build terminé avec succès!"
+log_success "Build completed successfully!"
 exit 0
