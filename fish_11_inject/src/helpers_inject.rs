@@ -344,8 +344,9 @@ pub fn handle_poison<T>(err: PoisonError<T>) -> T {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::sync::Arc;
+
+    use super::*;
 
     #[test]
     fn test_init_logger() {

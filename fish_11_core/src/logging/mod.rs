@@ -11,12 +11,12 @@ pub mod security;
 pub mod unified_logger;
 pub mod writers;
 
-use config::LogConfig;
-use unified_logger::UnifiedLogger;
+use std::sync::atomic::{AtomicBool, Ordering};
 
+use config::LogConfig;
 // Global logger instance
 use log::LevelFilter;
-use std::sync::atomic::{AtomicBool, Ordering};
+use unified_logger::UnifiedLogger;
 
 static LOGGER_INITIALIZED: AtomicBool = AtomicBool::new(false);
 

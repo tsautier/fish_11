@@ -161,9 +161,10 @@ macro_rules! get_hook_fn_extended {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::sync::Arc;
     use std::thread;
+
+    use super::*;
 
     #[test]
     fn test_try_lock_timeout_success() {

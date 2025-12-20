@@ -2,14 +2,10 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
-use crate::buffer_utils;
-use crate::config;
-use crate::crypto;
-use crate::dll_function_identifier;
 use crate::dll_interface::utility;
-use crate::log_debug;
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
+use crate::{buffer_utils, config, crypto, dll_function_identifier, log_debug};
 
 // Encrypts a message for a specific nickname or channel.
 //
@@ -115,9 +111,8 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
 #[cfg(test)]
 mod tests {
 
-    use crate::config;
-    use crate::crypto;
     use crate::utils::normalize_nick;
+    use crate::{config, crypto};
 
     #[test]
     fn test_normalize_nick() {

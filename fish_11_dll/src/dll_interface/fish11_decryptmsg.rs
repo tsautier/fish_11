@@ -1,16 +1,10 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
-use crate::platform_types::BOOL;
-use crate::platform_types::HWND;
-
-use crate::buffer_utils;
-use crate::config;
-use crate::crypto;
-use crate::dll_function_identifier;
 use crate::dll_interface::utility;
-use crate::log_debug;
+use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
+use crate::{buffer_utils, config, crypto, dll_function_identifier, log_debug};
 
 /* list of stuff we possibly need to decrypt:
         :nick!ident@host PRIVMSG #chan :+FISH 2T5zD0mPgMn
@@ -217,9 +211,8 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
 #[cfg(test)]
 mod tests {
 
-    use crate::config;
-    use crate::crypto;
     use crate::utils::normalize_nick;
+    use crate::{config, crypto};
 
     #[test]
     fn test_normalize_nick() {

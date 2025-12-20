@@ -1,11 +1,8 @@
 //! Functions for managing channel ratchet state and nonce caches.
 
-use super::{
-    config_access::{with_config, with_config_mut},
-    models::{NonceCache, RatchetState},
-};
-use crate::unified_error::DllResult;
-use crate::unified_error::FishError;
+use super::config_access::{with_config, with_config_mut};
+use super::models::{NonceCache, RatchetState};
+use crate::unified_error::{DllResult, FishError};
 
 /// Initializes the ratchet state for a channel if it doesn't exist.
 pub fn init_ratchet_state(channel: &str, initial_key: [u8; 32]) -> DllResult<()> {

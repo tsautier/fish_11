@@ -12,8 +12,6 @@ use std::io::Write;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicU64;
 
-use crate::error::{FishError, Result};
-use crate::utils::{base64_decode, base64_encode, generate_random_bytes};
 use chacha20poly1305::aead::{Aead, KeyInit, OsRng, Payload};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use chrono::{DateTime, Duration, Utc};
@@ -26,6 +24,9 @@ use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 use x25519_dalek::{PublicKey, StaticSecret};
 use zeroize::Zeroize;
+
+use crate::error::{FishError, Result};
+use crate::utils::{base64_decode, base64_encode, generate_random_bytes};
 
 // constants
 
@@ -594,8 +595,9 @@ fn constant_time_compare(a: &[u8], b: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use secrecy::ExposeSecret;
+
+    use super::*;
 
     #[test]
     fn test_generate_keypair() {
@@ -947,7 +949,8 @@ pub fn advance_ratchet_key(
     Ok(next_key)
 }
 
-use base64::{Engine as _, engine::general_purpose};
+use base64::Engine as _;
+use base64::engine::general_purpose;
 
 /// Wraps a channel key using a pre-shared symmetric key.
 /// This is used by the coordinator to encrypt the new channel key for a specific member.

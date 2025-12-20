@@ -1,18 +1,13 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
-use crate::platform_types::BOOL;
-use crate::platform_types::HWND;
-
-use crate::buffer_utils;
-use crate::config;
-use crate::dll_function_identifier;
-use crate::log_debug;
-use crate::unified_error::DllError;
-use crate::utils::{base64_encode, normalize_nick};
-
 #[cfg(test)]
 use base64;
+
+use crate::platform_types::{BOOL, HWND};
+use crate::unified_error::DllError;
+use crate::utils::{base64_encode, normalize_nick};
+use crate::{buffer_utils, config, dll_function_identifier, log_debug};
 
 dll_function_identifier!(FiSH11_FileGetKey, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
@@ -45,10 +40,11 @@ dll_function_identifier!(FiSH11_FileGetKey, data, {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::dll_interface::MIRC_COMMAND;
     use std::ffi::CStr;
     use std::ptr;
+
+    use super::*;
+    use crate::dll_interface::MIRC_COMMAND;
 
     fn call_getkey(input: &str, buffer_size: usize) -> (c_int, String) {
         let mut buffer = vec![0i8; buffer_size];

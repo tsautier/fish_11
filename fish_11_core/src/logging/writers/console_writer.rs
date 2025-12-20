@@ -1,8 +1,10 @@
+use std::io::{self, Write};
+
+use log::{LevelFilter, Record};
+
 use crate::logging::context::LogContext;
 use crate::logging::errors::LogError;
 use crate::logging::formatter;
-use log::{LevelFilter, Record};
-use std::io::{self, Write};
 
 pub struct ConsoleWriter {
     level: LevelFilter,

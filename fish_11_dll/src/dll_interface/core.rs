@@ -1,12 +1,13 @@
+use std::sync::Mutex;
+
+use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION};
+use log;
+#[cfg(windows)]
+use winapi::shared::minwindef::{DWORD, HINSTANCE, LPVOID, TRUE};
+
 use crate::dll_interface::DEFAULT_MIRC_BUFFER_SIZE;
 use crate::platform_types::{BOOL, HWND, c_int};
 use crate::{log_debug, log_info};
-use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION};
-use log;
-use std::sync::Mutex;
-
-#[cfg(windows)]
-use winapi::shared::minwindef::{DWORD, HINSTANCE, LPVOID, TRUE};
 
 #[cfg(not(windows))]
 type DWORD = u32;

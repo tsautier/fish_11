@@ -114,9 +114,10 @@ impl SocketInfo {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::engines::InjectEngines;
-    use std::sync::Arc;
 
     #[test]
     fn test_socket_info_creation() {

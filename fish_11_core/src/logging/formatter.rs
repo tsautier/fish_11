@@ -1,6 +1,7 @@
+use log::Record;
+
 use crate::logging::context::LogContext;
 use crate::logging::security;
-use log::Record;
 
 pub fn format_record(
     record: &Record,

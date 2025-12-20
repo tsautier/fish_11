@@ -3,14 +3,14 @@
 //! This module allows users to set fixed encryption keys for channels that will
 //! be persisted to the configuration file in an encrypted format.
 
+use secrecy::ExposeSecret;
+
 use crate::config::config_access::{with_config, with_config_mut};
 use crate::config::models::EntryData;
-use crate::crypto;
 use crate::error::{FishError, Result};
-use crate::log_debug;
 use crate::unified_error::{DllError, DllResult};
 use crate::utils::{base64_decode, base64_encode};
-use secrecy::ExposeSecret;
+use crate::{crypto, log_debug};
 
 /// Sets a manual channel key in the configuration after encrypting it.
 ///

@@ -1,10 +1,9 @@
-use crate::config;
-use crate::dll_function_identifier;
-use crate::log_debug;
-use crate::platform_types::{BOOL, HWND};
-use crate::unified_error::DllError;
 use std::ffi::c_char;
 use std::os::raw::c_int;
+
+use crate::platform_types::{BOOL, HWND};
+use crate::unified_error::DllError;
+use crate::{config, dll_function_identifier, log_debug};
 
 /// Gets a boolean value from the config file.
 /// Input: <key> [default_value]

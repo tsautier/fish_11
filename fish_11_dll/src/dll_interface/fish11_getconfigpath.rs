@@ -1,11 +1,10 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
-use crate::config;
-use crate::dll_function_identifier;
 use crate::dll_interface::{CStr, ptr};
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
+use crate::{config, dll_function_identifier};
 
 dll_function_identifier!(FiSH11_GetConfigPath, _data, {
     let config_path = config::get_config_path()?;

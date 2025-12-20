@@ -7,11 +7,8 @@ use secrecy::ExposeSecret;
 
 use crate::config::models::{EntryData, FishConfig};
 use crate::error::{FishError, Result};
-use crate::log_error;
-use crate::log_info;
-use crate::log_warn;
 use crate::utils::base64_encode;
-use crate::{crypto, log_debug, log_trace};
+use crate::{crypto, log_debug, log_error, log_info, log_trace, log_warn};
 
 /// Initialize the config file if it doesn't exist
 pub fn init_config_file() -> Result<()> {

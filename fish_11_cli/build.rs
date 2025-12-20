@@ -1,5 +1,4 @@
-use vergen::BuildBuilder;
-use vergen::Emitter;
+use vergen::{BuildBuilder, Emitter};
 
 fn main() {
     // Emit the instructions

@@ -1,13 +1,9 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
-use crate::config;
-use crate::dll_function_identifier;
-
-use crate::log_debug;
-use crate::platform_types::BOOL;
-use crate::platform_types::HWND;
+use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
+use crate::{config, dll_function_identifier, log_debug};
 
 dll_function_identifier!(FiSH11_FileListKeys, data, {
     log_debug!("Starting key listing");
@@ -54,10 +50,11 @@ dll_function_identifier!(FiSH11_FileListKeys, data, {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::dll_interface::MIRC_COMMAND;
     use std::ffi::{CStr, CString};
     use std::ptr;
+
+    use super::*;
+    use crate::dll_interface::MIRC_COMMAND;
 
     fn call_listkeys(buffer_size: usize) -> (c_int, String) {
         let mut buffer = vec![0i8; buffer_size];

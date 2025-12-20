@@ -3,12 +3,13 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
+use hkdf::Hkdf;
+use sha2::Sha256;
+
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 use crate::{buffer_utils, config, dll_function_identifier, log_debug};
-use hkdf::Hkdf;
-use sha2::Sha256;
 
 dll_function_identifier!(FiSH11_SetKeyFromPlaintext, data, {
     // Accept input in two formats:

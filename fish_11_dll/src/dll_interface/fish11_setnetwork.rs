@@ -1,10 +1,9 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
-use crate::buffer_utils;
-use crate::dll_function_identifier;
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
+use crate::{buffer_utils, dll_function_identifier};
 
 dll_function_identifier!(FiSH11_SetNetwork, data, {
     // Parse input: <network_name>

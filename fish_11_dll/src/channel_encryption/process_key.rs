@@ -1,12 +1,11 @@
-use crate::buffer_utils;
-use crate::config;
-use crate::crypto;
-use crate::dll_function_identifier;
-use crate::platform_types::BOOL;
-use crate::platform_types::HWND;
-use crate::unified_error::DllError;
-use base64::{Engine as _, engine::general_purpose};
 use std::ffi::{c_char, c_int};
+
+use base64::Engine as _;
+use base64::engine::general_purpose;
+
+use crate::platform_types::{BOOL, HWND};
+use crate::unified_error::DllError;
+use crate::{buffer_utils, config, crypto, dll_function_identifier};
 
 dll_function_identifier!(FiSH11_ProcessChannelKey, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };

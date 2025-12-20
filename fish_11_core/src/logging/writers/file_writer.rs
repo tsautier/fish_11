@@ -1,14 +1,16 @@
-use crate::logging::context::LogContext;
-use crate::logging::errors::LogError;
-use crate::logging::formatter;
-use log::Record;
-use rand::Rng;
-use scopeguard;
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+use log::Record;
+use rand::Rng;
+use scopeguard;
+
+use crate::logging::context::LogContext;
+use crate::logging::errors::LogError;
+use crate::logging::formatter;
 
 pub struct FileWriter {
     file: Arc<Mutex<BufWriter<File>>>,

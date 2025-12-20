@@ -32,12 +32,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use dashmap::DashMap;
-use once_cell::sync::Lazy;
-
 use engines::InjectEngines;
 use fish_11_core::globals::{MIRC_COMMAND, MIRC_HALT, MIRC_IDENTIFIER};
 use lazy_static::lazy_static;
 use log::{error, info};
+use once_cell::sync::Lazy;
 use socket::info::SocketInfo;
 use windows::Win32::Foundation::HMODULE;
 use windows::Win32::System::Threading::GetCurrentThreadId;

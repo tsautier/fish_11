@@ -1,11 +1,10 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
+use crate::config::with_config;
 use crate::platform_types::{BOOL, HWND};
-use crate::{
-    buffer_utils, config::with_config, dll_function_identifier, log_debug, log_info, log_warn,
-    unified_error::DllError,
-};
+use crate::unified_error::DllError;
+use crate::{buffer_utils, dll_function_identifier, log_debug, log_info, log_warn};
 
 /// Gets ratchet state information for a channel
 ///

@@ -10,19 +10,15 @@ mod platform_types;
 use std::env;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
-use std::sync::Arc;
-use std::sync::{
-    Mutex,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use fish_11_core::globals::{BUILD_DATE, BUILD_NUMBER, BUILD_TIME, BUILD_VERSION};
 use platform_types::{BOOL, DWORD, HWND, LIB_NAME};
 
-use fish_11_core::globals::{BUILD_DATE, BUILD_NUMBER, BUILD_TIME, BUILD_VERSION};
-
 mod helpers_cli;
-use crate::helpers_cli::{get_output_format, process_mirc_output, validate_config_file};
+use crate::helpers_cli::validate_config_file;
 
 // Default timeout for DLL operations in seconds
 const DEFAULT_TIMEOUT_SECONDS: u64 = 5;
@@ -116,19 +112,6 @@ struct LoadInfo {
 type DllLoadFn = extern "system" fn(*mut LoadInfo) -> c_int;
 type DllFunctionFn =
     extern "system" fn(HWND, HWND, *mut c_char, *mut c_char, c_int, c_int) -> c_int;
-
-/// Helper enum to specify different output formatting styles
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum OutputFormat {
-    /// Standard output - just print the string as-is
-    Standard,
-
-    /// Format mIRC /echo commands - extract and format the message part
-    MircEcho,
-
-    /// Format output from FiSH11_FileListKeys - handle multiple echo commands
-    KeyList,
-}
 
 /// Enhanced version of call_dll_function that handles timeouts and detects hanging operations
 /// This is used when the direct DLL call might hang (like FiSH11_FileListKeys with large DBs)
@@ -565,7 +548,10 @@ fn validate_command_name(command: &str) -> Result<(), String> {
     // Additional checks could be added here as needed
     // For example, only allow alphanumeric characters and underscores/dashes
     // Also allow common path characters like dots, slashes, and dots for file extensions
-    if !command.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '/' || c == '.' || c == ':') {
+    if !command
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '/' || c == '.' || c == ':')
+    {
         return Err("Command contains invalid characters".to_string());
     }
 
@@ -1178,9 +1164,7 @@ fn main() {
 
                 // First, display the success message if NOT in quiet mode
                 if !is_quiet_mode() {
-                    let format = get_output_format(function_name);
-                    let formatted_output = process_mirc_output(&output, format);
-                    println!("{}", formatted_output);
+                    println!("{}", output);
                 }
 
                 // Now retrieve the key
@@ -1195,14 +1179,7 @@ fn main() {
                         if is_quiet_mode() {
                             // quiet mode: print ONLY the key
                             if valid_key {
-                                // The output might be formatted, clean it up if needed.
-                                // FiSH11_FileGetKey usually returns just the key string or similar.
-                                // But let's check if it's mIRC formatted.
-                                let clean_key = process_mirc_output(
-                                    &key_output,
-                                    get_output_format("FiSH11_FileGetKey"),
-                                );
-                                println!("{}", clean_key.trim());
+                                println!("{}", key_output.trim());
                             } else {
                                 // If we couldn't get the key, print nothing or error?
                                 // User requested "ONLY the key", so maybe stderr if failed?
@@ -1210,11 +1187,7 @@ fn main() {
                             }
                         } else {
                             // Normal mode: print the key clearly
-                            let clean_key = process_mirc_output(
-                                &key_output,
-                                get_output_format("FiSH11_FileGetKey"),
-                            );
-                            println!("Key: {}", clean_key.trim());
+                            println!("Key: {}", key_output.trim());
                         }
                     }
                     Err(e) => {
@@ -1222,17 +1195,13 @@ fn main() {
                     }
                 }
             } else {
-                // For other functions, use the normal formatter
+                // For other functions, just print the raw output
 
                 // If quiet mode is on, we print ONLY the RESULT, not the formatting
                 if is_quiet_mode() {
-                    let format = get_output_format(function_name);
-                    let formatted_output = process_mirc_output(&output, format);
-                    println!("{}", formatted_output.trim());
+                    println!("{}", output.trim());
                 } else {
-                    let format = get_output_format(function_name);
-                    let formatted_output = process_mirc_output(&output, format);
-                    println!("{}", formatted_output);
+                    println!("{}", output);
                 }
             }
         }

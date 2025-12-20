@@ -3,10 +3,9 @@
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 
+use fish_11_core::globals::FISH_INJECT_ENGINE_VERSION;
 use log::{error, info, trace, warn};
 use parking_lot::{Mutex, RwLock};
-
-use fish_11_core::globals::FISH_INJECT_ENGINE_VERSION;
 
 // C structure definition provided by engines
 #[repr(C)]
@@ -489,8 +488,9 @@ pub unsafe extern "C" fn FreeString(str_ptr: *mut std::ffi::c_char) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::ffi::CString;
+
+    use super::*;
 
     // Mock function implementations for testing
     unsafe extern "C" fn mock_on_outgoing_irc_line(

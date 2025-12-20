@@ -1,6 +1,7 @@
-use log::{LevelFilter, Log, Metadata, Record};
 use std::sync::Arc;
 use std::time::Duration;
+
+use log::{LevelFilter, Log, Metadata, Record};
 
 use crate::logging::config::LogConfig;
 use crate::logging::context;

@@ -1,8 +1,9 @@
-use once_cell::sync::Lazy;
-use regex::Regex;
 use std::ffi::c_int;
 use std::sync::Mutex;
 use std::time::Duration;
+
+use once_cell::sync::Lazy;
+use regex::Regex;
 
 // mIRC DLL exports
 pub const MIRC_HALT: c_int = 0;

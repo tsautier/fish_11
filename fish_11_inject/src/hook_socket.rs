@@ -578,9 +578,10 @@ pub fn uninstall_socket_hooks() {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::engines::InjectEngines;
-    use std::sync::Arc;
 
     #[test]
     fn test_get_or_create_socket() {

@@ -1,14 +1,10 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
-use crate::buffer_utils;
-use crate::config;
-use crate::dll_function_identifier;
-use crate::log_debug;
-use crate::platform_types::BOOL;
-use crate::platform_types::HWND;
+use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::base64_decode;
+use crate::{buffer_utils, config, dll_function_identifier, log_debug};
 
 /// Sets a manual encryption key for a channel.
 ///
@@ -73,11 +69,12 @@ dll_function_identifier!(FiSH11_SetManualChannelKey, data, {
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::CStr;
+    use std::ptr;
+
     use super::*;
     use crate::config;
     use crate::dll_interface::MIRC_COMMAND;
-    use std::ffi::CStr;
-    use std::ptr;
 
     fn call_set_manual_channel_key(input: &str, buffer_size: usize) -> (c_int, String) {
         let mut buffer = vec![0i8; buffer_size];

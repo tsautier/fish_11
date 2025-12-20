@@ -136,10 +136,10 @@ where
     Err(format!("Operation failed after {} attempts", attempts))
 }
 
-pub use config_access::{read_config, with_config, with_config_mut, write_config};
 // Re-export key functions from submodules for easier access
 pub use channel_key_utils::{get_channel_key_type, get_channel_key_with_fallback, has_channel_key};
 pub use channel_keys::{get_channel_key, set_channel_key};
+pub use config_access::{read_config, with_config, with_config_mut, write_config};
 pub use entries::{
     get_channel_data, get_user_data, list_channel_entries, list_user_entries, set_channel_data,
     set_user_data,
@@ -164,5 +164,4 @@ pub use settings::{
     get_startup_time_formatted, is_fish10_legacy_disabled, should_encrypt_message,
     should_process_incoming, should_process_outgoing, update_fish11_config, update_startup_time,
 };
-
 pub use state_management::{add_nonce, check_nonce, init_ratchet_state, with_ratchet_state_mut};
