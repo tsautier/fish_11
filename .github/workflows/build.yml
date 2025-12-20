@@ -1,0 +1,174 @@
+name: Build Release
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [created]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        target: [i686-pc-windows-msvc]
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain for ${{ matrix.target }}
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+    
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Cache cargo index
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/git
+        key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Cache target directory
+      uses: actions/cache@v4
+      with:
+        path: target
+        key: ${{ runner.os }}-target-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+      
+    - name: Build fish_11 CLI (Release)
+      run: cargo build --release --package fish_11_cli --target ${{ matrix.target }}
+          
+    - name: Build fish_11 DLL library (Release)
+      run: cargo build --release --package fish_11_dll --target ${{ matrix.target }}
+
+    - name: Build fish_11 injection DLL (Release)
+      run: cargo build --release --package fish_11_inject --target ${{ matrix.target }}
+    
+    - name: Run tests
+      run: cargo test --workspace --target ${{ matrix.target }}
+    
+    - name: Extract version from compiled binary
+      id: version
+      run: |
+        # execute fish_11_cli.exe to get version output
+        $OUTPUT = & "target\${{ matrix.target }}\release\fish_11_cli.exe" --version 2>&1
+        Write-Host "CLI output: $OUTPUT"
+        
+        # Parser la sortie pour extraire version et build
+        # Format attendu: "FiSH_11_cli X.X.X (build NNNN-release) *** ..."
+        if ($OUTPUT -match "FiSH_11_cli\s+(\S+)\s+\(build\s+(\S+)\)") {
+          $VERSION = $matches[1]
+          $BUILD = $matches[2]
+          Write-Host "Extracted - Version: $VERSION, Build: $BUILD"
+          echo "version=$VERSION" >> $env:GITHUB_OUTPUT
+          echo "build_number=$BUILD" >> $env:GITHUB_OUTPUT
+          echo "full_version=$VERSION-$BUILD" >> $env:GITHUB_OUTPUT
+        } else {
+          # Fallback si le parsing échoue
+          Write-Host "Warning: Could not parse version, using fallback"
+          $VERSION = "unknown"
+          $BUILD = "${{ github.run_number }}"
+          echo "version=$VERSION" >> $env:GITHUB_OUTPUT
+          echo "build_number=$BUILD" >> $env:GITHUB_OUTPUT
+          echo "full_version=$VERSION-build$BUILD" >> $env:GITHUB_OUTPUT
+        }
+      shell: powershell
+    
+    - name: Create release package
+      run: |
+        Write-Host "Creating release package directory..."
+        New-Item -ItemType Directory -Force -Path release_package | Out-Null
+        
+        Write-Host "Copying binaries..."
+        Copy-Item "target\${{ matrix.target }}\release\fish_11_cli.exe" -Destination "release_package\"
+        Copy-Item "target\${{ matrix.target }}\release\fish_11.dll" -Destination "release_package\"
+        Copy-Item "target\${{ matrix.target }}\release\fish_inject.dll" -Destination "release_package\"
+        
+        Write-Host "Copying documentation files..."
+        if (Test-Path "README.md") {
+          Copy-Item "README.md" -Destination "release_package\"
+        } else {
+          Write-Host "No README.md found"
+        }
+        
+        if (Test-Path "LICENSE") {
+          Copy-Item "LICENSE" -Destination "release_package\"
+        } else {
+          Write-Host "No LICENSE found"
+        }
+        
+        Write-Host "Creating VERSION.txt..."
+        "FiSH_11 Version ${{ steps.version.outputs.full_version }}" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8
+        "Build Number: ${{ steps.version.outputs.build_number }}" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
+        "Target: ${{ matrix.target }}" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
+        "Compiled: ${{ github.event.head_commit.timestamp }}" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
+        "Commit: ${{ github.sha }}" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
+        "Branch: ${{ github.ref_name }}" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
+        "" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
+        "Files included:" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
+        "- fish_11_cli.exe : Command-line interface" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
+        "- fish_11.dll     : Main FiSH encryption DLL" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
+        "- fish_inject.dll : Injection DLL for mIRC" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
+        
+        Write-Host "Release package created successfully"
+        Get-ChildItem -Path "release_package"
+      shell: powershell
+    
+    - name: Create ZIP archive
+      id: zip
+      run: |
+        $ZIP_NAME = "fish_11-${{ steps.version.outputs.full_version }}-${{ matrix.target }}.zip"
+        Write-Host "Creating ZIP: $ZIP_NAME"
+        Compress-Archive -Path "release_package\*" -DestinationPath $ZIP_NAME -Force
+        
+        # Vérifier la taille du ZIP
+        $zipSize = (Get-Item $ZIP_NAME).Length
+        Write-Host "ZIP created successfully - Size: $([math]::Round($zipSize/1KB, 2)) KB"
+        
+        echo "zip_name=$ZIP_NAME" >> $env:GITHUB_OUTPUT
+      shell: powershell
+    
+    - name: Upload complete package
+      uses: actions/upload-artifact@v4
+      with:
+        name: fish_11-complete-${{ steps.version.outputs.full_version }}-${{ matrix.target }}
+        path: ${{ steps.zip.outputs.zip_name }}
+    
+    - name: Upload to GitHub Release
+      if: github.event_name == 'release'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ${{ steps.zip.outputs.zip_name }}
+        name: FiSH_11 ${{ steps.version.outputs.full_version }}
+        body: |
+          **FiSH_11 Release ${{ steps.version.outputs.full_version }}**
+          
+          ### Build Information
+          - **Version**: ${{ steps.version.outputs.version }}
+          - **Build**: ${{ steps.version.outputs.build_number }}
+          - **Target**: ${{ matrix.target }}
+          - **Compiled**: ${{ github.event.head_commit.timestamp }}
+          - **Commit**: ${{ github.sha }}
+          
+          ### Files Included
+          - `fish_11_cli.exe` - Command-line interface for FiSH_11
+          - `fish_11.dll` - Main FiSH encryption DLL for mIRC
+          - `fish_inject.dll` - Injection DLL for transparent encryption
+          - `VERSION.txt` - Detailed build information
+          
+          ### Installation
+          1. Extract the ZIP file
+          2. Copy `fish_11.dll` and `fish_inject.dll` to your mIRC directory
+          3. Use `fish_11_cli.exe` for command-line operations
+          
+          See README.md for detailed usage instructions.
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

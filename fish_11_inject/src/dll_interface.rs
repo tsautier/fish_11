@@ -40,33 +40,33 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
     if loadinfo.is_null() {
         error!("LoadDll() called with NULL loadinfo!");
         #[cfg(debug_assertions)]
-        error!("LoadDll: loadinfo pointer is NULL - aborting");
+        error!("LoadDll() : loadinfo pointer is NULL - aborting");
         return MIRC_HALT; // Indicate failure
     }
 
     #[cfg(debug_assertions)]
-    info!("LoadDll: loadinfo pointer is valid: {:?}", loadinfo);
+    info!("LoadDll() : loadinfo pointer is valid: {:?}", loadinfo);
 
     let li = unsafe { &mut *loadinfo };
 
     #[cfg(debug_assertions)]
     info!(
-        "LoadDll: LOADINFO fields - version: {}, unicode: {}, m_bytes: {}",
+        "LoadDll() : LOADINFO fields - version: {}, unicode: {}, m_bytes: {}",
         li.m_version, li.m_unicode, li.m_bytes
     );
 
     #[cfg(debug_assertions)]
-    info!("LoadDll: acquiring MAX_MIRC_RETURN_BYTES lock...");
+    info!("LoadDll() : acquiring MAX_MIRC_RETURN_BYTES lock...");
 
     // Store max return bytes (corrected type usage)
     let mut max_bytes_guard = match MAX_MIRC_RETURN_BYTES.lock() {
         Ok(guard) => {
             #[cfg(debug_assertions)]
-            info!("LoadDll: MAX_MIRC_RETURN_BYTES lock acquired");
+            info!("LoadDll() : MAX_MIRC_RETURN_BYTES lock acquired");
             guard
         }
         Err(e) => {
-            error!("LoadDll: failed to lock MAX_MIRC_RETURN_BYTES: {}", e);
+            error!("LoadDll() : failed to lock MAX_MIRC_RETURN_BYTES: {}", e);
             return MIRC_HALT;
         }
     };
@@ -79,7 +79,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
     drop(max_bytes_guard); // Release lock
 
     #[cfg(debug_assertions)]
-    info!("LoadDll: MAX_MIRC_RETURN_BYTES set to {}", max_len);
+    info!("LoadDll() : MAX_MIRC_RETURN_BYTES set to {}", max_len);
 
     info!(
         "=== LoadDll() called. mIRC version: {}, Unicode: {}, MaxBytes: {} === ",
@@ -94,7 +94,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
         );
 
         #[cfg(debug_assertions)]
-        info!("LoadDll: Displaying version warning MessageBox...");
+        info!("LoadDll() : displaying version warning MessageBox...");
 
         unsafe {
             MessageBoxW(
@@ -106,7 +106,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
         }
 
         #[cfg(debug_assertions)]
-        info!("LoadDll: MessageBox closed");
+        info!("LoadDll() : MessageBox closed");
     }
 
     // Setup hooks via install_hooks()
@@ -187,7 +187,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
             }
         } else {
             #[cfg(debug_assertions)]
-            error!("LoadDll(): failed to create CString for version command");
+            error!("LoadDll() : failed to create CString for version command");
         }
     } else {
         #[cfg(debug_assertions)]
@@ -197,13 +197,13 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
     info!("=== LoadDll() finished successfully ===");
 
     #[cfg(debug_assertions)]
-    info!("LoadDll: setting m_keep = 1 to keep DLL loaded");
+    info!("LoadDll() : setting m_keep = 1 to keep DLL loaded");
 
     // Tell mIRC to keep the DLL loaded
     li.m_keep = 1;
 
     #[cfg(debug_assertions)]
-    info!("=== LoadDll: returning MIRC_HALT (success) ===");
+    info!("=== LoadDll() : returning MIRC_HALT (success) ===");
 
     MIRC_HALT // Return 0 for success
 }
@@ -225,11 +225,11 @@ pub extern "system" fn UnloadDll(action: c_int) -> c_int {
     if action == 1 {
         // mIRC is asking if we should stay loaded when not used for 10 minutes
         // We return 0 to keep the DLL loaded (same behavior as FiSH-10)
-        info!("UnloadDll: action=1, keeping DLL loaded to maintain socket hooks");
+        info!("UnloadDll() : action=1, keeping DLL loaded to maintain socket hooks");
         return 0; // Return 0 to keep DLL loaded
     } else {
         // Perform cleanup on explicit unload (0) or mIRC exit (2)
-        info!("UnloadDll: performing cleanup for action={}", action);
+        info!("UnloadDll() : performing cleanup for action={}", action);
         cleanup_hooks();
 
         // Clear global state carefully
@@ -239,7 +239,7 @@ pub extern "system" fn UnloadDll(action: c_int) -> c_int {
         VERSION_SHOWN.store(false, Ordering::Relaxed);
         // HOOKS_INSTALLED should be false after cleanup_hooks
 
-        info!("UnloadDll() finished cleanup.");
+        info!("UnloadDll() : finished cleanup.");
     }
 
     MIRC_HALT // Return 0 for success when actually unloading
@@ -286,7 +286,7 @@ pub extern "C" fn FiSH11_InjectDebugInfo(
     };
 
     let command = format!(
-        "/echo -a *** Sockets: Active {} - Discarded {} - {} - Engines: {}",
+        "*** FiSH11_InjectDebugInfo() : Sockets : Active {} - Discarded {} - {} - Engines: {}",
         num_sockets,
         discarded,
         if stats.is_empty() { "none" } else { &stats },
@@ -297,14 +297,14 @@ pub extern "C" fn FiSH11_InjectDebugInfo(
 
     #[cfg(debug_assertions)]
     {
-        debug!("[DLL_INTERFACE DEBUG] FiSH11_InjectDebugInfo: preparing command buffer");
+        debug!("[DLL_INTERFACE DEBUG] FiSH11_InjectDebugInfo() : preparing command buffer");
         debug!(
-            "[DLL_INTERFACE DEBUG] command length: {} bytes (max_bytes: {})",
+            "[DLL_INTERFACE DEBUG] FiSH11_InjectDebugInfo() : command length: {} bytes (max_bytes: {})",
             c_command.as_bytes().len(),
             max_bytes
         );
         debug!(
-            "[DLL_INTERFACE DEBUG] command preview: {:?}",
+            "[DLL_INTERFACE DEBUG] FiSH11_InjectDebugInfo() : command preview: {:?}",
             c_command.to_str().unwrap_or("<invalid UTF-8>")
         );
     }
@@ -322,7 +322,7 @@ pub extern "C" fn FiSH11_InjectDebugInfo(
         {
             let copied_len = std::cmp::min(src_len, max_bytes as usize - 1);
             debug!(
-                "[DLL_INTERFACE DEBUG] copied {} bytes to mIRC data buffer, null-terminated",
+                "[DLL_INTERFACE DEBUG] FiSH11_InjectDebugInfo() : copied {} bytes to mIRC data buffer, null-terminated.",
                 copied_len
             );
         }
@@ -344,7 +344,7 @@ pub extern "system" fn FiSH11_InjectVersion(
 ) -> c_int {
     // Return raw version info (script handles display formatting)
     let version_info = format!(
-        "FiSH injection dll version {} (build {}). *** Compiled on {} at {} *** Written by [GuY], licensed under the GPL-v3",
+        "FiSH injection dll version {} (build {}). *** Compiled on {} at {} *** Written by [GuY], licensed under the GPL-v3 or above.",
         BUILD_VERSION,
         BUILD_NUMBER.as_str(),
         BUILD_DATE.as_str(),
@@ -354,17 +354,17 @@ pub extern "system" fn FiSH11_InjectVersion(
     let data_str = match CString::new(version_info) {
         Ok(s) => s,
         Err(e) => {
-            error!("FiSH11_InjectVersion: failed to create CString: {}", e);
+            error!("FiSH11_InjectVersion() : failed to create CString: {}", e);
             return MIRC_HALT;
         }
     };
 
     #[cfg(debug_assertions)]
     {
-        debug!("[DLL_INTERFACE DEBUG] FiSH11_InjectVersion: preparing version data buffer");
-        debug!("[DLL_INTERFACE DEBUG] data length: {} bytes", data_str.as_bytes_with_nul().len());
+        debug!("[DLL_INTERFACE DEBUG] FiSH11_InjectVersion() : preparing version data buffer");
+        debug!("[DLL_INTERFACE DEBUG] FiSH11_InjectVersion() : data length: {} bytes", data_str.as_bytes_with_nul().len());
         debug!(
-            "[DLL_INTERFACE DEBUG] data preview: {:?}",
+            "[DLL_INTERFACE DEBUG] FiSH11_InjectVersion() : data preview : {:?}",
             data_str.to_str().unwrap_or("<invalid UTF-8>")
         );
     }
@@ -379,7 +379,7 @@ pub extern "system" fn FiSH11_InjectVersion(
             #[cfg(debug_assertions)]
             {
                 debug!(
-                    "[DLL_INTERFACE DEBUG] MAX_MIRC_RETURN_BYTES: {}, src_len: {}, copy_len: {}",
+                    "[DLL_INTERFACE DEBUG] FiSH11_InjectVersion() : MAX_MIRC_RETURN_BYTES : {}, src_len: {}, copy_len: {}",
                     max_bytes, src_len, copy_len
                 );
             }
@@ -390,14 +390,14 @@ pub extern "system" fn FiSH11_InjectVersion(
             #[cfg(debug_assertions)]
             {
                 debug!(
-                    "[DLL_INTERFACE DEBUG] copied {} bytes to mIRC data buffer, null-terminated",
+                    "[DLL_INTERFACE DEBUG] FiSH11_InjectVersion() : copied {} bytes to mIRC data buffer, null-terminated.",
                     copy_len
                 );
             }
 
-            info!("FiSH11_Inject: returned version info (len {})", copy_len);
+            info!("FiSH11_InjectVersion() : returned version info (len {})", copy_len);
         } else {
-            error!("FiSH11_Inject: data buffer pointer is null");
+            error!("FiSH11_InjectVersion() : data buffer pointer is null.");
             return MIRC_HALT;
         }
     }
