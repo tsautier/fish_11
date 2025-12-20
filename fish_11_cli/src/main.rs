@@ -442,6 +442,39 @@ fn validate_user_input(input: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Sanitizes user input specifically for DLL function calls to prevent potential injection
+/// This function both validates and sanitizes input to make it safe for DLL functions
+fn sanitize_dll_input(input: &str) -> Result<String, String> {
+    // First, perform all the standard validations
+    validate_user_input(input)?;
+
+    // Additional sanitization specific to DLL functions
+    let mut sanitized = input.to_string();
+
+    // Remove any potential control characters that might cause issues in DLLs
+    sanitized = sanitized
+        .chars()
+        .filter(|c| !c.is_control() || *c == '\n' || *c == '\r' || *c == '\t') // Keep basic whitespace
+        .collect();
+
+    // Replace potential escape sequences
+    sanitized = sanitized.replace("\\0", ""); // Remove null byte representations
+
+    // Ensure no embedded null bytes (should already be caught by validation, but extra safety)
+    if sanitized.contains('\0') {
+        return Err("Input contains null byte which is not allowed".to_string());
+    }
+
+    // Additional security check for potential code injection patterns
+    if sanitized.contains("<?") || sanitized.contains("?>") ||
+       sanitized.contains("<?php") || sanitized.contains("javascript:") ||
+       sanitized.contains("vbscript:") || sanitized.contains("onerror") {
+        return Err("Input contains potential script injection patterns".to_string());
+    }
+
+    Ok(sanitized)
+}
+
 /// Validates DLL path to prevent path traversal and other security issues
 fn validate_dll_path(dll_path: &str) -> Result<(), String> {
     // Check for null bytes
@@ -1048,13 +1081,16 @@ fn main() {
     let params = if processed_args.len() > 2 {
         let raw_params = processed_args[2..].join(" ");
 
-        // Validate the user input before passing it to the DLL
-        if let Err(validation_error) = validate_user_input(&raw_params) {
-            println!("Error: Invalid input - {}", validation_error);
-            return;
-        }
+        // Sanitize the user input before passing it to the DLL
+        let sanitized_params = match sanitize_dll_input(&raw_params) {
+            Ok(sanitized) => sanitized,
+            Err(validation_error) => {
+                println!("Error: Invalid input - {}", validation_error);
+                return;
+            }
+        };
 
-        raw_params.replace('$', "$$")
+        sanitized_params.replace('$', "$$")
     } else {
         String::new()
     };
