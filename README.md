@@ -4,7 +4,7 @@
 [![Release](https://github.com/ggielly/fish_11/workflows/Create%20Release/badge.svg)](https://github.com/ggielly/fish_11/releases)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-FiSH_11 is a modern implementation of an IRC encryption plugin/addon, fully written in Rust. It provides strong, end-to-end encryption for both private messages and multi-user channels, based on [X25519](https://en.wikipedia.org/wiki/Curve25519) and [ChaCha20-Poly1305](https://en.wikipedia.org/wiki/ChaCha20-Poly1305) without external libraries. With a primary focus on the mIRC client for Windows (with a winsocks dll h00ks for fun & transparent operation) but also libraries and CLI for Linux.
+FiSH_11 is a modern implementation of an IRC encryption plugin/addon, fully written in Rust. It provides strong, end-to-end encryption for both private messages and multi-user channels, based on [X25519](https://en.wikipedia.org/wiki/Curve25519) and [ChaCha20-Poly1305](https://en.wikipedia.org/wiki/ChaCha20-Poly1305) without external libraries. With a primary focus on the mIRC client for Windows (with WinSock DLL hooks for transparent operation) but also libraries and CLI for Linux.
 
 ## Development status, bugs and roadmap
 
