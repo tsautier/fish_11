@@ -54,16 +54,31 @@ fn display_version() {
     );
 }
 
-// Global flag to control output verbosity - using Mutex for thread safety
-static QUIET_MODE: Mutex<bool> = Mutex::new(false);
+use std::sync::RwLock;
+
+// Global flag to control output verbosity - using RwLock for better performance
+// (many reads, few writes) with thread safety
+static QUIET_MODE: RwLock<bool> = RwLock::new(false);
 
 /// Helper function to safely get the quiet mode value
 pub fn is_quiet_mode() -> bool {
-    match QUIET_MODE.lock() {
+    match QUIET_MODE.read() {
         Ok(guard) => *guard,
         Err(_) => {
-            eprintln!("Warning: QUIET_MODE mutex was poisoned, defaulting to not quiet");
+            eprintln!("Warning: QUIET_MODE lock was poisoned, defaulting to not quiet");
             false
+        }
+    }
+}
+
+/// Helper function to set the quiet mode value in a thread-safe manner
+pub fn set_quiet_mode(quiet: bool) {
+    match QUIET_MODE.write() {
+        Ok(mut guard) => {
+            *guard = quiet;
+        },
+        Err(_) => {
+            eprintln!("Warning: QUIET_MODE lock was poisoned during update");
         }
     }
 }
@@ -71,13 +86,13 @@ pub fn is_quiet_mode() -> bool {
 // Macro for conditional printing based on quiet mode
 macro_rules! info_print {
     ($($arg:tt)*) => {
-        if let Ok(guard) = QUIET_MODE.lock() {
+        if let Ok(guard) = QUIET_MODE.read() {
             if !*guard {
                 println!($($arg)*);
             }
         } else {
-            // If the mutex is poisoned, default to printing (not quiet)
-            eprintln!("Warning : QUIET_MODE mutex was poisoned, defaulting to not quiet");
+            // If the lock is poisoned, default to printing (not quiet)
+            eprintln!("Warning : QUIET_MODE lock was poisoned, defaulting to not quiet");
             println!($($arg)*);
         }
     };
@@ -217,7 +232,7 @@ fn call_dll_function(
                 last_report = Instant::now();
                 let elapsed = start.elapsed();
                 if elapsed > Duration::from_secs(2) {
-                    if let Ok(guard) = QUIET_MODE.lock() {
+                    if let Ok(guard) = QUIET_MODE.read() {
                         if !*guard {
                             println!(
                                 "Still waiting... ({:.1?} elapsed, timeout at {:?})",
@@ -766,10 +781,10 @@ fn main() {
         match args[arg_index].as_str() {
             "-q" | "--quiet" => {
                 // Set quiet mode
-                if let Ok(mut guard) = QUIET_MODE.lock() {
+                if let Ok(mut guard) = QUIET_MODE.write() {
                     *guard = true;
                 } else {
-                    eprintln!("Warning: QUIET_MODE mutex was poisoned during update");
+                    eprintln!("Warning: QUIET_MODE lock was poisoned during update");
                 }
                 arg_index += 1;
             }
