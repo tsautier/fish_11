@@ -404,13 +404,27 @@ fn validate_user_input(input: &str) -> Result<(), String> {
 fn list_exports(dll_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     info_print!("Loading DLL: {}", dll_path);
 
-    // Try to load the DLL
+    // Try to load the DLL with improved error handling
     let dll = match unsafe { libloading::Library::new(dll_path) } {
-        Ok(dll) => dll,
+        Ok(dll) => {
+            info_print!("DLL loaded successfully: {}", dll_path);
+            dll
+        },
         Err(e) => {
-            println!("Failed to load DLL '{}': {}", dll_path, e);
-            println!("Make sure the DLL exists and is compatible with this application.");
-            return Err("DLL load failed".into());
+            eprintln!("Failed to load DLL '{}': {}", dll_path, e);
+            eprintln!("Make sure the DLL exists, is accessible, and is compatible with this application.");
+
+            // Provide more specific error context
+            let path = std::path::Path::new(dll_path);
+            if !path.exists() {
+                eprintln!("Error: The specified DLL file does not exist at the given path.");
+            } else if !path.is_file() {
+                eprintln!("Error: The specified path is not a file.");
+            } else {
+                eprintln!("Error: The file may be corrupted or incompatible with this platform.");
+            }
+
+            return Err(format!("DLL load failed: {}", e).into());
         }
     };
 
@@ -446,9 +460,19 @@ fn list_exports(dll_path: &str) -> Result<(), Box<dyn std::error::Error>> {
         "FiSH11_SetNetwork",
         "FiSH11_SetKeyFromPlaintext",
     ] {
-        let found = unsafe {
-            dll.get::<DllFunctionFn>(func_name.as_bytes()).is_ok()
-                || dll.get::<DllFunctionFn>(format!("_{}@24", func_name).as_bytes()).is_ok()
+        // More robust approach to avoid potential panics
+        let found = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            unsafe {
+                dll.get::<DllFunctionFn>(func_name.as_bytes()).is_ok()
+                    || dll.get::<DllFunctionFn>(format!("_{}@24", func_name).as_bytes()).is_ok()
+            }
+        })) {
+            Ok(result) => result,
+            Err(_) => {
+                // If there's a panic during DLL function access, log and continue
+                eprintln!("Warning: Error accessing function {} - may be incompatible", func_name);
+                false
+            }
         };
 
         if found {
