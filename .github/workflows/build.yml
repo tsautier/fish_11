@@ -48,7 +48,7 @@ jobs:
       run: cargo build --release --package fish_11_cli --target ${{ matrix.target }}
           
     - name: Build fish_11 DLL library (Release)
-      run: cargo build --release --package fish_11_dll --target ${{ matrix.target }}
+      run: cargo build --release --package fish_11 --target ${{ matrix.target }}
 
     - name: Build fish_11 injection DLL (Release)
       run: cargo build --release --package fish_11_inject --target ${{ matrix.target }}
