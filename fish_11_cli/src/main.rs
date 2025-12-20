@@ -619,7 +619,7 @@ fn validate_command_args(command: &str, args: &[String]) -> Result<(), String> {
                 let mut msg =
                     format!("Command '{}' requires a target (channel or nickname).", command);
                 if command == "genkey" || command == "delkey" || command == "getkey" {
-                    msg.push_str("\nTip: if you are specifying a channel (e.g. #channel) in PowerShell, invoke it with quotes (\"#channel\") to prevent it from being treated as a comment (duh).");
+                    msg.push_str("\nTip: if specifying a channel (e.g. #channel) in PowerShell, use quotes (\"#channel\") to avoid comment treatment.");
                 }
                 return Err(msg);
             }
