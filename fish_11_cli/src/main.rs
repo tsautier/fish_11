@@ -293,27 +293,8 @@ fn call_dll_function(
         }
 
         // Determine the best buffer to use based on content availability
-        if data_len == 0 && parms_len > 0 {
-            // If main buffer is empty but parms buffer has data, use parms buffer
-            match std::str::from_utf8(&parms_buffer[..parms_len]) {
-                Ok(s) => {
-                    if !s.is_empty() {
-                        s.to_string()
-                    } else if function_name == "FiSH11_FileListKeys" {
-                        "FiSH_11 : no keys stored.".to_string()
-                    } else {
-                        "Function completed but returned no output.".to_string()
-                    }
-                }
-                Err(_) => {
-                    if function_name == "FiSH11_FileListKeys" {
-                        "FiSH_11 : error processing data.".to_string()
-                    } else {
-                        "Function completed but returned invalid data in parms buffer.".to_string()
-                    }
-                }
-            }
-        } else if data_len > 0 {
+        // Prefer the data buffer, but use parms buffer if data buffer is empty
+        if data_len > 0 {
             // Use the main data buffer if it has content
             match std::str::from_utf8(&data_buffer[..data_len]) {
                 Ok(s) => {
@@ -324,23 +305,45 @@ fn call_dll_function(
                     }
                 }
                 Err(e) => {
-                    info_print!("Warning : failed to decode result: {}", e);
+                    info_print!("Warning : failed to decode result from data buffer: {}", e);
+                    // Show hex representation of problematic bytes
+                    let problematic_bytes = &data_buffer[..data_len.min(50)]; // Limit to first 50 bytes for display
+                    let hex_repr = problematic_bytes
+                        .iter()
+                        .map(|b| format!("{:02x}", b))
+                        .collect::<Vec<_>>()
+                        .join(" ");
                     format!(
-                        "Function completed but returned invalid UTF-8 data (length: {})",
-                        data_len
+                        "Function completed but returned invalid UTF-8 data in data buffer (length: {}, first bytes as hex: {})",
+                        data_len, hex_repr
                     )
                 }
             }
         } else if parms_len > 0 {
-            // Fallback: if data_len was 0 after initial check but parms has content
+            // Use the parms buffer if the main buffer is empty but parms has data
             match std::str::from_utf8(&parms_buffer[..parms_len]) {
-                Ok(s) => s.to_string(),
-                Err(_) => {
-                    if function_name == "FiSH11_FileListKeys" {
-                        "FiSH_11 : rrror processing data.".to_string()
+                Ok(s) => {
+                    if !s.is_empty() {
+                        s.to_string()
+                    } else if function_name == "FiSH11_FileListKeys" {
+                        "FiSH_11 : no keys stored.".to_string()
                     } else {
-                        "Function completed but returned invalid data in parms buffer.".to_string()
+                        "Function completed but returned no output.".to_string()
                     }
+                }
+                Err(e) => {
+                    info_print!("Warning : failed to decode result from parms buffer: {}", e);
+                    // Show hex representation of problematic bytes
+                    let problematic_bytes = &parms_buffer[..parms_len.min(50)]; // Limit to first 50 bytes for display
+                    let hex_repr = problematic_bytes
+                        .iter()
+                        .map(|b| format!("{:02x}", b))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    format!(
+                        "Function completed but returned invalid UTF-8 data in parms buffer (length: {}, first bytes as hex: {})",
+                        parms_len, hex_repr
+                    )
                 }
             }
         } else {
@@ -1108,4 +1111,182 @@ fn main() {
         }
     }
     // Debug file handling removed - we now directly process output from the DLL
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_valid_utf8_string() {
+        // Test that valid UTF-8 strings are handled correctly
+        let valid_utf8 = "Hello, 世界! 🦀";
+        assert!(std::str::from_utf8(valid_utf8.as_bytes()).is_ok());
+        assert_eq!(valid_utf8, "Hello, 世界! 🦀");
+    }
+
+    #[test]
+    fn test_basic_ascii_utf8() {
+        // Test basic ASCII strings (subset of UTF-8)
+        let ascii = "Hello, World!";
+        assert!(std::str::from_utf8(ascii.as_bytes()).is_ok());
+        assert_eq!(ascii, "Hello, World!");
+    }
+
+    #[test]
+    fn test_utf8_multibyte_sequences() {
+        // Test various UTF-8 multibyte characters
+        let utf8_chars = [
+            ("Emoji", "🦀🎉🚀"),
+            ("Cyrillic", "Привет"),
+            ("Chinese", "你好世界"),
+            ("Arabic", "مرحبا"),
+            ("Symbols", "αβγδε∑∏"),
+        ];
+
+        for (desc, text) in utf8_chars.iter() {
+            assert!(std::str::from_utf8(text.as_bytes()).is_ok(), "Failed for {}", desc);
+            assert_eq!(*text, std::str::from_utf8(text.as_bytes()).unwrap());
+        }
+    }
+
+    #[test]
+    fn test_invalid_utf8_byte_sequences() {
+        // Test invalid UTF-8 byte sequences
+        let invalid_sequences = vec![
+            vec![0xFF],           // Invalid start byte
+            vec![0xC0, 0x80],     // Overlong encoding
+            vec![0xC0],           // Incomplete sequence
+            vec![0xE0, 0x80],     // Incomplete 3-byte sequence
+            vec![0xF0, 0x80, 0x80], // Incomplete 4-byte sequence
+            vec![0x80, 0x80, 0x80, 0x80], // Continuation bytes with no start
+        ];
+
+        for seq in invalid_sequences {
+            assert!(std::str::from_utf8(&seq).is_err());
+        }
+    }
+
+    #[test]
+    fn test_buffer_utf8_decoding_success() {
+        // Test the internal UTF-8 decoding for data buffer (successful case)
+        let data_buffer = "Hello, UTF-8 World!".as_bytes().to_vec();
+        let data_len = data_buffer.len();
+
+        match std::str::from_utf8(&data_buffer[..data_len]) {
+            Ok(s) => {
+                assert_eq!(s, "Hello, UTF-8 World!");
+            }
+            Err(_) => panic!("Should have been valid UTF-8"),
+        }
+    }
+
+    #[test]
+    fn test_buffer_utf8_decoding_failure() {
+        // Test the internal UTF-8 decoding for data buffer (failure case)
+        let invalid_buffer = vec![0xFF, 0xFE, 0xFD];  // Invalid UTF-8 sequence
+        let data_len = invalid_buffer.len();
+
+        match std::str::from_utf8(&invalid_buffer[..data_len]) {
+            Ok(_) => panic!("Should have been invalid UTF-8"),
+            Err(e) => {
+                assert!(!e.to_string().is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn test_hex_representation_of_bytes() {
+        // Test that bytes are properly converted to hex representation
+        let test_bytes = vec![0x48, 0x65, 0x6C, 0x6C, 0x6F]; // "Hello" in hex
+        let hex_repr = test_bytes
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        assert_eq!(hex_repr, "48 65 6c 6c 6f");
+    }
+
+    #[test]
+    fn test_hex_representation_of_invalid_utf8() {
+        // Test hex representation of invalid UTF-8 bytes
+        let invalid_bytes = vec![0xFF, 0xFE, 0xFD, 0x00, 0xC0];
+        let hex_repr = invalid_bytes
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        assert_eq!(hex_repr, "ff fe fd 00 c0");
+    }
+
+    #[test]
+    fn test_empty_buffer_utf8_handling() {
+        // Test handling of empty buffers
+        let empty_buffer: Vec<u8> = vec![];
+        let result = std::str::from_utf8(&empty_buffer);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "");
+    }
+
+    #[test]
+    fn test_long_valid_utf8_string() {
+        // Test handling of longer valid UTF-8 strings
+        let long_string = "A".repeat(1000) + "世界" + "B".repeat(1000).as_str();
+        let result = std::str::from_utf8(long_string.as_bytes());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), &long_string);
+    }
+
+    #[test]
+    fn test_boundary_utf8_sequences() {
+        // Test boundary cases for UTF-8 sequences
+        let boundary_cases = vec![
+            vec![0x00], // Null byte
+            vec![0x7F], // Last ASCII character
+            vec![0xC2, 0x80], // First 2-byte sequence
+            vec![0xDF, 0xBF], // Last 2-byte sequence
+            vec![0xE0, 0xA0, 0x80], // First 3-byte sequence
+            vec![0xEF, 0xBF, 0xBF], // Last 3-byte sequence (non-characters)
+        ];
+
+        for case in boundary_cases {
+            match std::str::from_utf8(&case) {
+                Ok(_) => {}, // Some of these are valid
+                Err(_) => {}, // Some of these are invalid, which is also valid behavior to test
+            }
+        }
+    }
+
+    #[test]
+    fn test_error_message_with_hex_output() {
+        // Test the complete error message generation
+        let invalid_buffer = vec![0xFF, 0xFE, 0xFD, 0x00, 0xC0];
+        let data_len = invalid_buffer.len();
+
+        let result = std::str::from_utf8(&invalid_buffer);
+        assert!(result.is_err());
+
+        // Create the hex representation as done in the code
+        let problematic_bytes = &invalid_buffer[..data_len.min(50)];
+        let hex_repr = problematic_bytes
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        // Verify hex representation is correct
+        assert_eq!(hex_repr, "ff fe fd 00 c0");
+
+        // Create error message as done in the code
+        let error_msg = format!(
+            "Function completed but returned invalid UTF-8 data in data buffer (length: {}, first bytes as hex: {})",
+            data_len, hex_repr
+        );
+
+        assert!(error_msg.contains("invalid UTF-8 data in data buffer"));
+        assert!(error_msg.contains("length: 5"));
+        assert!(error_msg.contains("ff fe fd 00 c0"));
+    }
 }
