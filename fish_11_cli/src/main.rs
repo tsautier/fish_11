@@ -157,8 +157,27 @@ fn call_dll_function(
 
     // Copy parameters to data buffer
     let param_bytes = c_params.as_bytes_with_nul();
-    if !param_bytes.is_empty() && param_bytes.len() < buffer_size {
-        data_buffer[..param_bytes.len()].copy_from_slice(param_bytes);
+
+    // Validate that we won't overflow the buffer
+    // We need at least 1 extra byte for potential null terminator handling
+    if !param_bytes.is_empty() && param_bytes.len() <= buffer_size {
+        // If param_bytes.len() equals buffer_size, we can copy all bytes but we lose
+        // the ability to ensure null termination, but that's acceptable since
+        // the original string is already null-terminated
+        if param_bytes.len() == buffer_size {
+            // If param_bytes exactly fills the buffer, copy it but note that there's no
+            // extra space for a null terminator at the end
+            data_buffer.copy_from_slice(param_bytes);
+        } else {
+            // If there's space remaining, copy and ensure it's properly terminated
+            data_buffer[..param_bytes.len()].copy_from_slice(param_bytes);
+        }
+    } else if param_bytes.len() > buffer_size {
+        return Err(format!(
+            "Parameter size {} exceeds buffer size {}",
+            param_bytes.len(),
+            buffer_size
+        ).into());
     }
 
     let data_ptr = data_buffer.as_mut_ptr() as *mut c_char;
