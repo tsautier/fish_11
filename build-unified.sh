@@ -1,6 +1,6 @@
 #!/bin/sh
-# Unified build script for FiSH 11 (Linux, BSD, macOS)
-# POSIX compliant - works with sh, dash, etc.
+# Build script for FiSH_11 : Linux, BSD (macOS untested)
+# POSIX compliant => works with sh, dash, etc.
 
 set -e
 
@@ -170,7 +170,7 @@ setup_target() {
             ;;
     esac
 
-    log_info "Build target: $TARGET"
+    echo "[INFO] Build target: $TARGET"
     echo "$TARGET"
     return 0
 }
@@ -178,7 +178,7 @@ setup_target() {
 build_project() {
     TARGET=$1
 
-    log_info "Starting build for $TARGET..."
+    echo "[INFO] Starting build for $TARGET..."
 
     # Target-specific configuration
     case "$TARGET" in
@@ -193,9 +193,9 @@ build_project() {
 
     # Build in release mode
     if [ -n "$EXTRA_FLAGS" ]; then
-        cargo build --release --target "$TARGET" $EXTRA_FLAGS
+        cargo build --release --target "$TARGET" $EXTRA_FLAGS --color never
     else
-        cargo build --release --target "$TARGET"
+        cargo build --release --target "$TARGET" --color never
     fi
 
     if [ $? -ne 0 ]; then
@@ -203,8 +203,8 @@ build_project() {
         return 1
     fi
 
-    log_success "Build successful!"
-    log_info "Binary available in: target/$TARGET/release/"
+    echo "[SUCCESS] Build successful!"
+    echo "[INFO] Binary available in: target/$TARGET/release/"
 
     return 0
 }
@@ -269,9 +269,10 @@ if [ "$(expr substr $(uname -s) 1 5)" = "MINGW" ] || [ "$(expr substr $(uname -s
 fi
 
 # Main program
-log_info "=== FiSH 11 Unified Build Script (Linux/BSD/macOS) ==="
-log_info "Detected OS: $(uname -s)"
-log_info "Architecture: $(uname -m)"
+# Log without colors for these messages to avoid cargo issues
+echo "=== FiSH_11 nuild script (Linux/BSD/macOS) ==="
+echo "Detected OS: $(uname -s)"
+echo "Architecture: $(uname -m)"
 
 # Check environment
 if ! check_linker; then
