@@ -213,6 +213,9 @@ show_help() {
     cat <<EOF
 Usage: $0 [OPTIONS]
 
+This script is designed for Linux/BSD/macOS builds.
+For Windows, simply use: cargo build --workspace
+
 Options:
   -h, --help       Show this help
   -i, --install    Install Rust if not present
@@ -220,7 +223,7 @@ Options:
   -t, --target     Specify target manually (e.g., x86_64-unknown-linux-gnu)
 
 Examples:
-  $0                    # Normal build
+  $0                    # Normal build for current platform
   $0 -i                 # Install Rust if needed then build
   $0 -c                 # Check environment only
   $0 -t aarch64-unknown-linux-gnu  # Build for specific target
@@ -258,8 +261,15 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+# Windows detection (this script is for Unix-like only)
+if [ "$(expr substr $(uname -s) 1 5)" = "MINGW" ] || [ "$(expr substr $(uname -s) 1 6)" = "CYGWIN" ]; then
+    log_error "This script is designed for Linux/BSD/macOS only."
+    log_error "On Windows, simply use: cargo build --workspace"
+    exit 1
+fi
+
 # Main program
-log_info "=== Unified build script for FiSH 11 ==="
+log_info "=== FiSH 11 Unified Build Script (Linux/BSD/macOS) ==="
 log_info "Detected OS: $(uname -s)"
 log_info "Architecture: $(uname -m)"
 
