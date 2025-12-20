@@ -44,6 +44,16 @@ jobs:
     - name: Build fish_11 injection DLL (Release)
       run: cargo build --release --package fish_11_inject --target ${{ matrix.target }}
     
+    # Build Debug variants as well
+    - name: Build fish_11 CLI (Debug)
+      run: cargo build --package fish_11_cli --target ${{ matrix.target }}
+
+    - name: Build fish_11 DLL library (Debug)
+      run: cargo build --package fish_11 --target ${{ matrix.target }}
+
+    - name: Build fish_11 injection DLL (Debug)
+      run: cargo build --package fish_11_inject --target ${{ matrix.target }}
+
     # Tests temporarily disabled due to file access issues in CI
     # - name: Run tests
     #   run: cargo test --workspace --target ${{ matrix.target }}
@@ -54,24 +64,27 @@ jobs:
         # execute fish_11_cli.exe to get version output
         $OUTPUT = & "target\${{ matrix.target }}\release\fish_11_cli.exe" --version 2>&1
         Write-Host "CLI output: $OUTPUT"
-        
+
         # Parser la sortie pour extraire version et build
-        # Format attendu: "FiSH_11_cli X.X.X (build NNNN-release) *** ..."
+        # Format attendu: "FiSH_11_cli X.X.X (build NNNN or NNNN-release)"
         if ($OUTPUT -match "FiSH_11_cli\s+(\S+)\s+\(build\s+(\S+)\)") {
           $VERSION = $matches[1]
           $BUILD = $matches[2]
-          Write-Host "Extracted - Version: $VERSION, Build: $BUILD"
+          # remove optional '-release' suffix from build string
+          $BUILD_CLEAN = $BUILD -replace '-release$',''
+          Write-Host "Extracted - Version: $VERSION, Build: $BUILD (clean: $BUILD_CLEAN)"
           echo "version=$VERSION" >> $env:GITHUB_OUTPUT
-          echo "build_number=$BUILD" >> $env:GITHUB_OUTPUT
-          echo "full_version=$VERSION-$BUILD" >> $env:GITHUB_OUTPUT
+          echo "build_number=$BUILD_CLEAN" >> $env:GITHUB_OUTPUT
+          echo "full_version=$VERSION-$BUILD_CLEAN" >> $env:GITHUB_OUTPUT
         } else {
           # Fallback si le parsing échoue
           Write-Host "Warning: Could not parse version, using fallback"
           $VERSION = "unknown"
           $BUILD = "${{ github.run_number }}"
+          $BUILD_CLEAN = $BUILD -replace '-release$',''
           echo "version=$VERSION" >> $env:GITHUB_OUTPUT
-          echo "build_number=$BUILD" >> $env:GITHUB_OUTPUT
-          echo "full_version=$VERSION-build$BUILD" >> $env:GITHUB_OUTPUT
+          echo "build_number=$BUILD_CLEAN" >> $env:GITHUB_OUTPUT
+          echo "full_version=$VERSION-build$BUILD_CLEAN" >> $env:GITHUB_OUTPUT
         }
       shell: powershell
     
@@ -84,6 +97,16 @@ jobs:
         Copy-Item "target\${{ matrix.target }}\release\fish_11_cli.exe" -Destination "release_package\"
         Copy-Item "target\${{ matrix.target }}\release\fish_11.dll" -Destination "release_package\"
         Copy-Item "target\${{ matrix.target }}\release\fish_11_inject.dll" -Destination "release_package\"
+        # also include Debug builds (renamed to avoid overwrite)
+        if (Test-Path "target\${{ matrix.target }}\debug\fish_11_cli.exe") {
+          Copy-Item "target\${{ matrix.target }}\debug\fish_11_cli.exe" -Destination "release_package\fish_11_cli_debug.exe"
+        }
+        if (Test-Path "target\${{ matrix.target }}\debug\fish_11.dll") {
+          Copy-Item "target\${{ matrix.target }}\debug\fish_11.dll" -Destination "release_package\fish_11_debug.dll"
+        }
+        if (Test-Path "target\${{ matrix.target }}\debug\fish_11_inject.dll") {
+          Copy-Item "target\${{ matrix.target }}\debug\fish_11_inject.dll" -Destination "release_package\fish_11_inject_debug.dll"
+        }
         
         Write-Host "Copying documentation files..."
         if (Test-Path "README.md") {
@@ -110,6 +133,9 @@ jobs:
         "- fish_11_cli.exe       : Command-line interface" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
         "- fish_11.dll           : Main FiSH encryption DLL" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
         "- fish_11_inject.dll    : Injection DLL for mIRC" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
+        "- fish_11_cli_debug.exe : CLI debug binary" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
+        "- fish_11_debug.dll     : DLL debug binary" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
+        "- fish_11_inject_debug.dll : Injection DLL debug binary" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
         
         Write-Host "Release package created successfully"
         Get-ChildItem -Path "release_package"
