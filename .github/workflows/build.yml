@@ -20,6 +20,8 @@ jobs:
         target: [i686-pc-windows-msvc]
     steps:
     - uses: actions/checkout@v4
+      with:
+        submodules: false  # Désactive le checkout des submodules pour éviter les erreurs
     
     - name: Install Rust toolchain for ${{ matrix.target }}
       uses: actions-rs/toolchain@v1
@@ -171,17 +173,33 @@ jobs:
         # Check if GitHub CLI is available, install if not
         if (!(Get-Command gh -ErrorAction SilentlyContinue)) {
           Write-Host "Installing GitHub CLI..."
-          winget install GitHub.cli
+          try {
+            winget install GitHub.cli
+          } catch {
+            Write-Host "Could not install GitHub CLI: $_"
+          }
         }
 
-        # Récupère les commits depuis le dernier tag
-        $lastTag = $(git describe --tags --abbrev=0 2>$null)
+        # Récupère les tags existants qui correspondent au format spécifique
+        $tags = $(git tag --list --sort=-v:refname 2>$null)
+        $lastTag = $null
+
+        if ($tags) {
+          # Trier les tags et trouver le dernier qui correspond au format attendu (ex: 11.25.0-20251216195555)
+          $sortedTags = $tags -split "`n" | Where-Object { $_ -match '^\d+\.\d+\.\d+-\d+$' } | Sort-Object { [version]$_.Split('-')[0] } -Descending
+          if ($sortedTags) {
+            $lastTag = $sortedTags[0]
+          }
+        }
+
         if ([string]::IsNullOrEmpty($lastTag)) {
-          # Si aucun tag n'existe, utilise les derniers commits
-          $commits = $(git log --oneline --no-merges --first-parent -10)
+          # Si aucun tag approprié n'est trouvé, utilise les derniers commits
+          Write-Host "No matching tags found in format X.Y.Z-YYYYMMDDHHMMSS, using recent commits"
+          $commits = $(git log --oneline --no-merges --first-parent -10 2>$null)
         } else {
-          # Sinon, utilise les commits depuis le dernier tag
-          $commits = $(git log --oneline --no-merges --first-parent $lastTag..HEAD)
+          Write-Host "Using tag: $lastTag"
+          # Utilise les commits depuis le dernier tag approprié
+          $commits = $(git log --oneline --no-merges --first-parent $lastTag..HEAD 2>$null)
         }
 
         # Récupère les pull requests fusionnés récemment
@@ -198,9 +216,9 @@ jobs:
 
         if ($commits) {
           foreach ($commit in ($commits -split "`n")) {
-            if ($commit -match "(feat|feature|add|implement)" -and $commit -notmatch "fix|bug|refactor|docs|test|chore") {
+            if ($commit -and $commit -match "(feat|feature|add|implement)" -and $commit -notmatch "fix|bug|refactor|docs|test|chore") {
               $features += "`n- $commit"
-            } elseif ($commit -match "(fix|bug|resolve)" -and $commit -notmatch "feat|feature|add|implement") {
+            } elseif ($commit -and $commit -match "(fix|bug|resolve)" -and $commit -notmatch "feat|feature|add|implement") {
               $fixes += "`n- $commit"
             }
           }
@@ -232,7 +250,7 @@ jobs:
 
         $body += "`n`n### Build information`n"
         $body += "- **Commit**: ${{ github.sha }}`n"
-        $body += "- **Date**: $(Get-Date)`n`n"
+        $body += "- **Date**: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")`n`n"
 
         # Write the body to a file and set as output
         $body | Out-File -FilePath "release_summary.txt" -Encoding utf8
