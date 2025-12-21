@@ -23,10 +23,11 @@ jobs:
         submodules: false
     
     - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        targets: i686-pc-windows-msvc
-        components: rust-src
+      shell: pwsh
+      run: |
+        rustup default stable
+        rustup target add i686-pc-windows-msvc
+        rustup component add rust-src
     
     - name: Setup Rust cache
       uses: Swatinem/rust-cache@v2
@@ -54,10 +55,11 @@ jobs:
         submodules: false
     
     - name: Install Rust toolchain for ${{ matrix.target }}
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        targets: ${{ matrix.target }}
-        components: rust-src
+      shell: pwsh
+      run: |
+        rustup default stable
+        rustup target add ${{ matrix.target }}
+        rustup component add rust-src
     
     - name: Setup Rust cache
       uses: Swatinem/rust-cache@v2
