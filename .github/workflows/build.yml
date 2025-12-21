@@ -3,11 +3,9 @@ name: Build Release
 on:
   push:
     branches: [ main ]
-    tags: ['v*']
   pull_request:
     branches: [ main ]
-  release:
-    types: [created]
+    types: [closed]  # Trigger when PR is closed/merged
 
 env:
   CARGO_TERM_COLOR: always
@@ -161,33 +159,105 @@ jobs:
         name: fish_11-complete-${{ steps.version.outputs.full_version }}-${{ matrix.target }}
         path: ${{ steps.zip.outputs.zip_name }}
     
+    # Generate release notes summary when pushing to main (after merge)
+    - name: Generate Release Notes Summary
+      id: release_notes
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: |
+        # Check if GitHub CLI is available, install if not
+        if (!(Get-Command gh -ErrorAction SilentlyContinue)) {
+          Write-Host "Installing GitHub CLI..."
+          winget install GitHub.cli
+        }
+
+        # Récupère les commits depuis le dernier tag
+        $lastTag = $(git describe --tags --abbrev=0 2>$null)
+        if ([string]::IsNullOrEmpty($lastTag)) {
+          # Si aucun tag n'existe, utilise les derniers commits
+          $commits = $(git log --oneline --no-merges --first-parent -10)
+        } else {
+          # Sinon, utilise les commits depuis le dernier tag
+          $commits = $(git log --oneline --no-merges --first-parent $lastTag..HEAD)
+        }
+
+        # Récupère les pull requests fusionnés récemment
+        try {
+          $prs = gh pr list --state merged --limit 20 --json number,title,author,labels,milestone --jq '.[] | "- PR #\(.number): \(.title) by \(.author.login)"' 2>$null
+        } catch {
+          Write-Host "Could not fetch pull requests: $_"
+          $prs = $null
+        }
+
+        # Génère un résumé des fonctionnalités basé sur les messages de commit
+        $features = ""
+        $fixes = ""
+
+        if ($commits) {
+          foreach ($commit in ($commits -split "`n")) {
+            if ($commit -match "(feat|feature|add|implement)" -and $commit -notmatch "fix|bug|refactor|docs|test|chore") {
+              $features += "`n- $commit"
+            } elseif ($commit -match "(fix|bug|resolve)" -and $commit -notmatch "feat|feature|add|implement") {
+              $fixes += "`n- $commit"
+            }
+          }
+        }
+
+        # Crée le corps des notes de version
+        $body = "**FiSH_11 Release Summary**`n`n"
+
+        $body += "### Features:`n"
+        if ($features) {
+          $body += $features.Trim()
+        } else {
+          $body += "- No new features in this release"
+        }
+
+        $body += "`n`n### Bug fixes:`n"
+        if ($fixes) {
+          $body += $fixes.Trim()
+        } else {
+          $body += "- No bug fixes in this release"
+        }
+
+        $body += "`n`n### Pull requests merged:`n"
+        if ($prs) {
+          $body += $prs
+        } else {
+          $body += "- No pull requests merged in this release"
+        }
+
+        $body += "`n`n### Build information`n"
+        $body += "- **Commit**: ${{ github.sha }}`n"
+        $body += "- **Date**: $(Get-Date)`n`n"
+
+        # Write the body to a file and set as output
+        $body | Out-File -FilePath "release_summary.txt" -Encoding utf8
+        $body = $body -replace '"', '\"'  # Escape quotes for JSON
+        echo "body=$($body -replace "`n", "%0A")" >> $env:GITHUB_OUTPUT
+      shell: powershell
+
+    # Only upload to GitHub Release when triggered by release event (manual creation)
     - name: Upload to GitHub Release
       if: github.event_name == 'release'
       uses: softprops/action-gh-release@v1
       with:
         files: ${{ steps.zip.outputs.zip_name }}
-        name: FiSH_11 ${{ steps.version.outputs.full_version }}
-        body: |
-          **FiSH_11 Release ${{ steps.version.outputs.full_version }}**
-          
-          ### Build Information
-          - **Version**: ${{ steps.version.outputs.version }}
-          - **Build**: ${{ steps.version.outputs.build_number }}
-          - **Target**: ${{ matrix.target }}
-          - **Compiled**: ${{ github.event.head_commit.timestamp }}
-          - **Commit**: ${{ github.sha }}
-          
-          ### Files Included
-          - `fish_11_cli.exe` - Command-line interface for FiSH_11
-          - `fish_11.dll` - Main FiSH encryption DLL for mIRC
-          - `fish_11_inject.dll` - Injection DLL for transparent encryption
-          - `VERSION.txt` - Detailed build information
-          
-          ### Installation
-          1. Extract the ZIP file
-          2. Copy `fish_11.dll` and `fish_11_inject.dll` to your mIRC directory
-          3. Use `fish_11_cli.exe` for command-line operations
-          
-          See README.md for detailed usage instructions.
+        name: ${{ steps.version.outputs.full_version }}
+        body: ${{ steps.release_notes.outputs.body }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # Print release summary when pushing to main branch (after merge)
+    - name: Print Release Summary
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: |
+        Write-Host "==========================================" -ForegroundColor Green
+        Write-Host "Release summary generated:" -ForegroundColor Green
+        Write-Host "==========================================" -ForegroundColor Green
+        if (Test-Path "release_summary.txt") {
+          Get-Content "release_summary.txt"
+        } else {
+          Write-Host "No release summary generated."
+        }
+        Write-Host "==========================================" -ForegroundColor Green
+      shell: powershell
