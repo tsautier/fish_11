@@ -25,6 +25,16 @@ jobs:
     - name: Install Rust toolchain
       shell: pwsh
       run: |
+        # Vérifier si rustup est installé
+        if (!(Get-Command rustup -ErrorAction SilentlyContinue)) {
+          Write-Host "Installing Rust..."
+          # Télécharger et installer rustup
+          Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
+          .\rustup-init.exe -y --default-toolchain stable --profile minimal
+          Remove-Item rustup-init.exe
+          # Ajouter au PATH pour cette session
+          $env:PATH += ";$env:USERPROFILE\.cargo\bin"
+        }
         rustup default stable
         rustup target add i686-pc-windows-msvc
         rustup component add rust-src
@@ -57,6 +67,14 @@ jobs:
     - name: Install Rust toolchain for ${{ matrix.target }}
       shell: pwsh
       run: |
+        # Vérifier si rustup est installé
+        if (!(Get-Command rustup -ErrorAction SilentlyContinue)) {
+          Write-Host "Installing Rust..."
+          Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
+          .\rustup-init.exe -y --default-toolchain stable --profile minimal
+          Remove-Item rustup-init.exe
+          $env:PATH += ";$env:USERPROFILE\.cargo\bin"
+        }
         rustup default stable
         rustup target add ${{ matrix.target }}
         rustup component add rust-src
