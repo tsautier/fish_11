@@ -18,13 +18,15 @@ jobs:
 
     - name: Extract version and create tag
       run: |
-        $ErrorActionPreference = "Continue"
+        $ErrorActionPreference = "Stop"
         
-        # Fallback identique à build.yml : lire Cargo.toml + timestamp
+        # Lit la version depuis fish_11_dll/Cargo.toml
         try {
-          $VERSION = (Get-Content Cargo.toml | Select-String 'version = "(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
+          $VERSION = (Get-Content fish_11_dll/Cargo.toml | Select-String 'version = "(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
+          Write-Host "Version found in fish_11_dll/Cargo.toml: $VERSION"
         } catch {
-          $VERSION = "unknown"
+          Write-Host "Error: Could not extract version from fish_11_dll/Cargo.toml"
+          exit 1
         }
         $BUILD = Get-Date -Format "yyyyMMddHHmmss"
         
