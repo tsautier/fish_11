@@ -1,18 +1,163 @@
-name: Build Release
+name: Build and Release
 
 on:
   push:
     branches: [ main ]
+    tags: ['v*']
   pull_request:
     branches: [ main ]
-    types: [closed]  # Trigger when PR is closed/merged
+  release:
+    types: [created]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  test:
+    name: Run Tests
     runs-on: self-hosted
+    continue-on-error: true  # Ne bloque pas le build si les tests échouent
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: false
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: i686-pc-windows-msvc
+        components: rust-src
+    
+    - name: Setup Rust cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        prefix-key: "v1-test"
+        workspaces: "."
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+    
+    - name: Run tests (single-threaded to avoid file conflicts)
+      run: cargo test --workspace --target i686-pc-windows-msvc -- --test-threads=1
+      continue-on-error: true
+
+  build:
+    name: Build ${{ matrix.build_type }} - ${{ matrix.target }}
+    runs-on: self-hosted
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        target: [i686-pc-windows-msvc]
+        build_type: [debug, release]
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: false
+    
+    - name: Install Rust toolchain for ${{ matrix.target }}
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+        components: rust-src
+    
+    - name: Setup Rust cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        prefix-key: "v1"
+        key: ${{ matrix.target }}-${{ matrix.build_type }}
+        workspaces: "."
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+      
+    - name: Build fish_11 CLI (${{ matrix.build_type }})
+      run: |
+        if ("${{ matrix.build_type }}" -eq "release") {
+          cargo build --release --package fish_11_cli --target ${{ matrix.target }}
+        } else {
+          cargo build --package fish_11_cli --target ${{ matrix.target }}
+        }
+      shell: powershell
+          
+    - name: Build fish_11 DLL library (${{ matrix.build_type }})
+      run: |
+        if ("${{ matrix.build_type }}" -eq "release") {
+          cargo build --release --package fish_11 --target ${{ matrix.target }}
+        } else {
+          cargo build --package fish_11 --target ${{ matrix.target }}
+        }
+      shell: powershell
+
+    - name: Build fish_11 injection DLL (${{ matrix.build_type }})
+      run: |
+        if ("${{ matrix.build_type }}" -eq "release") {
+          cargo build --release --package fish_11_inject --target ${{ matrix.target }}
+        } else {
+          cargo build --package fish_11_inject --target ${{ matrix.target }}
+        }
+      shell: powershell
+    
+    - name: Extract version from compiled binary
+      id: version
+      if: matrix.build_type == 'release'
+      run: |
+        $ErrorActionPreference = "Continue"
+        # execute fish_11_cli.exe to get version output
+        $OUTPUT = & "target\${{ matrix.target }}\release\fish_11_cli.exe" --version 2>&1
+        Write-Host "CLI output: $OUTPUT"
+
+        # Parser la sortie pour extraire version et build
+        if ($OUTPUT -match "FiSH_11_cli\s+(\S+)\s+\(build\s+(\S+)\)") {
+          $VERSION = $matches[1]
+          $BUILD = $matches[2] -replace '-release$',''
+          Write-Host "Extracted - Version: $VERSION, Build: $BUILD"
+          echo "version=$VERSION" >> $env:GITHUB_OUTPUT
+          echo "build_number=$BUILD" >> $env:GITHUB_OUTPUT
+          echo "full_version=$VERSION-$BUILD" >> $env:GITHUB_OUTPUT
+        } else {
+          # Fallback : lire Cargo.toml + timestamp
+          Write-Host "Warning: Could not parse version, using fallback"
+          try {
+            $VERSION = (Get-Content Cargo.toml | Select-String 'version = "(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
+          } catch {
+            $VERSION = "unknown"
+          }
+          $BUILD = Get-Date -Format "yyyyMMddHHmmss"
+          echo "version=$VERSION" >> $env:GITHUB_OUTPUT
+          echo "build_number=$BUILD" >> $env:GITHUB_OUTPUT
+          echo "full_version=$VERSION-$BUILD" >> $env:GITHUB_OUTPUT
+        }
+      shell: powershell
+    
+    - name: Upload ${{ matrix.build_type }} artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: fish_11-${{ matrix.build_type }}-${{ matrix.target }}
+        path: |
+          target/${{ matrix.target }}/${{ matrix.build_type }}/fish_11_cli.exe
+          target/${{ matrix.target }}/${{ matrix.build_type }}/fish_11.dll
+          target/${{ matrix.target }}/${{ matrix.build_type }}/fish_11_inject.dll
+        retention-days: 30
+    
+    # Passer la version au job release
+    - name: Save version info
+      if: matrix.build_type == 'release'
+      run: |
+        if (Test-Path env:GITHUB_OUTPUT) {
+          Get-Content $env:GITHUB_OUTPUT | Out-File -FilePath "version_info.txt" -Encoding utf8
+        }
+      shell: powershell
+    
+    - name: Upload version info
+      if: matrix.build_type == 'release'
+      uses: actions/upload-artifact@v4
+      with:
+        name: version-info-${{ matrix.target }}
+        path: version_info.txt
+        retention-days: 1
+
+  release:
+    name: Create Release Package
+    runs-on: self-hosted
+    needs: [build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'release'
     permissions:
       contents: write
     strategy:
@@ -21,128 +166,95 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        submodules: false  # Désactive le checkout des submodules pour éviter les erreurs
+        submodules: false
     
-    - name: Install Rust toolchain for ${{ matrix.target }}
-      uses: actions-rs/toolchain@v1
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
       with:
-        toolchain: stable
-        target: ${{ matrix.target }}
-        override: true
-        components: rust-src
+        path: artifacts
     
-    - name: Setup Rust cache
-      uses: Swatinem/rust-cache@v2
-      with:
-        key: ${{ matrix.target }}
-        shared-key: "rust-cache"
-        cache-targets: true
-        cache-on-failure: true
-      
-    - name: Build fish_11 CLI (Release)
-      run: cargo build --release --package fish_11_cli --target ${{ matrix.target }}
-          
-    - name: Build fish_11 DLL library (Release)
-      run: cargo build --release --package fish_11 --target ${{ matrix.target }}
-
-    - name: Build fish_11 injection DLL (Release)
-      run: cargo build --release --package fish_11_inject --target ${{ matrix.target }}
-    
-    # Build Debug variants as well
-    - name: Build fish_11 CLI (Debug)
-      run: cargo build --package fish_11_cli --target ${{ matrix.target }}
-
-    - name: Build fish_11 DLL library (Debug)
-      run: cargo build --package fish_11 --target ${{ matrix.target }}
-
-    - name: Build fish_11 injection DLL (Debug)
-      run: cargo build --package fish_11_inject --target ${{ matrix.target }}
-
-    # Tests temporarily disabled due to file access issues in CI
-    # - name: Run tests
-    #   run: cargo test --workspace --target ${{ matrix.target }}
-    
-    - name: Extract version from compiled binary
+    - name: Restore version info
       id: version
       run: |
-        # execute fish_11_cli.exe to get version output
-        $OUTPUT = & "target\${{ matrix.target }}\release\fish_11_cli.exe" --version 2>&1
-        Write-Host "CLI output: $OUTPUT"
-
-        # Parser la sortie pour extraire version et build
-        # Format attendu: "FiSH_11_cli X.X.X (build NNNN or NNNN-release)"
-        if ($OUTPUT -match "FiSH_11_cli\s+(\S+)\s+\(build\s+(\S+)\)") {
-          $VERSION = $matches[1]
-          $BUILD = $matches[2]
-          # remove optional '-release' suffix from build string
-          $BUILD_CLEAN = $BUILD -replace '-release$',''
-          Write-Host "Extracted - Version: $VERSION, Build: $BUILD (clean: $BUILD_CLEAN)"
-          echo "version=$VERSION" >> $env:GITHUB_OUTPUT
-          echo "build_number=$BUILD_CLEAN" >> $env:GITHUB_OUTPUT
-          echo "full_version=$VERSION-$BUILD_CLEAN" >> $env:GITHUB_OUTPUT
+        $ErrorActionPreference = "Continue"
+        if (Test-Path "artifacts/version-info-${{ matrix.target }}/version_info.txt") {
+          Get-Content "artifacts/version-info-${{ matrix.target }}/version_info.txt" | ForEach-Object {
+            if ($_ -match "^(.+)=(.+)$") {
+              echo "$($matches[1])=$($matches[2])" >> $env:GITHUB_OUTPUT
+            }
+          }
         } else {
-          # Fallback si le parsing échoue
-          Write-Host "Warning: Could not parse version, using fallback"
-          $VERSION = "unknown"
-          $BUILD = "${{ github.run_number }}"
-          $BUILD_CLEAN = $BUILD -replace '-release$',''
+          # Fallback
+          $VERSION = "11.25.0"
+          $BUILD = Get-Date -Format "yyyyMMddHHmmss"
           echo "version=$VERSION" >> $env:GITHUB_OUTPUT
-          echo "build_number=$BUILD_CLEAN" >> $env:GITHUB_OUTPUT
-          echo "full_version=$VERSION-build$BUILD_CLEAN" >> $env:GITHUB_OUTPUT
+          echo "build_number=$BUILD" >> $env:GITHUB_OUTPUT
+          echo "full_version=$VERSION-$BUILD" >> $env:GITHUB_OUTPUT
         }
       shell: powershell
     
     - name: Create release package
       run: |
+        $ErrorActionPreference = "Continue"
         Write-Host "Creating release package directory..."
         New-Item -ItemType Directory -Force -Path release_package | Out-Null
         
-        Write-Host "Copying binaries..."
-        Copy-Item "target\${{ matrix.target }}\release\fish_11_cli.exe" -Destination "release_package\"
-        Copy-Item "target\${{ matrix.target }}\release\fish_11.dll" -Destination "release_package\"
-        Copy-Item "target\${{ matrix.target }}\release\fish_11_inject.dll" -Destination "release_package\"
-        # also include Debug builds (renamed to avoid overwrite)
-        if (Test-Path "target\${{ matrix.target }}\debug\fish_11_cli.exe") {
-          Copy-Item "target\${{ matrix.target }}\debug\fish_11_cli.exe" -Destination "release_package\fish_11_cli_debug.exe"
-        }
-        if (Test-Path "target\${{ matrix.target }}\debug\fish_11.dll") {
-          Copy-Item "target\${{ matrix.target }}\debug\fish_11.dll" -Destination "release_package\fish_11_debug.dll"
-        }
-        if (Test-Path "target\${{ matrix.target }}\debug\fish_11_inject.dll") {
-          Copy-Item "target\${{ matrix.target }}\debug\fish_11_inject.dll" -Destination "release_package\fish_11_inject_debug.dll"
-        }
+        Write-Host "Copying Release binaries..."
+        Copy-Item "artifacts/fish_11-release-${{ matrix.target }}/fish_11_cli.exe" -Destination "release_package\" -ErrorAction SilentlyContinue
+        Copy-Item "artifacts/fish_11-release-${{ matrix.target }}/fish_11.dll" -Destination "release_package\" -ErrorAction SilentlyContinue
+        Copy-Item "artifacts/fish_11-release-${{ matrix.target }}/fish_11_inject.dll" -Destination "release_package\" -ErrorAction SilentlyContinue
+        
+        Write-Host "Copying Debug binaries..."
+        Copy-Item "artifacts/fish_11-debug-${{ matrix.target }}/fish_11_cli.exe" -Destination "release_package\fish_11_cli_debug.exe" -ErrorAction SilentlyContinue
+        Copy-Item "artifacts/fish_11-debug-${{ matrix.target }}/fish_11.dll" -Destination "release_package\fish_11_debug.dll" -ErrorAction SilentlyContinue
+        Copy-Item "artifacts/fish_11-debug-${{ matrix.target }}/fish_11_inject.dll" -Destination "release_package\fish_11_inject_debug.dll" -ErrorAction SilentlyContinue
         
         Write-Host "Copying documentation files..."
         if (Test-Path "README.md") {
           Copy-Item "README.md" -Destination "release_package\"
-        } else {
-          Write-Host "No README.md found"
         }
-        
         if (Test-Path "LICENSE") {
           Copy-Item "LICENSE" -Destination "release_package\"
-        } else {
-          Write-Host "No LICENSE found"
         }
         
         Write-Host "Creating VERSION.txt..."
         "FiSH_11 Version ${{ steps.version.outputs.full_version }}" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8
         "Build Number: ${{ steps.version.outputs.build_number }}" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
         "Target: ${{ matrix.target }}" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
-        "Compiled: ${{ github.event.head_commit.timestamp }}" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
+        "Compiled: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
         "Commit: ${{ github.sha }}" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
         "Branch: ${{ github.ref_name }}" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
         "" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
-        "Files included:" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
+        "Files included (Release builds):" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
         "- fish_11_cli.exe       : Command-line interface" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
         "- fish_11.dll           : Main FiSH encryption DLL" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
         "- fish_11_inject.dll    : Injection DLL for mIRC" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
-        "- fish_11_cli_debug.exe : CLI debug binary" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
-        "- fish_11_debug.dll     : DLL debug binary" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
+        "" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
+        "Files included (Debug builds):" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
+        "- fish_11_cli_debug.exe    : CLI debug binary" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
+        "- fish_11_debug.dll        : DLL debug binary" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
         "- fish_11_inject_debug.dll : Injection DLL debug binary" | Out-File -FilePath "release_package\VERSION.txt" -Encoding utf8 -Append
         
         Write-Host "Release package created successfully"
         Get-ChildItem -Path "release_package"
+      shell: powershell
+    
+    - name: Generate SHA256 checksums
+      id: checksums
+      run: |
+        $ErrorActionPreference = "Continue"
+        Write-Host "Generating SHA256 checksums..."
+        $checksums = @()
+        
+        Get-ChildItem -Path "release_package" -File | ForEach-Object {
+          $hash = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash
+          $line = "$hash  $($_.Name)"
+          $checksums += $line
+          Write-Host $line
+        }
+        
+        $checksums | Out-File -FilePath "release_package\SHA256SUMS.txt" -Encoding utf8
+        Write-Host "Checksums saved to SHA256SUMS.txt"
       shell: powershell
     
     - name: Create ZIP archive
@@ -152,11 +264,14 @@ jobs:
         Write-Host "Creating ZIP: $ZIP_NAME"
         Compress-Archive -Path "release_package\*" -DestinationPath $ZIP_NAME -Force
         
-        # Vérifier la taille du ZIP
         $zipSize = (Get-Item $ZIP_NAME).Length
         Write-Host "ZIP created successfully - Size: $([math]::Round($zipSize/1KB, 2)) KB"
         
+        # Generate ZIP checksum
+        $zipHash = (Get-FileHash -Path $ZIP_NAME -Algorithm SHA256).Hash
+        Write-Host "ZIP SHA256: $zipHash"
         echo "zip_name=$ZIP_NAME" >> $env:GITHUB_OUTPUT
+        echo "zip_hash=$zipHash" >> $env:GITHUB_OUTPUT
       shell: powershell
     
     - name: Upload complete package
@@ -164,28 +279,19 @@ jobs:
       with:
         name: fish_11-complete-${{ steps.version.outputs.full_version }}-${{ matrix.target }}
         path: ${{ steps.zip.outputs.zip_name }}
+        retention-days: 90
     
-    # Generate release notes summary when pushing to main (after merge)
+    # Generate release notes summary only when pushing to main branch
     - name: Generate Release Notes Summary
       id: release_notes
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       run: |
-        # Check if GitHub CLI is available, install if not
-        if (!(Get-Command gh -ErrorAction SilentlyContinue)) {
-          Write-Host "Installing GitHub CLI..."
-          try {
-            winget install GitHub.cli
-          } catch {
-            Write-Host "Could not install GitHub CLI: $_"
-          }
-        }
-
+        $ErrorActionPreference = "Continue"
+        
         # Récupère les tags existants qui correspondent au format spécifique
         $tags = $(git tag --list --sort=-v:refname 2>$null)
         $lastTag = $null
 
         if ($tags) {
-          # Trier les tags et trouver le dernier qui correspond au format attendu (ex: 11.25.0-20251216195555)
           $sortedTags = $tags -split "`n" | Where-Object { $_ -match '^\d+\.\d+\.\d+-\d+$' } | Sort-Object { [version]$_.Split('-')[0] } -Descending
           if ($sortedTags) {
             $lastTag = $sortedTags[0]
@@ -193,21 +299,21 @@ jobs:
         }
 
         if ([string]::IsNullOrEmpty($lastTag)) {
-          # Si aucun tag approprié n'est trouvé, utilise les derniers commits
-          Write-Host "No matching tags found in format X.Y.Z-YYYYMMDDHHMMSS, using recent commits"
+          Write-Host "No matching tags found, using recent commits"
           $commits = $(git log --oneline --no-merges --first-parent -10 2>$null)
         } else {
           Write-Host "Using tag: $lastTag"
-          # Utilise les commits depuis le dernier tag approprié
           $commits = $(git log --oneline --no-merges --first-parent $lastTag..HEAD 2>$null)
         }
 
-        # Récupère les pull requests fusionnés récemment
-        try {
-          $prs = gh pr list --state merged --limit 20 --json number,title,author,labels,milestone --jq '.[] | "- PR #\(.number): \(.title) by \(.author.login)"' 2>$null
-        } catch {
-          Write-Host "Could not fetch pull requests: $_"
-          $prs = $null
+        # Récupère les pull requests fusionnés récemment (si gh est disponible)
+        $prs = $null
+        if (Get-Command gh -ErrorAction SilentlyContinue) {
+          try {
+            $prs = gh pr list --state merged --limit 20 --json number,title,author --jq '.[] | "- PR #\(.number): \(.title) by \(.author.login)"' 2>$null
+          } catch {
+            Write-Host "Could not fetch pull requests: $_"
+          }
         }
 
         # Génère un résumé des fonctionnalités basé sur les messages de commit
@@ -225,56 +331,72 @@ jobs:
         }
 
         # Crée le corps des notes de version
-        $body = "**FiSH_11 Release Summary**`n`n"
+        $body = "**FiSH_11 Release ${{ steps.version.outputs.full_version }}**`n`n"
+        $body += "### Build Information`n"
+        $body += "- **Version**: ${{ steps.version.outputs.version }}`n"
+        $body += "- **Build**: ${{ steps.version.outputs.build_number }}`n"
+        $body += "- **Target**: ${{ matrix.target }}`n"
+        $body += "- **Commit**: ${{ github.sha }}`n"
+        $body += "- **Date**: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`n"
+        $body += "- **SHA256**: ${{ steps.zip.outputs.zip_hash }}`n`n"
 
-        $body += "### Features:`n"
+        $body += "### Features`n"
         if ($features) {
           $body += $features.Trim()
         } else {
           $body += "- No new features in this release"
         }
 
-        $body += "`n`n### Bug fixes:`n"
+        $body += "`n`n### Bug fixes`n"
         if ($fixes) {
           $body += $fixes.Trim()
         } else {
           $body += "- No bug fixes in this release"
         }
 
-        $body += "`n`n### Pull requests merged:`n"
         if ($prs) {
+          $body += "`n`n### Pull requests merged`n"
           $body += $prs
-        } else {
-          $body += "- No pull requests merged in this release"
         }
 
-        $body += "`n`n### Build information`n"
-        $body += "- **Commit**: ${{ github.sha }}`n"
-        $body += "- **Date**: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")`n`n"
+        $body += "`n`n### Files Included`n"
+        $body += "- ``fish_11_cli.exe`` - Command-line interface for FiSH_11`n"
+        $body += "- ``fish_11.dll`` - Main FiSH encryption DLL for mIRC`n"
+        $body += "- ``fish_11_inject.dll`` - Injection DLL for transparent encryption`n"
+        $body += "- ``fish_11_cli_debug.exe`` - Debug CLI binary`n"
+        $body += "- ``fish_11_debug.dll`` - Debug DLL binary`n"
+        $body += "- ``fish_11_inject_debug.dll`` - Debug injection DLL`n"
+        $body += "- ``VERSION.txt`` - Detailed build information`n"
+        $body += "- ``SHA256SUMS.txt`` - File checksums for verification`n`n"
+
+        $body += "### Installation`n"
+        $body += "1. Extract the ZIP file`n"
+        $body += "2. Copy ``fish_11.dll`` and ``fish_11_inject.dll`` to your mIRC directory`n"
+        $body += "3. Use ``fish_11_cli.exe`` for command-line operations`n`n"
+        $body += "See README.md for detailed usage instructions."
 
         # Write the body to a file and set as output
         $body | Out-File -FilePath "release_summary.txt" -Encoding utf8
-        $body = $body -replace '"', '\"'  # Escape quotes for JSON
-        echo "body=$($body -replace "`n", "%0A")" >> $env:GITHUB_OUTPUT
+        $bodyEncoded = $body -replace '"', '\"' -replace "`n", "%0A"
+        echo "body=$bodyEncoded" >> $env:GITHUB_OUTPUT
       shell: powershell
 
-    # Only upload to GitHub Release when triggered by release event (manual creation)
+    # Upload to GitHub Release only when triggered by release event
     - name: Upload to GitHub Release
       if: github.event_name == 'release'
       uses: softprops/action-gh-release@v1
       with:
         files: ${{ steps.zip.outputs.zip_name }}
-        name: ${{ steps.version.outputs.full_version }}
+        name: FiSH_11 ${{ steps.version.outputs.full_version }}
         body: ${{ steps.release_notes.outputs.body }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # Print release summary when pushing to main branch (after merge)
+    # Print release summary
     - name: Print Release Summary
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       run: |
         Write-Host "==========================================" -ForegroundColor Green
-        Write-Host "Release summary generated:" -ForegroundColor Green
+        Write-Host "Release summary:" -ForegroundColor Green
         Write-Host "==========================================" -ForegroundColor Green
         if (Test-Path "release_summary.txt") {
           Get-Content "release_summary.txt"
