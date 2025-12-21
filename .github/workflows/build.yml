@@ -295,17 +295,13 @@ jobs:
     - name: Generate Release Notes Summary
       id: release_notes
       run: |
-        $ErrorActionPreference = "Continue"
+        $ErrorActionPreference = "SilentlyContinue"
         
         # Récupère les tags existants qui correspondent au format spécifique
-        try {
-          $tags = git tag --list --sort=-v:refname 2>$null
-        } catch {
-          $tags = $null
-        }
+        $tags = git tag --list --sort=-v:refname 2>&1 | Out-String
         $lastTag = $null
 
-        if ($tags) {
+        if ($tags -and $tags.Trim()) {
           $sortedTags = $tags -split "`n" | Where-Object { $_ -match '^\d+\.\d+\.\d+-\d+$' } | Sort-Object { [version]$_.Split('-')[0] } -Descending
           if ($sortedTags -and $sortedTags.Count -gt 0) {
             $lastTag = $sortedTags[0]
@@ -314,27 +310,19 @@ jobs:
 
         if ([string]::IsNullOrEmpty($lastTag)) {
           Write-Host "No matching tags found, using recent commits"
-          try {
-            $commits = git log --oneline --no-merges --first-parent -10 2>$null
-          } catch {
-            $commits = $null
-          }
+          $commits = git log --oneline --no-merges --first-parent -10 2>&1 | Out-String
         } else {
           Write-Host "Using tag: $lastTag"
-          try {
-            $commits = git log --oneline --no-merges --first-parent "$lastTag..HEAD" 2>$null
-          } catch {
-            $commits = $null
-          }
+          $commits = git log --oneline --no-merges --first-parent "$lastTag..HEAD" 2>&1 | Out-String
         }
 
         # Récupère les pull requests fusionnés récemment (si gh est disponible)
         $prs = $null
         if (Get-Command gh -ErrorAction SilentlyContinue) {
-          try {
-            $prs = gh pr list --state merged --limit 20 --json number,title,author --jq '.[] | "- PR #\(.number): \(.title) by \(.author.login)"' 2>$null
-          } catch {
-            Write-Host "Could not fetch pull requests: $_"
+          $prs = gh pr list --state merged --limit 20 --json number,title,author --jq '.[] | "- PR #\(.number): \(.title) by \(.author.login)"' 2>&1 | Out-String
+          if ($prs -match "error|fatal") {
+            Write-Host "Could not fetch pull requests"
+            $prs = $null
           }
         }
 
@@ -342,11 +330,11 @@ jobs:
         $features = ""
         $fixes = ""
 
-        if ($commits) {
+        if ($commits -and $commits.Trim()) {
           foreach ($commit in ($commits -split "`n")) {
-            if ($commit -and $commit -match "(feat|feature|add|implement)" -and $commit -notmatch "fix|bug|refactor|docs|test|chore") {
+            if ($commit -and $commit.Trim() -and $commit -match "(feat|feature|add|implement)" -and $commit -notmatch "fix|bug|refactor|docs|test|chore") {
               $features += "`n- $commit"
-            } elseif ($commit -and $commit -match "(fix|bug|resolve)" -and $commit -notmatch "feat|feature|add|implement") {
+            } elseif ($commit -and $commit.Trim() -and $commit -match "(fix|bug|resolve)" -and $commit -notmatch "feat|feature|add|implement") {
               $fixes += "`n- $commit"
             }
           }
@@ -362,28 +350,28 @@ jobs:
         $body += "- **Date**: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`n"
         
         # Add ZIP hash only if available
-        if ("${{ steps.zip.outputs.zip_hash }}" -ne "") {
+        if ("${{ steps.zip.outputs.zip_hash }}".Trim()) {
           $body += "- **SHA256**: ${{ steps.zip.outputs.zip_hash }}`n"
         }
         $body += "`n"
 
         $body += "### Features`n"
-        if ($features) {
+        if ($features -and $features.Trim()) {
           $body += $features.Trim()
         } else {
           $body += "- No new features in this release"
         }
 
         $body += "`n`n### Bug fixes`n"
-        if ($fixes) {
+        if ($fixes -and $fixes.Trim()) {
           $body += $fixes.Trim()
         } else {
           $body += "- No bug fixes in this release"
         }
 
-        if ($prs) {
+        if ($prs -and $prs.Trim()) {
           $body += "`n`n### Pull requests merged`n"
-          $body += $prs
+          $body += $prs.Trim()
         }
 
         $body += "`n`n### Files Included`n"
@@ -403,14 +391,12 @@ jobs:
         $body += "See README.md for detailed usage instructions."
 
         # Write the body to a file and set as output
-        try {
-          $body | Out-File -FilePath "release_summary.txt" -Encoding utf8
-          $bodyEncoded = $body -replace '"', '\"' -replace "`n", "%0A"
-          echo "body=$bodyEncoded" >> $env:GITHUB_OUTPUT
-        } catch {
-          Write-Host "Warning: Could not write release summary: $_"
-          echo "body=FiSH_11 Release" >> $env:GITHUB_OUTPUT
-        }
+        $body | Out-File -FilePath "release_summary.txt" -Encoding utf8 -Force
+        $bodyEncoded = $body -replace '"', '\"' -replace "`n", "%0A" -replace "`r", ""
+        "body=$bodyEncoded" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append -Force
+        
+        # Ensure we exit with success
+        exit 0
       shell: powershell
 
     # Upload to GitHub Release only when triggered by release event
