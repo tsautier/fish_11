@@ -1,0 +1,53 @@
+name: Auto Tag on Merge
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  auto-tag:
+    name: Create Tag Automatically
+    runs-on: self-hosted
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        submodules: false
+
+    - name: Extract version from Cargo.toml and create tag
+      run: |
+        $ErrorActionPreference = "Stop"
+        
+        # Extrait la version depuis Cargo.toml
+        $cargoToml = Get-Content "Cargo.toml" -Raw
+        if ($cargoToml -match 'version\s*=\s*"([^"]+)"') {
+          $version = $matches[1]
+          Write-Host "Version found: $version"
+        } else {
+          Write-Host "Error: Could not find version in Cargo.toml"
+          exit 1
+        }
+        
+        # Génère le timestamp
+        $timestamp = Get-Date -Format "yyyyMMddHHmmss"
+        $tagName = "v$version-$timestamp"
+        
+        Write-Host "Creating tag: $tagName"
+        
+        # Vérifie si le tag existe déjà
+        $existingTag = git tag -l $tagName
+        if ($existingTag) {
+          Write-Host "Tag $tagName already exists, skipping"
+          exit 0
+        }
+        
+        # Crée et pousse le tag
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git tag -a $tagName -m "Auto-tagged release $tagName from merge to main"
+        git push origin $tagName
+        
+        Write-Host "Tag $tagName created and pushed successfully"
+      shell: powershell
