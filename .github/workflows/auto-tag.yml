@@ -16,24 +16,19 @@ jobs:
         fetch-depth: 0
         submodules: false
 
-    - name: Extract version from Cargo.toml and create tag
+    - name: Extract version and create tag
       run: |
-        $ErrorActionPreference = "Stop"
+        $ErrorActionPreference = "Continue"
         
-        # Extrait la version depuis Cargo.toml
-        $cargoToml = Get-Content "Cargo.toml" -Raw
-        if ($cargoToml -match 'version\s*=\s*"([^"]+)"') {
-          $version = $matches[1]
-          Write-Host "Version found: $version"
-        } else {
-          Write-Host "Error: Could not find version in Cargo.toml"
-          exit 1
+        # Fallback identique à build.yml : lire Cargo.toml + timestamp
+        try {
+          $VERSION = (Get-Content Cargo.toml | Select-String 'version = "(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
+        } catch {
+          $VERSION = "unknown"
         }
+        $BUILD = Get-Date -Format "yyyyMMddHHmmss"
         
-        # Génère le timestamp
-        $timestamp = Get-Date -Format "yyyyMMddHHmmss"
-        $tagName = "v$version-$timestamp"
-        
+        $tagName = "v$VERSION-$BUILD"
         Write-Host "Creating tag: $tagName"
         
         # Vérifie si le tag existe déjà
@@ -43,7 +38,7 @@ jobs:
           exit 0
         }
         
-        # Crée et pousse le tag
+        # Configure Git et crée le tag
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git tag -a $tagName -m "Auto-tagged release $tagName from merge to main"
