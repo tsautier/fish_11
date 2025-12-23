@@ -13,8 +13,7 @@ pub extern "C" fn FiSH11_LogSetKey(key: PCSTR) -> i32 {
     let key_r = match key_str.to_str() {
         Ok(s) => s,
         Err(_) => {
-            return DllError::new("Failed to convert key to string")
-                .log_and_return_error_code()
+            return DllError::new("Failed to convert key to string").log_and_return_error_code();
         }
     };
 
@@ -33,6 +32,9 @@ pub extern "C" fn FiSH11_LogSetKey(key: PCSTR) -> i32 {
         *key_guard = Some(key_bytes);
     }
 
-    fish_11_core::log_info_with_context!("FiSH11_LogSetKey", "In-memory log encryption key has been set for the current session.");
+    fish_11_core::log_info_with_context!(
+        "FiSH11_LogSetKey",
+        "In-memory log encryption key has been set for the current session."
+    );
     0 // Success
 }

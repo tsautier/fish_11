@@ -1,15 +1,18 @@
 use crate::dll_interface::dll_error::DllError;
 use crate::platform_types::{PCSTR, PSTR};
 use crate::utils::copy_to_return_buffer;
-use chacha20poly1305::{aead::{Aead, KeyInit}, ChaCha20Poly1305, Nonce};
+use chacha20poly1305::{
+    ChaCha20Poly1305, Nonce,
+    aead::{Aead, KeyInit},
+};
 use fish_11_core::globals::LOGGING_KEY;
 use std::ffi::CStr;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
 fn decrypt_log_line(key: &[u8], base64_ciphertext: &str) -> Result<String, DllError> {
-    let decoded = base64::decode(base64_ciphertext)
-        .map_err(|_| DllError::new("Invalid base64 encoding"))?;
+    let decoded =
+        base64::decode(base64_ciphertext).map_err(|_| DllError::new("Invalid base64 encoding"))?;
 
     if decoded.len() < 12 {
         return Err(DllError::new("Ciphertext too short"));
@@ -22,16 +25,19 @@ fn decrypt_log_line(key: &[u8], base64_ciphertext: &str) -> Result<String, DllEr
     let cipher = ChaCha20Poly1305::new_from_slice(key)
         .map_err(|_| DllError::new("Invalid key length for ChaCha20-Poly1305"))?;
 
-    let plaintext_bytes = cipher
-        .decrypt(nonce, ciphertext)
-        .map_err(|_| DllError::new("Decryption failed"))?;
+    let plaintext_bytes =
+        cipher.decrypt(nonce, ciphertext).map_err(|_| DllError::new("Decryption failed"))?;
 
     String::from_utf8(plaintext_bytes)
         .map_err(|_| DllError::new("Decrypted data is not valid UTF-8"))
 }
 
 #[no_mangle]
-pub extern "C" fn FiSH11_LogDecryptFile(filepath: PCSTR, ret_buffer: PSTR, ret_buffer_size: i32) -> i32 {
+pub extern "C" fn FiSH11_LogDecryptFile(
+    filepath: PCSTR,
+    ret_buffer: PSTR,
+    ret_buffer_size: i32,
+) -> i32 {
     if filepath.is_null() {
         return DllError::new("filepath pointer is null").log_and_return_error_code();
     }
@@ -44,7 +50,7 @@ pub extern "C" fn FiSH11_LogDecryptFile(filepath: PCSTR, ret_buffer: PSTR, ret_b
         Ok(s) => s,
         Err(_) => {
             return DllError::new("Failed to convert filepath to string")
-                .log_and_return_error_code()
+                .log_and_return_error_code();
         }
     };
 
@@ -71,14 +77,22 @@ pub extern "C" fn FiSH11_LogDecryptFile(filepath: PCSTR, ret_buffer: PSTR, ret_b
                                 decrypted_lines.push(decrypted_line);
                             }
                             Err(e) => {
-                                fish_11_core::log_error_with_context!("FiSH11_LogDecryptFile", "Failed to decrypt line: {}", e);
+                                fish_11_core::log_error_with_context!(
+                                    "FiSH11_LogDecryptFile",
+                                    "Failed to decrypt line: {}",
+                                    e
+                                );
                                 // Continue processing other lines
                             }
                         }
                     }
                 }
                 Err(e) => {
-                    fish_11_core::log_error_with_context!("FiSH11_LogDecryptFile", "Failed to read line from file: {}", e);
+                    fish_11_core::log_error_with_context!(
+                        "FiSH11_LogDecryptFile",
+                        "Failed to read line from file: {}",
+                        e
+                    );
                     return DllError::new("Failed to read file").log_and_return_error_code();
                 }
             }

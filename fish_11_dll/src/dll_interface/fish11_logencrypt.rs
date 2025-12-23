@@ -1,7 +1,10 @@
 use crate::dll_interface::dll_error::DllError;
 use crate::platform_types::{PCSTR, PSTR};
 use crate::utils::copy_to_return_buffer;
-use chacha20poly1305::{aead::{Aead, KeyInit, OsRng}, ChaCha20Poly1305, Nonce};
+use chacha20poly1305::{
+    ChaCha20Poly1305, Nonce,
+    aead::{Aead, KeyInit, OsRng},
+};
 use fish_11_core::globals::LOGGING_KEY;
 use std::ffi::CStr;
 
@@ -22,7 +25,11 @@ fn encrypt_log_message(key: &[u8], plaintext: &str) -> Result<String, DllError> 
 }
 
 #[no_mangle]
-pub extern "C" fn FiSH11_LogEncrypt(plaintext: PCSTR, ret_buffer: PSTR, ret_buffer_size: i32) -> i32 {
+pub extern "C" fn FiSH11_LogEncrypt(
+    plaintext: PCSTR,
+    ret_buffer: PSTR,
+    ret_buffer_size: i32,
+) -> i32 {
     if plaintext.is_null() {
         return DllError::new("plaintext pointer is null").log_and_return_error_code();
     }
@@ -35,7 +42,7 @@ pub extern "C" fn FiSH11_LogEncrypt(plaintext: PCSTR, ret_buffer: PSTR, ret_buff
         Ok(s) => s,
         Err(_) => {
             return DllError::new("Failed to convert plaintext to string")
-                .log_and_return_error_code()
+                .log_and_return_error_code();
         }
     };
 

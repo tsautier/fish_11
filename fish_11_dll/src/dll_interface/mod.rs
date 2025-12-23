@@ -14,11 +14,11 @@ mod fish11_getconfigpath;
 mod fish11_getkeyttl;
 mod fish11_getratchetstate;
 mod fish11_help;
-mod fish11_setmanualchannelkey;
 mod fish11_logdecrypt;
 mod fish11_logdecryptfile;
 mod fish11_logencrypt;
 mod fish11_logsetkey;
+mod fish11_setmanualchannelkey;
 mod fish11_setnetwork;
 mod utility;
 
