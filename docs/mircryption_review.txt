@@ -1,0 +1,101 @@
+Analyse comparative de Mircryption-CBC et recommandations pour FiSH_11
+=====================================================================
+
+## 1. Introduction
+
+Ce document analyse les fonctionnalités du script mIRC "Mircryption" (basé sur Blowfish-CBC/ECB) et les compare au projet FiSH_11. L'objectif est d'identifier les fonctionnalités pertinentes manquantes dans FiSH_11 et de proposer une feuille de route pour leur intégration, en spécifiant les ajouts nécessaires au niveau du script `fish_11.mrc` et de la bibliothèque `fish_11_dll`.
+
+FiSH_11 est fondamentalement plus sécurisé grâce à l'utilisation de la cryptographie moderne (X25519, AEAD) et d'une architecture plus robuste (injection, protocole FCEP-1). Cependant, Mircryption, de par sa maturité, possède de nombreuses fonctionnalités d'ergonomie et des utilitaires qui pourraient grandement enrichir l'expérience utilisateur de FiSH_11.
+
+## 2. Analyse des Fonctionnalités et Recommandations
+
+### 2.1. Journalisation Chiffrée (Encrypted Logging)
+
+- **Description (Mircryption) :** Mircryption possède un système complet de journalisation chiffrée. Les utilisateurs peuvent définir une clé de chiffrement pour les logs, et des commandes comme `/mclog` permettent de gérer des règles de logging et de visualiser les fichiers chiffrés avec `/mclogviewer`.
+
+- **État Actuel (FiSH_11) :** Cette fonctionnalité est totalement absente. FiSH_11 se concentre sur la communication en temps réel.
+
+- **Recommandation :** C'est l'ajout le plus significatif que FiSH_11 pourrait intégrer. Cela permettrait aux utilisateurs de conserver un historique de leurs conversations chiffrées de manière sécurisée. L'implémentation nécessiterait des ajouts à la fois dans la DLL et dans le script.
+
+- **Fonctions DLL Manquantes :**
+  - `FiSH11_LogSetKey(key: *const c_char) -> c_int`: Pour définir et charger la clé de chiffrement des logs. La clé devrait être dérivée avec un KDF (comme Argon2) pour la stocker de manière sécurisée.
+  - `FiSH11_LogEncrypt(plaintext: *const c_char) -> *mut c_char`: Chiffre une ligne de texte avec la clé de log.
+  - `FiSH11_LogDecrypt(ciphertext: *const c_char) -> *mut c_char`: Déchiffre une ligne de log.
+  - `FiSH11_LogDecryptFile(filepath: *const c_char, target_window: *const c_char)`: Une fonction qui lit un fichier de log chiffré ligne par ligne, le déchiffre et envoie le contenu à une fenêtre mIRC spécifiée (pour un futur `/fish11_logviewer`).
+
+### 2.2. Améliorations de l'Interface Utilisateur (UI/UX)
+
+#### a. Thèmes
+- **Description (Mircryption) :** La commande `/mcscheme` permet de choisir parmi plusieurs thèmes visuels qui modifient la manière dont les messages chiffrés/déchiffrés sont affichés (couleurs, préfixes, etc.).
+- **État Actuel (FiSH_11) :** FiSH_11 a une option basique (`%mark_style`) pour marquer les messages sortants, mais rien pour les messages entrants ni d'aussi configurable.
+- **Recommandation :** Étendre le système de configuration de FiSH_11 pour permettre une personnalisation plus poussée des indicateurs visuels. Cela peut être géré en grande partie dans `fish_11.mrc` en lisant des paramètres depuis le fichier `fish_11.ini`. Aucune fonction DLL supplémentaire n'est strictement nécessaire au départ.
+
+#### b. Textpad
+- **Description (Mircryption) :** La commande `/textpad` ouvre une boîte de dialogue pour coller de grandes quantités de texte. Le script se charge ensuite d'envoyer ce texte en plusieurs morceaux pour éviter les "floods".
+- **État Actuel (FiSH_11) :** Absent.
+- **Recommandation :** Ajouter une commande `/fish11_textpad`. C'est une fonctionnalité purement "côté client" qui peut être implémentée entièrement dans `fish_11.mrc` en utilisant des dialogues et des timers mIRC. Aucune fonction DLL n'est requise.
+
+### 2.3. Découverte de Pairs (Peer Discovery)
+
+- **Description (Mircryption) :** La commande `/mcmeow` envoie un message (un "handshake") sur un canal pour voir qui d'autre utilise le script.
+- **État Actuel (FiSH_11) :** Absent. Il n'y a aucun moyen de savoir qui est capable de communiquer de manière chiffrée sur un canal.
+- **Recommandation :** Implémenter une commande similaire, par exemple `/fish11_ping`. Quand un utilisateur tape cette commande, le script envoie une `NOTICE` spéciale sur le canal (ex: `+FISH11_PING+`). Les autres clients FiSH_11 qui reçoivent ce message pourraient y répondre en `NOTICE` privée à l'envoyeur initial. Ceci peut être géré entièrement dans `fish_11.mrc`.
+
+### 2.4. Migration Manuelle de Clés
+
+- **Description (Mircryption) :** Possède des commandes comme `/migratechankey` pour copier une clé d'un canal A à un canal B.
+- **État Actuel (FiSH_11) :** FiSH_11 a la commande `/fish11_usechankey <target> <source>`, ce qui est une excellente base. Le suivi automatique de changement de pseudo est également présent. Mircryption semble avoir des options un peu plus complexes (`/migratenickkeys all/unused`).
+- **Recommandation :** La fonctionnalité existante est probablement suffisante. On pourrait ajouter un alias `/fish11_copykey <source> <destination>` pour plus de clarté, mais le besoin n'est pas critique. Aucune fonction DLL n'est requise.
+
+### 2.5. Blocage CTCP
+
+- **Description (Mircryption) :** Le script bloque les requêtes CTCP `PING`, `TIME`, `VERSION`, etc., pour la confidentialité.
+- **État Actuel (FiSH_11) :** Absent.
+- **Recommandation :** C'est un ajout facile et utile. Il suffit d'ajouter des `on ctcp` handlers dans `fish_11.mrc` pour intercepter ces requêtes et les bloquer avec `haltdef`. Aucune fonction DLL n'est requise.
+
+```mirc
+; Example implementation in fish_11.mrc
+on *:CTCP:*:?: {
+  if ($left($1, 4) == PING && $fish11_GetIniValue(block_ctcp_ping, 1)) halt
+  if ($left($1, 4) == TIME && $fish11_GetIniValue(block_ctcp_time, 1)) halt
+  if ($left($1, 7) == VERSION && $fish11_GetIniValue(block_ctcp_version, 1)) halt
+}
+```
+
+## 3. Fonctionnalités à ne PAS Implémenter
+
+- **Chiffrement CBC/ECB et compatibilité Blowfish:** Mircryption est basé sur Blowfish, souvent en mode CBC ou même ECB, qui sont des primitives cryptographiques datées et potentiellement vulnérables (ECB est totalement cassé, CBC est susceptible aux "padding oracle attacks" s'il n'est pas parfaitement implémenté). FiSH_11 utilise un chiffrement AEAD (Authenticated Encryption with Associated Data) moderne, qui est intrinsèquement supérieur. Tenter d'implémenter une compatibilité serait une régression en termes de sécurité.
+
+- **Gestion de clés par mot de passe simple:** Le modèle de Mircryption est centré sur une phrase de passe qui devient la clé. Le modèle de FiSH_11, basé sur un échange de clés Diffie-Hellman (X25519) pour établir une clé partagée forte, est bien plus sécurisé. Il faut conserver et encourager ce modèle. La commande `fish11_setkey_manual` doit être vue comme un outil pour experts ou pour des cas de recouvrement, pas comme la méthode standard.
+
+## 4. Résumé des Nouvelles Fonctions DLL Proposées
+
+Voici un résumé des nouvelles fonctions Rust à exporter depuis `fish_11_dll.dll` pour implémenter les fonctionnalités de journalisation chiffrée :
+
+```rust
+use std::os::raw::{c_char, c_int};
+
+/// Sets the master key for encrypted logging, derived using a KDF.
+/// Returns 0 on success, -1 on error.
+#[no_mangle]
+pub extern "C" fn FiSH11_LogSetKey(key: *const c_char) -> c_int;
+
+/// Encrypts a single line of text for logging.
+/// Returns a pointer to a C-string with the base64-encoded ciphertext.
+/// The caller is responsible for freeing the memory.
+#[no_mangle]
+pub extern "C" fn FiSH11_LogEncrypt(plaintext: *const c_char) -> *mut c_char;
+
+/// Decrypts a single line of text from a log.
+/// Returns a pointer to a C-string with the plaintext.
+/// The caller is responsible for freeing the memory.
+#[no_mangle]
+pub extern "C" fn FiSH11_LogDecrypt(ciphertext: *const c_char) -> *mut c_char;
+
+/// Reads an entire encrypted log file and sends the decrypted content to a mIRC window.
+/// This is a utility function to simplify the creation of a log viewer.
+/// Returns 0 on success, -1 on error.
+#[no_mangle]
+pub extern "C" fn FiSH11_LogDecryptFile(filepath: *const c_char, target_window: *const c_char) -> c_int;
+
+```
