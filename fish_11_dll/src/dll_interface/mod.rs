@@ -15,11 +15,19 @@ mod fish11_getkeyttl;
 mod fish11_getratchetstate;
 mod fish11_help;
 mod fish11_setmanualchannelkey;
+mod fish11_logdecrypt;
+mod fish11_logdecryptfile;
+mod fish11_logencrypt;
+mod fish11_logsetkey;
 mod fish11_setnetwork;
 mod utility;
 
 pub mod dll_error;
 pub mod fish11_exchangekey;
+pub mod fish11_logdecrypt;
+pub mod fish11_logdecryptfile;
+pub mod fish11_logencrypt;
+pub mod fish11_logsetkey;
 pub mod fish11_setkey;
 pub mod fish11_setkeyfromplaintext;
 pub mod fish11_setmircdir;
@@ -98,6 +106,10 @@ pub(crate) fn restore_buffer_size_for_test(prev_size: Option<usize>) {
 
 pub use fish11_getkeyttl::FiSH11_GetKeyTTL;
 pub use fish11_getratchetstate::FiSH11_GetRatchetState;
+pub use fish11_logdecrypt::FiSH11_LogDecrypt;
+pub use fish11_logdecryptfile::FiSH11_LogDecryptFile;
+pub use fish11_logencrypt::FiSH11_LogEncrypt;
+pub use fish11_logsetkey::FiSH11_LogSetKey;
 pub use fish11_setmanualchannelkey::FiSH11_SetManualChannelKey;
 pub use key_management::{FiSH11_ProcessPublicKey, FiSH11_TestCrypt};
 

@@ -58,9 +58,6 @@ pub static MIRC_BUFFER_SIZE: Mutex<usize> = Mutex::new(DEFAULT_MIRC_BUFFER_SIZE)
 /// This key is session-only and is never written to disk.
 pub static LOGGING_KEY: Lazy<Mutex<Option<[u8; 32]>>> = Lazy::new(|| Mutex::new(None));
 
-// In-memory key for encrypted logging, set once per session.
-pub static LOGGING_KEY: Lazy<Mutex<Option<[u8; 32]>>> = Lazy::new(|| Mutex::new(None));
-
 
 // Maximum size of a message that can be encrypted/decrypted
 pub const MAX_MESSAGE_SIZE: usize = 4096;

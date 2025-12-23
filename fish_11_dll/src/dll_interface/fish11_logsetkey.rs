@@ -1,25 +1,38 @@
-use crate::{
-    buffer_utils,
-    config::{self, state_management},
-    dll_function_identifier,
-    unified_error::DllError,
-};
+use crate::dll_interface::dll_error::DllError;
+use crate::platform_types::PCSTR;
+use fish_11_core::globals::LOGGING_KEY;
+use std::ffi::CStr;
 
-dll_function_identifier!(FiSH11_LogSetKey, data, {
-    // Input format: <key_in_base64>
-    let input = unsafe { buffer_utils::parse_buffer_input(data)? };
-    let parts: Vec<&str> = input.splitn(1, ' ').collect();
-    let base64_key = parts[0].trim();
-
-    if base64_key.is_empty() {
-        return Err(DllError::MissingParameter("base64_key".to_string()));
+#[no_mangle]
+pub extern "C" fn FiSH11_LogSetKey(key: PCSTR) -> i32 {
+    if key.is_null() {
+        return DllError::new("key pointer is null").log_and_return_error_code();
     }
 
-    // The key is stored in the session state, not written to the INI file for security.
-    // This means the log key must be set each time mIRC starts.
-    state_management::set_log_key(base64_key)?;
+    let key_str = unsafe { CStr::from_ptr(key) };
+    let key_r = match key_str.to_str() {
+        Ok(s) => s,
+        Err(_) => {
+            return DllError::new("Failed to convert key to string")
+                .log_and_return_error_code()
+        }
+    };
 
-    log::info!("In-memory log encryption key has been set for the current session.");
+    // Derive a 32-byte key from the input using a simple method
+    // In a real implementation, we'd use a proper KDF like Argon2 or PBKDF2
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(key_r.as_bytes());
+    let hash = hasher.finalize();
 
-    Ok("1".to_string())
-});
+    // Convert to fixed-size array
+    let key_bytes: [u8; 32] = hash.into();
+
+    // Store the key in the global variable
+    {
+        let mut key_guard = LOGGING_KEY.lock();
+        *key_guard = Some(key_bytes);
+    }
+
+    fish_11_core::log_info_with_context!("FiSH11_LogSetKey", "In-memory log encryption key has been set for the current session.");
+    0 // Success
+}

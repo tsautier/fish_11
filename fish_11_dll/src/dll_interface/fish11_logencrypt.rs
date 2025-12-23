@@ -1,16 +1,24 @@
 use crate::dll_interface::dll_error::DllError;
 use crate::platform_types::{PCSTR, PSTR};
 use crate::utils::copy_to_return_buffer;
+use chacha20poly1305::{aead::{Aead, KeyInit, OsRng}, ChaCha20Poly1305, Nonce};
 use fish_11_core::globals::LOGGING_KEY;
 use std::ffi::CStr;
 
-// Placeholder for actual encryption logic
 fn encrypt_log_message(key: &[u8], plaintext: &str) -> Result<String, DllError> {
-    // TODO: Replace with real encryption (e.g., ChaCha20-Poly1305)
-    // For now, we simulate it by reversing the string and base64 encoding it.
-    let reversed_plaintext = plaintext.chars().rev().collect::<String>();
-    let encoded = base64::encode(format!("encrypted_{}_key_len_{}", reversed_plaintext, key.len()));
-    Ok(encoded)
+    let cipher = ChaCha20Poly1305::new_from_slice(key)
+        .map_err(|_| DllError::new("Invalid key length for ChaCha20-Poly1305"))?;
+
+    let nonce = ChaCha20Poly1305::generate_nonce(&mut OsRng);
+    let ciphertext = cipher
+        .encrypt(&nonce, plaintext.as_bytes())
+        .map_err(|_| DllError::new("Encryption failed"))?;
+
+    // Concatenate nonce + ciphertext and encode as base64
+    let mut result = nonce.to_vec();
+    result.extend_from_slice(&ciphertext);
+
+    Ok(base64::encode(&result))
 }
 
 #[no_mangle]
