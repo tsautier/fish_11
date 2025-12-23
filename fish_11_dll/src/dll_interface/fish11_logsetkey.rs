@@ -1,5 +1,5 @@
 use crate::dll_interface::dll_error::DllError;
-use crate::platform_types::PCSTR;
+use winapi::shared::ntdef::PCSTR;
 use fish_11_core::globals::LOGGING_KEY;
 use std::ffi::CStr;
 
@@ -19,6 +19,7 @@ pub extern "C" fn FiSH11_LogSetKey(key: PCSTR) -> i32 {
 
     // Derive a 32-byte key from the input using a simple method
     // In a real implementation, we'd use a proper KDF like Argon2 or PBKDF2
+    use sha2::Digest;
     let mut hasher = sha2::Sha256::new();
     hasher.update(key_r.as_bytes());
     let hash = hasher.finalize();

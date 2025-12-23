@@ -1,271 +1,216 @@
-//! Keystore module for persistent storage of nonce counters and key metadata
-//!
-//! Provides persistent storage for nonce counters, key generations, and rotation metadata.
+//! Secure keystore for master key system
+//! 
+//! Handles persistent storage of sensitive data like salts, nonce counters, etc.
 
 use std::collections::HashMap;
-use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::fs;
 use std::path::PathBuf;
+use secrecy::{Secret, SecretString};
+use serde::{Deserialize, Serialize};
+use zeroize::Zeroize;
 
-/// Metadata about a key's usage and rotation status
-#[derive(Debug, Clone)]
+/// Metadata associated with keys
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyMetadata {
-    pub generation: u32,
-    pub message_count: u64,
-    pub data_size_bytes: u64,
-    pub created_at: u64, // Unix timestamp
-    pub last_used_at: u64, // Unix timestamp
+    pub created_at: u64,           // Unix timestamp
+    pub last_used: u64,            // Unix timestamp
+    pub usage_count: u64,          // Number of times used
+    pub message_count: u64,        // Number of messages processed with this key (kept for compatibility)
+    pub data_size_bytes: u64,      // Total data size (bytes) processed with this key
+    pub description: String,       // Description of the key's purpose
+    pub is_revoked: bool,          // Whether the key has been revoked
+}
+
+impl Default for KeyMetadata {
+    fn default() -> Self {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs();
+            
+        Self {
+            created_at: now,
+            last_used: now,
+            usage_count: 0,
+            message_count: 0,
+            data_size_bytes: 0,
+            description: "New key".to_string(),
+            is_revoked: false,
+        }
+    }
 }
 
 impl KeyMetadata {
-    pub fn new(generation: u32) -> Self {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        
-        Self {
-            generation,
-            message_count: 0,
-            data_size_bytes: 0,
-            created_at: now,
-            last_used_at: now,
-        }
-    }
-
-    /// Update metadata after encryption operation
-    pub fn record_usage(&mut self, data_size: usize) {
-        self.message_count += 1;
-        self.data_size_bytes += data_size as u64;
-        self.last_used_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-    }
-
-    /// Serialize to string (INI format)
-    pub fn to_string(&self) -> String {
-        format!(
-            "generation={},messages={},bytes={},created={},last_used={}",
-            self.generation,
-            self.message_count,
-            self.data_size_bytes,
-            self.created_at,
-            self.last_used_at
-        )
-    }
-
-    /// Deserialize from string
-    pub fn from_string(s: &str) -> Option<Self> {
-        let mut generation = None;
-        let mut message_count = None;
-        let mut data_size_bytes = None;
-        let mut created_at = None;
-        let mut last_used_at = None;
-
-        for part in s.split(',') {
-            let kv: Vec<&str> = part.split('=').collect();
-            if kv.len() != 2 {
-                continue;
-            }
-
-            match kv[0].trim() {
-                "generation" => generation = kv[1].trim().parse().ok(),
-                "messages" => message_count = kv[1].trim().parse().ok(),
-                "bytes" => data_size_bytes = kv[1].trim().parse().ok(),
-                "created" => created_at = kv[1].trim().parse().ok(),
-                "last_used" => last_used_at = kv[1].trim().parse().ok(),
-                _ => {}
-            }
-        }
-
-        Some(Self {
-            generation: generation?,
-            message_count: message_count?,
-            data_size_bytes: data_size_bytes?,
-            created_at: created_at?,
-            last_used_at: last_used_at?,
-        })
+    /// Create a new KeyMetadata with an initial message count (compat shim)
+    pub fn new(initial_message_count: u64) -> Self {
+        let mut km = Self::default();
+        km.message_count = initial_message_count;
+        km
     }
 }
 
-/// Persistent keystore for nonce counters and key metadata
+/// A secure keystore that manages sensitive data
+#[derive(Serialize, Deserialize)]
 pub struct Keystore {
-    nonce_counters_path: PathBuf,
-    key_metadata_path: PathBuf,
+    /// Salt used for deriving the master key
+    pub master_key_salt: String,
+    
+    /// Nonce counters for different contexts
+    pub nonce_counters: HashMap<String, u64>,
+    
+    /// Metadata for various keys
+    pub key_metadata: HashMap<String, KeyMetadata>,
+    
+    /// File path where this keystore is persisted
+    #[serde(skip)]
+    pub file_path: Option<PathBuf>,
 }
 
 impl Keystore {
-    /// Create a new keystore
-    ///
-    /// # Arguments
-    /// * `base_path` - The base directory for keystore files
-    pub fn new(base_path: PathBuf) -> Self {
-        let mut nonce_counters_path = base_path.clone();
-        nonce_counters_path.push("nonce_counters.dat");
+    /// Create a new keystore with a random salt
+    pub fn new() -> Self {
+        use rand::RngCore;
+        let mut salt_bytes = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut salt_bytes);
+        let salt = base64::encode(&salt_bytes);
         
-        let mut key_metadata_path = base_path;
-        key_metadata_path.push("key_metadata.dat");
-
         Self {
-            nonce_counters_path,
-            key_metadata_path,
+            master_key_salt: salt,
+            nonce_counters: HashMap::new(),
+            key_metadata: HashMap::new(),
+            file_path: None,
         }
     }
 
-    /// Load nonce counters from disk
-    pub fn load_nonce_counters(&self) -> Result<HashMap<String, u64>, String> {
-        let mut counters = HashMap::new();
-
-        if !self.nonce_counters_path.exists() {
-            return Ok(counters);
+    /// Create a keystore with a specific salt
+    pub fn with_salt(salt: &str) -> Self {
+        Self {
+            master_key_salt: salt.to_string(),
+            nonce_counters: HashMap::new(),
+            key_metadata: HashMap::new(),
+            file_path: None,
         }
-
-        let file = File::open(&self.nonce_counters_path)
-            .map_err(|e| format!("Failed to open nonce counters file: {}", e))?;
-
-        let reader = BufReader::new(file);
-        for line in reader.lines() {
-            let line = line.map_err(|e| format!("Failed to read line: {}", e))?;
-            let parts: Vec<&str> = line.split('=').collect();
-            if parts.len() == 2 {
-                let key_id = parts[0].trim();
-                if let Ok(counter) = parts[1].trim().parse::<u64>() {
-                    counters.insert(key_id.to_string(), counter);
-                }
-            }
-        }
-
-        Ok(counters)
     }
 
-    /// Save nonce counters to disk
-    pub fn save_nonce_counters(&self, counters: &HashMap<String, u64>) -> Result<(), String> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&self.nonce_counters_path)
-            .map_err(|e| format!("Failed to create nonce counters file: {}", e))?;
+    /// Get or create a nonce counter for a specific context
+    pub fn get_nonce(&mut self, context: &str) -> u64 {
+        let counter = self.nonce_counters.entry(context.to_string()).or_insert(0);
+        *counter += 1;
+        *counter - 1 // Return the previous value as the nonce
+    }
 
-        for (key_id, counter) in counters {
-            writeln!(file, "{}={}", key_id, counter)
-                .map_err(|e| format!("Failed to write nonce counter: {}", e))?;
+    /// Increment the usage count for a key
+    pub fn increment_key_usage(&mut self, key_id: &str) {
+        let metadata = self.key_metadata.entry(key_id.to_string()).or_insert_with(KeyMetadata::default);
+        metadata.usage_count += 1;
+        
+        use std::time::{SystemTime, UNIX_EPOCH};
+        metadata.last_used = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs();
+    }
+
+    /// Mark a key as revoked
+    pub fn revoke_key(&mut self, key_id: &str) {
+        let metadata = self.key_metadata.entry(key_id.to_string()).or_insert_with(KeyMetadata::default);
+        metadata.is_revoked = true;
+    }
+
+    /// Check if a key is revoked
+    pub fn is_key_revoked(&self, key_id: &str) -> bool {
+        self.key_metadata
+            .get(key_id)
+            .map(|metadata| metadata.is_revoked)
+            .unwrap_or(false)
+    }
+
+    /// Load keystore from a file
+    pub fn load_from_file(path: &PathBuf) -> Result<Self, Box<dyn std::error::Error>> {
+        let content = fs::read_to_string(path)?;
+        let mut keystore: Keystore = serde_json::from_str(&content)?;
+        keystore.file_path = Some(path.clone());
+        Ok(keystore)
+    }
+
+    /// Save keystore to a file
+    pub fn save_to_file(&self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(ref path) = self.file_path {
+            let content = serde_json::to_string_pretty(self)?;
+            fs::write(path, content)?;
+            Ok(())
+        } else {
+            Err("No file path specified for keystore".into())
         }
+    }
 
+    /// Save keystore to a specific file path
+    pub fn save_to_path(&self, path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+        let content = serde_json::to_string_pretty(self)?;
+        fs::write(path, content)?;
         Ok(())
     }
 
-    /// Load key metadata from disk
-    pub fn load_key_metadata(&self) -> Result<HashMap<String, KeyMetadata>, String> {
-        let mut metadata_map = HashMap::new();
-
-        if !self.key_metadata_path.exists() {
-            return Ok(metadata_map);
-        }
-
-        let file = File::open(&self.key_metadata_path)
-            .map_err(|e| format!("Failed to open key metadata file: {}", e))?;
-
-        let reader = BufReader::new(file);
-        let mut current_key_id = String::new();
-
-        for line in reader.lines() {
-            let line = line.map_err(|e| format!("Failed to read line: {}", e))?;
-            
-            if line.starts_with('[') && line.ends_with(']') {
-                // Section header [key_id]
-                current_key_id = line[1..line.len() - 1].to_string();
-            } else if !current_key_id.is_empty() {
-                // Metadata line
-                if let Some(metadata) = KeyMetadata::from_string(&line) {
-                    metadata_map.insert(current_key_id.clone(), metadata);
-                }
+    /// Get the default keystore path
+    pub fn default_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
+        // Use the same directory as the config file
+        use std::env;
+        
+        match env::var("MIRCDIR") {
+            Ok(mirc_path) => {
+                let mut path = PathBuf::from(mirc_path);
+                path.push("fish_11_keystore.json");
+                Ok(path)
+            }
+            Err(_) => {
+                // Fallback to current directory
+                let mut path = env::current_dir()?;
+                path.push("fish_11_keystore.json");
+                Ok(path)
             }
         }
-
-        Ok(metadata_map)
-    }
-
-    /// Save key metadata to disk
-    pub fn save_key_metadata(&self, metadata_map: &HashMap<String, KeyMetadata>) -> Result<(), String> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&self.key_metadata_path)
-            .map_err(|e| format!("Failed to create key metadata file: {}", e))?;
-
-        for (key_id, metadata) in metadata_map {
-            writeln!(file, "[{}]", key_id)
-                .map_err(|e| format!("Failed to write key ID: {}", e))?;
-            writeln!(file, "{}", metadata.to_string())
-                .map_err(|e| format!("Failed to write metadata: {}", e))?;
-        }
-
-        Ok(())
-    }
-
-    /// Save a single nonce counter
-    pub fn save_nonce_counter(&self, key_id: &str, counter: u64) -> Result<(), String> {
-        let mut counters = self.load_nonce_counters()?;
-        counters.insert(key_id.to_string(), counter);
-        self.save_nonce_counters(&counters)
-    }
-
-    /// Save a single key metadata entry
-    pub fn save_key_metadata_entry(&self, key_id: &str, metadata: &KeyMetadata) -> Result<(), String> {
-        let mut metadata_map = self.load_key_metadata()?;
-        metadata_map.insert(key_id.to_string(), metadata.clone());
-        self.save_key_metadata(&metadata_map)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
 
     #[test]
-    fn test_key_metadata_serialization() {
-        let metadata = KeyMetadata {
-            generation: 5,
-            message_count: 100,
-            data_size_bytes: 50000,
-            created_at: 1700000000,
-            last_used_at: 1700001000,
-        };
-
-        let serialized = metadata.to_string();
-        let deserialized = KeyMetadata::from_string(&serialized).expect("Failed to deserialize");
-
-        assert_eq!(metadata.generation, deserialized.generation);
-        assert_eq!(metadata.message_count, deserialized.message_count);
-        assert_eq!(metadata.data_size_bytes, deserialized.data_size_bytes);
-        assert_eq!(metadata.created_at, deserialized.created_at);
-        assert_eq!(metadata.last_used_at, deserialized.last_used_at);
+    fn test_keystore_creation() {
+        let keystore = Keystore::new();
+        assert!(!keystore.master_key_salt.is_empty());
+        assert!(keystore.nonce_counters.is_empty());
+        assert!(keystore.key_metadata.is_empty());
     }
 
     #[test]
-    fn test_keystore_nonce_counters() {
-        let temp_dir = env::temp_dir();
-        let mut test_path = temp_dir.clone();
-        test_path.push("fish11_keystore_test");
-        std::fs::create_dir_all(&test_path).ok();
+    fn test_nonce_counter() {
+        let mut keystore = Keystore::new();
+        
+        let nonce1 = keystore.get_nonce("test_context");
+        assert_eq!(nonce1, 0);
+        
+        let nonce2 = keystore.get_nonce("test_context");
+        assert_eq!(nonce2, 1);
+        
+        // Different context should have its own counter
+        let nonce3 = keystore.get_nonce("another_context");
+        assert_eq!(nonce3, 0);
+    }
 
-        let keystore = Keystore::new(test_path.clone());
-
-        let mut counters = HashMap::new();
-        counters.insert("key1".to_string(), 100);
-        counters.insert("key2".to_string(), 200);
-
-        keystore.save_nonce_counters(&counters).expect("Save failed");
-        let loaded = keystore.load_nonce_counters().expect("Load failed");
-
-        assert_eq!(loaded.get("key1"), Some(&100));
-        assert_eq!(loaded.get("key2"), Some(&200));
-
-        // Cleanup
-        std::fs::remove_dir_all(&test_path).ok();
+    #[test]
+    fn test_key_metadata() {
+        let mut keystore = Keystore::new();
+        
+        keystore.increment_key_usage("test_key");
+        assert_eq!(keystore.key_metadata.get("test_key").unwrap().usage_count, 1);
+        
+        keystore.increment_key_usage("test_key");
+        assert_eq!(keystore.key_metadata.get("test_key").unwrap().usage_count, 2);
+        
+        keystore.revoke_key("test_key");
+        assert!(keystore.is_key_revoked("test_key"));
     }
 }

@@ -16,6 +16,8 @@ use crate::dll_interface::{MIRC_COMMAND, MIRC_HALT};
 // Re-export for convenience
 pub use crate::error::FishError;
 
+use winapi::shared::windef::HWND;
+
 /// Unified error type for all DLL operations
 ///
 /// This enum consolidates all possible error conditions across the DLL,

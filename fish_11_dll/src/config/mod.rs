@@ -3,10 +3,13 @@
 use parking_lot::Mutex;
 pub mod config_access;
 pub mod entries;
+pub mod encrypted_file_storage;
 pub mod file_storage;
 pub mod key_management;
 pub mod models;
 pub mod networks;
+
+pub mod password_change;
 
 pub mod channel_key_utils;
 pub mod channel_keys;

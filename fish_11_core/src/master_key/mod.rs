@@ -7,6 +7,8 @@ pub mod encryption;
 pub mod memory;
 pub mod keystore;
 pub mod rotation;
+pub mod password_change;
+pub mod password_validation;
 
 use once_cell::sync::Lazy;
 use std::sync::Mutex;

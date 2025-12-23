@@ -1,6 +1,7 @@
 use crate::dll_interface::dll_error::DllError;
-use crate::platform_types::{PCSTR, PSTR};
-use crate::utils::copy_to_return_buffer;
+use std::os::raw::c_char;
+use crate::buffer_utils;
+use chacha20poly1305::AeadCore;
 use chacha20poly1305::{
     ChaCha20Poly1305, Nonce,
     aead::{Aead, KeyInit, OsRng},
@@ -26,8 +27,8 @@ fn encrypt_log_message(key: &[u8], plaintext: &str) -> Result<String, DllError> 
 
 #[no_mangle]
 pub extern "C" fn FiSH11_LogEncrypt(
-    plaintext: PCSTR,
-    ret_buffer: PSTR,
+    plaintext: *const c_char,
+    ret_buffer: *mut c_char,
     ret_buffer_size: i32,
 ) -> i32 {
     if plaintext.is_null() {
@@ -46,11 +47,15 @@ pub extern "C" fn FiSH11_LogEncrypt(
         }
     };
 
-    let key_guard = LOGGING_KEY.lock();
+    let key_guard = match LOGGING_KEY.lock() {
+        Ok(g) => g,
+        Err(_) => return DllError::new("Failed to acquire logging key lock").log_and_return_error_code(),
+    };
+
     if let Some(key) = key_guard.as_ref() {
         match encrypt_log_message(key, plaintext_r) {
             Ok(encrypted_text) => {
-                copy_to_return_buffer(&encrypted_text, ret_buffer, ret_buffer_size)
+                unsafe { buffer_utils::write_result(ret_buffer, &encrypted_text) }
             }
             Err(e) => e.log_and_return_error_code(),
         }

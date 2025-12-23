@@ -1,6 +1,6 @@
 use crate::dll_interface::dll_error::DllError;
-use crate::platform_types::{PCSTR, PSTR};
-use crate::utils::copy_to_return_buffer;
+use std::os::raw::c_char;
+use crate::buffer_utils;
 use chacha20poly1305::{
     ChaCha20Poly1305, Nonce,
     aead::{Aead, KeyInit},
@@ -34,9 +34,9 @@ fn decrypt_log_line(key: &[u8], base64_ciphertext: &str) -> Result<String, DllEr
 
 #[no_mangle]
 pub extern "C" fn FiSH11_LogDecryptFile(
-    filepath: PCSTR,
-    ret_buffer: PSTR,
-    ret_buffer_size: i32,
+    filepath: *const c_char,
+    ret_buffer: *mut c_char,
+    _ret_buffer_size: i32,
 ) -> i32 {
     if filepath.is_null() {
         return DllError::new("filepath pointer is null").log_and_return_error_code();
@@ -54,7 +54,11 @@ pub extern "C" fn FiSH11_LogDecryptFile(
         }
     };
 
-    let key_guard = LOGGING_KEY.lock();
+    let key_guard = match LOGGING_KEY.lock() {
+        Ok(g) => g,
+        Err(_) => return DllError::new("Failed to acquire logging key lock").log_and_return_error_code(),
+    };
+
     if let Some(key) = key_guard.as_ref() {
         // Open the file and read line by line
         let file = match File::open(filepath_r) {
@@ -77,22 +81,14 @@ pub extern "C" fn FiSH11_LogDecryptFile(
                                 decrypted_lines.push(decrypted_line);
                             }
                             Err(e) => {
-                                fish_11_core::log_error_with_context!(
-                                    "FiSH11_LogDecryptFile",
-                                    "Failed to decrypt line: {}",
-                                    e
-                                );
+                                eprintln!("FiSH11_LogDecryptFile: Failed to decrypt line: {:?}", e);
                                 // Continue processing other lines
                             }
                         }
                     }
                 }
                 Err(e) => {
-                    fish_11_core::log_error_with_context!(
-                        "FiSH11_LogDecryptFile",
-                        "Failed to read line from file: {}",
-                        e
-                    );
+                    eprintln!("FiSH11_LogDecryptFile: Failed to read line from file: {:?}", e);
                     return DllError::new("Failed to read file").log_and_return_error_code();
                 }
             }
@@ -100,7 +96,7 @@ pub extern "C" fn FiSH11_LogDecryptFile(
 
         // Join all decrypted lines and return them
         let result = decrypted_lines.join("\n");
-        copy_to_return_buffer(&result, ret_buffer, ret_buffer_size)
+        unsafe { buffer_utils::write_result(ret_buffer, &result) }
     } else {
         DllError::new("Logging key not set. Use FiSH11_LogSetKey first.")
             .log_and_return_error_code()

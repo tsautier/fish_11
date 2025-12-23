@@ -56,6 +56,12 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "base64"
+version = "0.21.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
+
+[[package]]
+name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
@@ -410,7 +416,7 @@ checksum = "3a3076410a55c90011c298b04d0cfa770b00fa04e1e3c97d3f6c9de105a03844"
 name = "fish_11"
 version = "11.25.0"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "chacha20poly1305",
  "chrono",
  "configparser 3.1.0",
@@ -450,6 +456,7 @@ name = "fish_11_core"
 version = "11.25.0"
 dependencies = [
  "argon2",
+ "base64 0.21.7",
  "chacha20poly1305",
  "chrono",
  "getrandom 0.3.4",
@@ -461,6 +468,8 @@ dependencies = [
  "regex",
  "scopeguard",
  "secrecy",
+ "serde",
+ "serde_json",
  "sha2",
  "vergen",
  "zeroize",
