@@ -159,7 +159,7 @@ pub extern "C" fn FiSH11_MasterKeyChangePassword(
     old_password: PCSTR,
     new_password: PCSTR,
     ret_buffer: PSTR,
-    ret_buffer_size: i32,
+    _ret_buffer_size: i32,
 ) -> i32 {
     if old_password.is_null() || new_password.is_null() {
         return DllError::new("password pointer is null").log_and_return_error_code();
@@ -221,7 +221,7 @@ pub extern "C" fn FiSH11_MasterKeyChangePassword(
 }
 
 #[no_mangle]
-pub extern "C" fn FiSH11_MasterKeyStatus(ret_buffer: PSTR, ret_buffer_size: i32) -> i32 {
+pub extern "C" fn FiSH11_MasterKeyStatus(ret_buffer: PSTR, _ret_buffer_size: i32) -> i32 {
     if ret_buffer.is_null() {
         return DllError::new("return buffer is null").log_and_return_error_code();
     }

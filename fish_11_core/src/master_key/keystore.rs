@@ -121,6 +121,28 @@ impl Keystore {
         self.key_metadata.get(key_id).map(|metadata| metadata.is_revoked).unwrap_or(false)
     }
 
+    /// Get the master key salt
+    pub fn get_master_salt(&self) -> Option<&str> {
+        Some(&self.master_key_salt)
+    }
+
+    /// Set the master key salt
+    pub fn set_master_salt(&mut self, salt: &str) {
+        self.master_key_salt = salt.to_string();
+    }
+
+    /// Load keystore from default path
+    pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
+        let path = Self::default_path()?;
+        Self::load_from_file(&path)
+    }
+
+    /// Save keystore to default path
+    pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let path = Self::default_path()?;
+        self.save_to_path(&path)
+    }
+
     /// Load keystore from a file
     pub fn load_from_file(path: &PathBuf) -> Result<Self, Box<dyn std::error::Error>> {
         let content = fs::read_to_string(path)?;

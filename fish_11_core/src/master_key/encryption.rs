@@ -1,6 +1,32 @@
 //! Encryption module for master key system
 //!
-//! Handles encryption and decryption of sensitive data using ChaCha20-Poly1305 with counter-based nonces.
+//! # Nonce Strategy
+//!
+//! This module provides infrastructure for counter-based nonce generation via `NonceManager`,
+//! but in practice, **the DLL functions use random nonces** generated with `OsRng` for
+//! ChaCha20-Poly1305 encryption.
+//!
+//! ## Why Random Nonces Are Safe
+//!
+//! ChaCha20-Poly1305 uses 96-bit (12-byte) nonces, which provide sufficient entropy for random
+//! generation:
+//! - Birthday bound: ~2^48 messages before 50% collision probability
+//! - For typical usage (thousands to millions of messages), random nonces are cryptographically safe
+//!
+//! ## Counter-Based Infrastructure
+//!
+//! The `NonceManager` and counter-based approach remain in this module for potential future use
+//! cases where deterministic nonce generation is required (e.g., for specific protocol requirements
+//! or when coordinating with external systems).
+//!
+//! ## Current Implementation
+//!
+//! - **Log encryption** ([fish11_logencrypt.rs](../../fish_11_dll/src/dll_interface/fish11_logencrypt.rs)):
+//!   Uses `ChaCha20Poly1305::generate_nonce(&mut OsRng)` for random nonces
+//! - **Config encryption**: Would use the same random nonce strategy
+//!
+//! If your use case requires deterministic, sequential nonces (e.g., for audit trails or
+//! message ordering), use the `NonceManager` functions below.
 
 use chacha20poly1305::{
     ChaCha20Poly1305, Key, Nonce,
