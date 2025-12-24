@@ -1,5 +1,5 @@
 use crate::dll_interface::dll_error::DllError;
-use crate::utils::copy_to_return_buffer;
+// use buffer_utils for writing results into caller buffer
 use std::os::raw::c_char;
 use chacha20poly1305::{
     ChaCha20Poly1305, Nonce,
@@ -60,7 +60,7 @@ pub extern "C" fn FiSH11_LogDecrypt(
     if let Some(key) = key_guard.as_ref() {
         match decrypt_log_message(key, ciphertext_r) {
             Ok(decrypted_text) => {
-                copy_to_return_buffer(&decrypted_text, ret_buffer, ret_buffer_size)
+                unsafe { crate::buffer_utils::write_result(ret_buffer, &decrypted_text) }
             }
             Err(e) => e.log_and_return_error_code(),
         }

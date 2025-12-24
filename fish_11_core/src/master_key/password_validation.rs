@@ -2,7 +2,7 @@
 //! 
 //! Provides functions to validate the strength of passwords used for master key derivation.
 
-use std::collections::HashSet;
+//use std::collections::HashSet;
 
 /// Minimum password length requirement
 const MIN_PASSWORD_LENGTH: usize = 12;

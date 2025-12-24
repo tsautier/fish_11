@@ -9,7 +9,7 @@ pub mod key_management;
 pub mod models;
 pub mod networks;
 
-pub mod password_change;
+
 
 pub mod channel_key_utils;
 pub mod channel_keys;

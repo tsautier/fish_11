@@ -4,7 +4,7 @@
 //! exposed in memory dumps or swap files.
 
 use secrecy::{ExposeSecret, Secret};
-use zeroize::Zeroize;
+//use zeroize::Zeroize;
 
 /// A secure string that automatically clears its contents when dropped
 pub struct SecureString {

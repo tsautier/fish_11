@@ -3,7 +3,7 @@
 //! Handles secure password change operations while preserving access to encrypted data.
 
 use crate::master_key::derivation::derive_master_key;
-use crate::master_key::encryption::{encrypt_data, decrypt_data, EncryptedBlob};
+//use crate::master_key::encryption::{encrypt_data, decrypt_data, EncryptedBlob};
 
 /// Result type for password change operations
 pub type ChangePasswordResult<T> = Result<T, PasswordChangeError>;

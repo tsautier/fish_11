@@ -18,6 +18,7 @@ static MASTER_KEY_HANDLE: Lazy<Mutex<Option<Vec<u8>>>> = Lazy::new(|| Mutex::new
 
 // Re-export derivation functions
 pub use derivation::{
+    derive_master_key,
     derive_master_key_with_salt,
     derive_config_kek,
     derive_logs_kek,

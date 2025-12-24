@@ -1,6 +1,5 @@
 use crate::dll_interface::dll_error::DllError;
 use crate::platform_types::{PCSTR, PSTR};
-use crate::utils::copy_to_return_buffer;
 use fish_11_core::master_key::derive_master_key; // Use the correct function name
 use std::ffi::CStr;
 
@@ -33,12 +32,15 @@ pub extern "C" fn FiSH11_MasterKeyInit(password: PCSTR, ret_buffer: PSTR, ret_bu
         Ok((key, _salt)) => {  // Extract the key and ignore the salt for now
             // Store the key in memory
             {
-                let mut key_guard = MASTER_KEY.lock();
+                let mut key_guard = match MASTER_KEY.lock() {
+                    Ok(g) => g,
+                    Err(_) => return DllError::new("Failed to acquire master key lock").log_and_return_error_code(),
+                };
                 *key_guard = Some(key);
             }
 
             // Return success message
-            copy_to_return_buffer("1", ret_buffer, ret_buffer_size)
+            unsafe { crate::buffer_utils::write_result(ret_buffer, "1") }
         }
         Err(e) => {
             DllError::new(&format!("Failed to derive master key: {}", e))
@@ -61,12 +63,15 @@ pub extern "C" fn FiSH11_MasterKeyLock(ret_buffer: PSTR, ret_buffer_size: i32) -
 
     // Clear the master key from memory
     {
-        let mut key_guard = MASTER_KEY.lock();
+        let mut key_guard = match MASTER_KEY.lock() {
+            Ok(g) => g,
+            Err(_) => return DllError::new("Failed to acquire master key lock").log_and_return_error_code(),
+        };
         *key_guard = None;
     }
 
     // Return success message
-    copy_to_return_buffer("1", ret_buffer, ret_buffer_size)
+    unsafe { crate::buffer_utils::write_result(ret_buffer, "1") }
 }
 
 #[no_mangle]
@@ -109,12 +114,15 @@ pub extern "C" fn FiSH11_MasterKeyChangePassword(
                 Ok((new_key, _new_salt)) => {  // Extract key and ignore salt
                     // Store the new key in memory
                     {
-                        let mut key_guard = MASTER_KEY.lock();
+                        let mut key_guard = match MASTER_KEY.lock() {
+                            Ok(g) => g,
+                            Err(_) => return DllError::new("Failed to acquire master key lock").log_and_return_error_code(),
+                        };
                         *key_guard = Some(new_key);
                     }
 
                     // Return success message
-                    copy_to_return_buffer("1", ret_buffer, ret_buffer_size)
+                    unsafe { crate::buffer_utils::write_result(ret_buffer, "1") }
                 }
                 Err(e) => {
                     DllError::new(&format!("Failed to derive new master key: {}", e))
@@ -136,8 +144,11 @@ pub extern "C" fn FiSH11_MasterKeyStatus(ret_buffer: PSTR, ret_buffer_size: i32)
         return DllError::new("return buffer is null").log_and_return_error_code();
     }
 
-    let key_guard = MASTER_KEY.lock();
+    let key_guard = match MASTER_KEY.lock() {
+        Ok(g) => g,
+        Err(_) => return DllError::new("Failed to acquire master key lock").log_and_return_error_code(),
+    };
     let status = if key_guard.is_some() { "locked" } else { "unlocked" };
 
-    copy_to_return_buffer(status, ret_buffer, ret_buffer_size)
+    unsafe { crate::buffer_utils::write_result(ret_buffer, status) }
 }
