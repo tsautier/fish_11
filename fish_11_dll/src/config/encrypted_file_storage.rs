@@ -10,7 +10,7 @@ use crate::config::models::{EntryData, FishConfig};
 use crate::error::{FishError, Result};
 //use crate::utils::base64_encode;
 use fish_11_core::master_key::{derive_master_key, derive_config_kek, encrypt_data, decrypt_data, EncryptedBlob};
-use crate::{log_debug, log_error, log_info, log_warn};
+
 
 /// Configuration header for encrypted files
 const ENCRYPTED_CONFIG_HEADER: &str = "# FiSH_11_ENCRYPTED_CONFIG_V1";
@@ -50,25 +50,25 @@ fn is_encrypted_config(config_path: &PathBuf) -> Result<bool> {
 
 /// Load the configuration from an encrypted file or regular INI file
 pub fn load_encrypted_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
-    let config_path = match path_override {
-        Some(path) => path,
+    let config_path = match &path_override {
+        Some(path) => path.clone(),
         None => get_config_path()?,
     };
 
-    log_debug!("load_encrypted_config: config path: {}", config_path.display());
+    crate::log_debug!("load_encrypted_config: config path: {}", config_path.display());
 
     // Check if file exists
     if !config_path.exists() {
-        log_info!("load_encrypted_config: config file does not exist, creating default");
+        crate::log_info!("load_encrypted_config: config file does not exist, creating default");
         return Ok(FishConfig::new());
     }
 
     // Check if the file is encrypted
     if is_encrypted_config(&config_path)? {
-        log_debug!("load_encrypted_config: detected encrypted config file");
+        crate::log_debug!("load_encrypted_config: detected encrypted config file");
         load_encrypted_config_from_file(&config_path)
     } else {
-        log_debug!("load_encrypted_config: detected regular config file");
+        crate::log_debug!("load_encrypted_config: detected regular config file");
         // Fall back to regular loading
         crate::config::file_storage::load_config(path_override)
     }
@@ -116,7 +116,7 @@ pub fn save_encrypted_config(config: &FishConfig, path_override: Option<PathBuf>
         None => get_config_path()?,
     };
 
-    log_debug!("save_encrypted_config: config path: {}", config_path.display());
+    crate::log_debug!("save_encrypted_config: config path: {}", config_path.display());
 
     // Convert the config to a regular INI format first
     let mut ini = Ini::new();

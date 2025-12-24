@@ -26,6 +26,7 @@ pub mod utils;
 
 pub mod buffer_utils;
 pub mod dll_function_utils;
+#[macro_use]
 pub mod logging_macros;
 
 // Unified error handling system (standardized approach)

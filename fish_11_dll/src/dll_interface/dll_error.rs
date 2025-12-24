@@ -58,7 +58,7 @@ impl DllError {
         match &self {
             DllError::NullPointer => MIRC_HALT,
             _ => {
-                eprintln!("DllError: {:?}", self);
+                log::error!("DllError: {:?}", self);
                 MIRC_COMMAND
             }
         }

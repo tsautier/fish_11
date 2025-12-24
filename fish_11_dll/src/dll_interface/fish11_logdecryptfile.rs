@@ -81,14 +81,14 @@ pub extern "C" fn FiSH11_LogDecryptFile(
                                 decrypted_lines.push(decrypted_line);
                             }
                             Err(e) => {
-                                eprintln!("FiSH11_LogDecryptFile: Failed to decrypt line: {:?}", e);
+                                log::error!("FiSH11_LogDecryptFile: Failed to decrypt line: {:?}", e);
                                 // Continue processing other lines
                             }
                         }
                     }
                 }
                 Err(e) => {
-                    eprintln!("FiSH11_LogDecryptFile: Failed to read line from file: {:?}", e);
+                    log::error!("FiSH11_LogDecryptFile: Failed to read line from file: {:?}", e);
                     return DllError::new("Failed to read file").log_and_return_error_code();
                 }
             }

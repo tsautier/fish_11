@@ -1,5 +1,5 @@
 use crate::dll_interface::dll_error::DllError;
-use winapi::shared::ntdef::PCSTR;
+use crate::platform_types::PCSTR;
 use fish_11_core::globals::LOGGING_KEY;
 use std::ffi::CStr;
 
@@ -29,13 +29,13 @@ pub extern "C" fn FiSH11_LogSetKey(key: PCSTR) -> i32 {
 
     // Store the key in the global variable
     {
-        let mut key_guard = LOGGING_KEY.lock();
+        let mut key_guard = match LOGGING_KEY.lock() {
+            Ok(g) => g,
+            Err(_) => return DllError::new("Failed to acquire logging key lock").log_and_return_error_code(),
+        };
         *key_guard = Some(key_bytes);
     }
 
-    fish_11_core::log_info_with_context!(
-        "FiSH11_LogSetKey",
-        "In-memory log encryption key has been set for the current session."
-    );
+    log::info!("FiSH11_LogSetKey: in-memory log encryption key has been set for the current session.");
     0 // Success
 }
