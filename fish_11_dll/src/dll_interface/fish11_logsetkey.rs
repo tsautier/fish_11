@@ -1,6 +1,7 @@
 use crate::dll_interface::dll_error::DllError;
 use crate::platform_types::PCSTR;
 use fish_11_core::globals::LOGGING_KEY;
+use fish_11_core::master_key::derivation::{derive_master_key, derive_logs_kek};
 use std::ffi::CStr;
 
 #[no_mangle]
@@ -17,15 +18,18 @@ pub extern "C" fn FiSH11_LogSetKey(key: PCSTR) -> i32 {
         }
     };
 
-    // Derive a 32-byte key from the input using a simple method
-    // In a real implementation, we'd use a proper KDF like Argon2 or PBKDF2
-    use sha2::Digest;
-    let mut hasher = sha2::Sha256::new();
-    hasher.update(key_r.as_bytes());
-    let hash = hasher.finalize();
-
-    // Convert to fixed-size array
-    let key_bytes: [u8; 32] = hash.into();
+    // Derive a secure logging key using proper KDF (Argon2id + HKDF)
+    // First, derive master key from password
+    let (master_key, _salt) = match derive_master_key(key_r) {
+        Ok(result) => result,
+        Err(e) => {
+            return DllError::new(&format!("Failed to derive master key: {}", e))
+                .log_and_return_error_code();
+        }
+    };
+    
+    // Then derive logging KEK from master key
+    let key_bytes = derive_logs_kek(&master_key);
 
     // Store the key in the global variable
     {

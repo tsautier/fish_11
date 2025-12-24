@@ -1,6 +1,7 @@
 use crate::dll_interface::dll_error::DllError;
 use crate::platform_types::{PCSTR, PSTR};
 use fish_11_core::master_key::derive_master_key; // Use the correct function name
+use fish_11_core::master_key::password_validation::PasswordValidator;
 use std::ffi::CStr;
 
 // Global storage for the master key in memory
@@ -30,6 +31,12 @@ pub extern "C" fn FiSH11_MasterKeyInit(
                 .log_and_return_error_code();
         }
     };
+
+    // Validate password strength before deriving key
+    if let Err(e) = PasswordValidator::validate_password_strength(password_r) {
+        return DllError::new(&format!("Password validation failed: {}", e))
+            .log_and_return_error_code();
+    }
 
     // Derive the master key from the password
     match derive_master_key(password_r) {

@@ -24,12 +24,9 @@ impl SecureString {
 
     /// Clear the contents
     pub fn clear(&mut self) {
-        use zeroize::Zeroize;
-        // Since we can't directly get a mutable reference to the contents inside Secret,
-        // we'll use zeroize's approach for clearing secrets
-        // We'll clone the content to make it mutable, then zeroize it
-        let mut content = self.inner.expose_secret().clone();
-        content.zeroize();
+        // Replace the inner Secret with an empty String
+        // The old Secret will be dropped and its Drop impl will handle zeroization
+        self.inner = Secret::new(String::new());
     }
 }
 
@@ -51,12 +48,9 @@ impl SecureBytes {
 
     /// Clear the contents
     pub fn clear(&mut self) {
-        use zeroize::Zeroize;
-        // Since we can't directly get a mutable reference to the contents inside Secret,
-        // we'll use zeroize's approach for clearing secrets
-        // We'll clone the content to make it mutable, then zeroize it
-        let mut content = self.inner.expose_secret().clone();
-        content.zeroize();
+        // Replace the inner Secret with an empty Vec
+        // The old Secret will be dropped and its Drop impl will handle zeroization
+        self.inner = Secret::new(Vec::new());
     }
 }
 
