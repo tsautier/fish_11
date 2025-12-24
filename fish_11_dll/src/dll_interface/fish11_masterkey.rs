@@ -1,6 +1,8 @@
 use crate::dll_interface::dll_error::DllError;
 use crate::platform_types::{PCSTR, PSTR};
 use fish_11_core::master_key::derive_master_key; // Use the correct function name
+use fish_11_core::master_key::derivation::derive_master_key_with_salt;
+use fish_11_core::master_key::keystore::Keystore;
 use fish_11_core::master_key::password_validation::PasswordValidator;
 use std::ffi::CStr;
 
@@ -40,8 +42,76 @@ pub extern "C" fn FiSH11_MasterKeyInit(
 
     // Derive the master key from the password
     match derive_master_key(password_r) {
-        Ok((key, _salt)) => {
-            // Extract the key and ignore the salt for now
+        Ok((key, salt)) => {
+            // Store the key in memory
+            {
+                let mut key_guard = match MASTER_KEY.lock() {
+                    Ok(g) => g,
+                    Err(_) => {
+                        return DllError::new("Failed to acquire master key lock")
+                            .log_and_return_error_code();
+                    }
+                };
+                *key_guard = Some(key);
+            }
+
+            // Save the salt to keystore for future use
+            let mut keystore = Keystore::new();
+            keystore.set_master_salt(&salt);
+            if let Err(e) = keystore.save() {
+                log::warn!("Failed to save keystore: {}", e);
+            }
+
+            // Return success message
+            unsafe { crate::buffer_utils::write_result(ret_buffer, "1") }
+        }
+        Err(e) => DllError::new(&format!("Failed to derive master key: {}", e))
+            .log_and_return_error_code(),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn FiSH11_MasterKeyUnlock(
+    password: PCSTR,
+    ret_buffer: PSTR,
+    _ret_buffer_size: i32,
+) -> i32 {
+    if password.is_null() {
+        return DllError::new("password pointer is null").log_and_return_error_code();
+    }
+    if ret_buffer.is_null() {
+        return DllError::new("return buffer is null").log_and_return_error_code();
+    }
+
+    let password_str = unsafe { CStr::from_ptr(password) };
+    let password_r = match password_str.to_str() {
+        Ok(s) => s,
+        Err(_) => {
+            return DllError::new("Failed to convert password to string")
+                .log_and_return_error_code();
+        }
+    };
+
+    // Load keystore to get the salt
+    let keystore = match Keystore::load() {
+        Ok(ks) => ks,
+        Err(_) => {
+            // If keystore doesn't exist, treat as first-time init
+            return FiSH11_MasterKeyInit(password, ret_buffer, _ret_buffer_size);
+        }
+    };
+
+    let salt = match keystore.get_master_salt() {
+        Some(s) => s,
+        None => {
+            return DllError::new("No master salt found in keystore")
+                .log_and_return_error_code();
+        }
+    };
+
+    // Derive the master key using the stored salt
+    match derive_master_key_with_salt(password_r, Some(salt)) {
+        Ok((key, _)) => {
             // Store the key in memory
             {
                 let mut key_guard = match MASTER_KEY.lock() {
@@ -63,17 +133,7 @@ pub extern "C" fn FiSH11_MasterKeyInit(
 }
 
 #[no_mangle]
-pub extern "C" fn FiSH11_MasterKeyUnlock(
-    password: PCSTR,
-    ret_buffer: PSTR,
-    ret_buffer_size: i32,
-) -> i32 {
-    // This is the same as FiSH11_MasterKeyInit - it derives and stores the key
-    FiSH11_MasterKeyInit(password, ret_buffer, ret_buffer_size)
-}
-
-#[no_mangle]
-pub extern "C" fn FiSH11_MasterKeyLock(ret_buffer: PSTR, ret_buffer_size: i32) -> i32 {
+pub extern "C" fn FiSH11_MasterKeyLock(ret_buffer: PSTR, _ret_buffer_size: i32) -> i32 {
     if ret_buffer.is_null() {
         return DllError::new("return buffer is null").log_and_return_error_code();
     }

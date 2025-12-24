@@ -10,11 +10,8 @@ pub mod password_change;
 pub mod password_validation;
 pub mod rotation;
 
-use once_cell::sync::Lazy;
-use std::sync::Mutex;
-
-/// Global handle for the master key in memory. The key is kept in memory only when unlocked
-static MASTER_KEY_HANDLE: Lazy<Mutex<Option<Vec<u8>>>> = Lazy::new(|| Mutex::new(None));
+// Note: The master key is stored in fish_11_core::globals::LOGGING_KEY for logging operations
+// and in fish_11_dll::dll_interface::fish11_masterkey::MASTER_KEY for general master key operations
 
 // Re-export derivation functions
 pub use derivation::{
