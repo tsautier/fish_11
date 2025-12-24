@@ -3,6 +3,7 @@ use crate::platform_types::{PCSTR, PSTR};
 use fish_11_core::master_key::derive_master_key; // Use the correct function name
 use fish_11_core::master_key::derivation::derive_master_key_with_salt;
 use fish_11_core::master_key::keystore::Keystore;
+use fish_11_core::master_key::password_change::change_master_password;
 use fish_11_core::master_key::password_validation::PasswordValidator;
 use std::ffi::CStr;
 
@@ -16,7 +17,7 @@ static MASTER_KEY: Lazy<Mutex<Option<[u8; 32]>>> = Lazy::new(|| Mutex::new(None)
 pub extern "C" fn FiSH11_MasterKeyInit(
     password: PCSTR,
     ret_buffer: PSTR,
-    ret_buffer_size: i32,
+    _ret_buffer_size: i32,
 ) -> i32 {
     if password.is_null() {
         return DllError::new("password pointer is null").log_and_return_error_code();
@@ -186,14 +187,29 @@ pub extern "C" fn FiSH11_MasterKeyChangePassword(
         }
     };
 
-    // Verify the old password by attempting to derive the key
-    match derive_master_key(old_password_r) {
-        Ok((_expected_key, _salt)) => {
-            // Extract key and ignore salt
-            // The key derivation worked, so we can proceed to store the new key
-            match derive_master_key(new_password_r) {
-                Ok((new_key, _new_salt)) => {
-                    // Extract key and ignore salt
+    // Load keystore to get the current salt
+    let keystore = match Keystore::load() {
+        Ok(ks) => ks,
+        Err(_) => {
+            return DllError::new("Failed to load keystore - master key may not be initialized")
+                .log_and_return_error_code();
+        }
+    };
+
+    let current_salt = match keystore.get_master_salt() {
+        Some(s) => s,
+        None => {
+            return DllError::new("No master salt found in keystore")
+                .log_and_return_error_code();
+        }
+    };
+
+    // Use the password change function to properly validate and change password
+    match change_master_password(old_password_r, current_salt, new_password_r) {
+        Ok(new_salt) => {
+            // Derive the new key for storage in memory
+            match derive_master_key_with_salt(new_password_r, Some(&new_salt)) {
+                Ok((new_key, _)) => {
                     // Store the new key in memory
                     {
                         let mut key_guard = match MASTER_KEY.lock() {
@@ -206,6 +222,13 @@ pub extern "C" fn FiSH11_MasterKeyChangePassword(
                         *key_guard = Some(new_key);
                     }
 
+                    // Save the new salt to keystore
+                    let mut new_keystore = Keystore::new();
+                    new_keystore.set_master_salt(&new_salt);
+                    if let Err(e) = new_keystore.save() {
+                        log::warn!("Failed to save updated keystore: {}", e);
+                    }
+
                     // Return success message
                     unsafe { crate::buffer_utils::write_result(ret_buffer, "1") }
                 }
@@ -213,10 +236,8 @@ pub extern "C" fn FiSH11_MasterKeyChangePassword(
                     .log_and_return_error_code(),
             }
         }
-        Err(_) => {
-            // Old password was wrong
-            DllError::new("Old password verification failed").log_and_return_error_code()
-        }
+        Err(e) => DllError::new(&format!("Password change failed: {}", e))
+            .log_and_return_error_code(),
     }
 }
 
