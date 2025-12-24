@@ -20,14 +20,14 @@ pub enum PasswordChangeError {
 impl std::fmt::Display for PasswordChangeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PasswordChangeError::CurrentPasswordIncorrect =>
-                write!(f, "Current password is incorrect"),
-            PasswordChangeError::NewPasswordTooWeak(msg) =>
-                write!(f, "New password is too weak: {}", msg),
-            PasswordChangeError::EncryptionFailed(msg) =>
-                write!(f, "Encryption failed: {}", msg),
-            PasswordChangeError::DecryptionFailed(msg) =>
-                write!(f, "Decryption failed: {}", msg),
+            PasswordChangeError::CurrentPasswordIncorrect => {
+                write!(f, "Current password is incorrect")
+            }
+            PasswordChangeError::NewPasswordTooWeak(msg) => {
+                write!(f, "New password is too weak: {}", msg)
+            }
+            PasswordChangeError::EncryptionFailed(msg) => write!(f, "Encryption failed: {}", msg),
+            PasswordChangeError::DecryptionFailed(msg) => write!(f, "Decryption failed: {}", msg),
         }
     }
 }

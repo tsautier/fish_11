@@ -1,12 +1,12 @@
 use crate::dll_interface::dll_error::DllError;
 // use buffer_utils for writing results into caller buffer
-use std::os::raw::c_char;
 use chacha20poly1305::{
     ChaCha20Poly1305, Nonce,
     aead::{Aead, KeyInit},
 };
 use fish_11_core::globals::LOGGING_KEY;
 use std::ffi::CStr;
+use std::os::raw::c_char;
 
 fn decrypt_log_message(key: &[u8], base64_ciphertext: &str) -> Result<String, DllError> {
     let decoded =
@@ -54,14 +54,16 @@ pub extern "C" fn FiSH11_LogDecrypt(
 
     let key_guard = match LOGGING_KEY.lock() {
         Ok(g) => g,
-        Err(_) => return DllError::new("Failed to acquire logging key lock").log_and_return_error_code(),
+        Err(_) => {
+            return DllError::new("Failed to acquire logging key lock").log_and_return_error_code();
+        }
     };
 
     if let Some(key) = key_guard.as_ref() {
         match decrypt_log_message(key, ciphertext_r) {
-            Ok(decrypted_text) => {
-                unsafe { crate::buffer_utils::write_result(ret_buffer, &decrypted_text) }
-            }
+            Ok(decrypted_text) => unsafe {
+                crate::buffer_utils::write_result(ret_buffer, &decrypted_text)
+            },
             Err(e) => e.log_and_return_error_code(),
         }
     } else {

@@ -1,6 +1,5 @@
-use crate::dll_interface::dll_error::DllError;
-use std::os::raw::c_char;
 use crate::buffer_utils;
+use crate::dll_interface::dll_error::DllError;
 use chacha20poly1305::{
     ChaCha20Poly1305, Nonce,
     aead::{Aead, KeyInit},
@@ -9,6 +8,7 @@ use fish_11_core::globals::LOGGING_KEY;
 use std::ffi::CStr;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::os::raw::c_char;
 
 fn decrypt_log_line(key: &[u8], base64_ciphertext: &str) -> Result<String, DllError> {
     let decoded =
@@ -56,7 +56,9 @@ pub extern "C" fn FiSH11_LogDecryptFile(
 
     let key_guard = match LOGGING_KEY.lock() {
         Ok(g) => g,
-        Err(_) => return DllError::new("Failed to acquire logging key lock").log_and_return_error_code(),
+        Err(_) => {
+            return DllError::new("Failed to acquire logging key lock").log_and_return_error_code();
+        }
     };
 
     if let Some(key) = key_guard.as_ref() {
@@ -81,7 +83,10 @@ pub extern "C" fn FiSH11_LogDecryptFile(
                                 decrypted_lines.push(decrypted_line);
                             }
                             Err(e) => {
-                                log::error!("FiSH11_LogDecryptFile: Failed to decrypt line: {:?}", e);
+                                log::error!(
+                                    "FiSH11_LogDecryptFile: Failed to decrypt line: {:?}",
+                                    e
+                                );
                                 // Continue processing other lines
                             }
                         }

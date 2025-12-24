@@ -3,12 +3,12 @@
 //! Handles encryption and decryption of sensitive data using ChaCha20-Poly1305 with counter-based nonces.
 
 use chacha20poly1305::{
-    aead::{Aead, KeyInit},
     ChaCha20Poly1305, Key, Nonce,
+    aead::{Aead, KeyInit},
 };
+use once_cell::sync::Lazy;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
-use once_cell::sync::Lazy;
 
 /// Nonce manager for counter-based nonce generation
 static NONCE_MANAGER: Lazy<Mutex<NonceManager>> = Lazy::new(|| Mutex::new(NonceManager::new()));
@@ -25,12 +25,7 @@ pub struct EncryptedBlob {
 impl EncryptedBlob {
     /// Create a new encrypted blob
     pub fn new(generation: u32, nonce_counter: u64, ciphertext: Vec<u8>) -> Self {
-        Self {
-            version: 1,
-            generation,
-            nonce_counter,
-            ciphertext,
-        }
+        Self { version: 1, generation, nonce_counter, ciphertext }
     }
 
     /// Serialize the encrypted blob to bytes
@@ -45,28 +40,24 @@ impl EncryptedBlob {
 
     /// Deserialize an encrypted blob from bytes
     pub fn from_bytes(data: &[u8]) -> Option<Self> {
-        if data.len() < 13 { // 1 + 4 + 8
+        if data.len() < 13 {
+            // 1 + 4 + 8
             return None;
         }
 
         let version = data[0];
-        
+
         let mut generation_bytes = [0u8; 4];
         generation_bytes.copy_from_slice(&data[1..5]);
         let generation = u32::from_be_bytes(generation_bytes);
-        
+
         let mut counter_bytes = [0u8; 8];
         counter_bytes.copy_from_slice(&data[5..13]);
         let nonce_counter = u64::from_be_bytes(counter_bytes);
 
         let ciphertext = data[13..].to_vec();
 
-        Some(Self {
-            version,
-            generation,
-            nonce_counter,
-            ciphertext,
-        })
+        Some(Self { version, generation, nonce_counter, ciphertext })
     }
 }
 
@@ -80,10 +71,7 @@ pub struct NonceManager {
 
 impl NonceManager {
     pub fn new() -> Self {
-        Self {
-            counters: HashMap::new(),
-            used_nonces: HashMap::new(),
-        }
+        Self { counters: HashMap::new(), used_nonces: HashMap::new() }
     }
 
     /// Get the next nonce for a given key ID
@@ -98,10 +86,7 @@ impl NonceManager {
         *counter += 1;
 
         // Anti-collision check
-        if self.used_nonces
-            .entry(key_id.to_string())
-            .or_insert_with(HashSet::new)
-            .contains(counter)
+        if self.used_nonces.entry(key_id.to_string()).or_insert_with(HashSet::new).contains(counter)
         {
             return Err(format!("Nonce collision detected for key {}", key_id));
         }
@@ -143,7 +128,12 @@ impl NonceManager {
 ///
 /// # Returns
 /// * `Result<EncryptedBlob, String>` - The encrypted blob
-pub fn encrypt_data(data: &[u8], key: &[u8; 32], key_id: &str, generation: u32) -> Result<EncryptedBlob, String> {
+pub fn encrypt_data(
+    data: &[u8],
+    key: &[u8; 32],
+    key_id: &str,
+    generation: u32,
+) -> Result<EncryptedBlob, String> {
     // Create cipher instance
     let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
 
@@ -156,9 +146,8 @@ pub fn encrypt_data(data: &[u8], key: &[u8; 32], key_id: &str, generation: u32) 
     let nonce = Nonce::from_slice(&nonce_bytes);
 
     // Encrypt the data
-    let ciphertext = cipher
-        .encrypt(nonce, data)
-        .map_err(|e| format!("Encryption failed: {}", e))?;
+    let ciphertext =
+        cipher.encrypt(nonce, data).map_err(|e| format!("Encryption failed: {}", e))?;
 
     Ok(EncryptedBlob::new(generation, counter, ciphertext))
 }
@@ -190,10 +179,7 @@ pub fn decrypt_data(blob: &EncryptedBlob, key: &[u8; 32]) -> Result<Vec<u8>, Str
 
 /// Get the current nonce counter for a key ID
 pub fn get_nonce_counter(key_id: &str) -> u64 {
-    NONCE_MANAGER
-        .lock()
-        .map(|manager| manager.get_counter(key_id))
-        .unwrap_or(0)
+    NONCE_MANAGER.lock().map(|manager| manager.get_counter(key_id)).unwrap_or(0)
 }
 
 /// Set the nonce counter for a key ID (used when loading from persistent storage)
@@ -213,10 +199,10 @@ mod tests {
         let key = [1u8; 32];
         let key_id = "test_key_1";
         let generation = 0;
-        
+
         let encrypted = encrypt_data(data, &key, key_id, generation).expect("Encryption failed");
         let decrypted = decrypt_data(&encrypted, &key).expect("Decryption failed");
-        
+
         assert_eq!(data, decrypted.as_slice());
     }
 
@@ -224,10 +210,10 @@ mod tests {
     fn test_nonce_increments() {
         let key_id = "test_key_2";
         let mut manager = NonceManager::new();
-        
+
         let (nonce1, counter1) = manager.get_next_nonce(key_id).unwrap();
         let (nonce2, counter2) = manager.get_next_nonce(key_id).unwrap();
-        
+
         assert_ne!(nonce1, nonce2);
         assert_eq!(counter1 + 1, counter2);
     }
@@ -254,13 +240,13 @@ mod tests {
     fn test_anti_collision() {
         let key_id = "test_key_3";
         let mut manager = NonceManager::new();
-        
+
         // Get first nonce
         let (_nonce1, counter1) = manager.get_next_nonce(key_id).unwrap();
-        
+
         // Try to manually set counter to a used value (should be prevented)
         manager.set_counter(key_id, counter1);
-        
+
         // Get next nonce - should increment from set value
         let (_nonce2, counter2) = manager.get_next_nonce(key_id).unwrap();
         assert_eq!(counter2, counter1 + 1);

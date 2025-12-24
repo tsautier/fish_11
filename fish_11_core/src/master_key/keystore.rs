@@ -1,5 +1,5 @@
 //! Secure keystore for master key system
-//! 
+//!
 //! Handles persistent storage of sensitive data like salts, nonce counters, etc.
 
 use std::collections::HashMap;
@@ -12,23 +12,21 @@ use serde::{Deserialize, Serialize};
 /// Metadata associated with keys
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyMetadata {
-    pub created_at: u64,           // Unix timestamp
-    pub last_used: u64,            // Unix timestamp
-    pub usage_count: u64,          // Number of times used
-    pub message_count: u64,        // Number of messages processed with this key (kept for compatibility)
-    pub data_size_bytes: u64,      // Total data size (bytes) processed with this key
-    pub description: String,       // Description of the key's purpose
-    pub is_revoked: bool,          // Whether the key has been revoked
+    pub created_at: u64,      // Unix timestamp
+    pub last_used: u64,       // Unix timestamp
+    pub usage_count: u64,     // Number of times used
+    pub message_count: u64,   // Number of messages processed with this key (kept for compatibility)
+    pub data_size_bytes: u64, // Total data size (bytes) processed with this key
+    pub description: String,  // Description of the key's purpose
+    pub is_revoked: bool,     // Whether the key has been revoked
 }
 
 impl Default for KeyMetadata {
     fn default() -> Self {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards")
-            .as_secs();
-            
+        let now =
+            SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_secs();
+
         Self {
             created_at: now,
             last_used: now,
@@ -55,13 +53,13 @@ impl KeyMetadata {
 pub struct Keystore {
     /// Salt used for deriving the master key
     pub master_key_salt: String,
-    
+
     /// Nonce counters for different contexts
     pub nonce_counters: HashMap<String, u64>,
-    
+
     /// Metadata for various keys
     pub key_metadata: HashMap<String, KeyMetadata>,
-    
+
     /// File path where this keystore is persisted
     #[serde(skip)]
     pub file_path: Option<PathBuf>,
@@ -74,7 +72,7 @@ impl Keystore {
         let mut salt_bytes = [0u8; 32];
         rand::thread_rng().fill_bytes(&mut salt_bytes);
         let salt = base64::encode(&salt_bytes);
-        
+
         Self {
             master_key_salt: salt,
             nonce_counters: HashMap::new(),
@@ -102,28 +100,25 @@ impl Keystore {
 
     /// Increment the usage count for a key
     pub fn increment_key_usage(&mut self, key_id: &str) {
-        let metadata = self.key_metadata.entry(key_id.to_string()).or_insert_with(KeyMetadata::default);
+        let metadata =
+            self.key_metadata.entry(key_id.to_string()).or_insert_with(KeyMetadata::default);
         metadata.usage_count += 1;
-        
+
         use std::time::{SystemTime, UNIX_EPOCH};
-        metadata.last_used = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards")
-            .as_secs();
+        metadata.last_used =
+            SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_secs();
     }
 
     /// Mark a key as revoked
     pub fn revoke_key(&mut self, key_id: &str) {
-        let metadata = self.key_metadata.entry(key_id.to_string()).or_insert_with(KeyMetadata::default);
+        let metadata =
+            self.key_metadata.entry(key_id.to_string()).or_insert_with(KeyMetadata::default);
         metadata.is_revoked = true;
     }
 
     /// Check if a key is revoked
     pub fn is_key_revoked(&self, key_id: &str) -> bool {
-        self.key_metadata
-            .get(key_id)
-            .map(|metadata| metadata.is_revoked)
-            .unwrap_or(false)
+        self.key_metadata.get(key_id).map(|metadata| metadata.is_revoked).unwrap_or(false)
     }
 
     /// Load keystore from a file
@@ -156,7 +151,7 @@ impl Keystore {
     pub fn default_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
         // Use the same directory as the config file
         use std::env;
-        
+
         match env::var("MIRCDIR") {
             Ok(mirc_path) => {
                 let mut path = PathBuf::from(mirc_path);
@@ -188,13 +183,13 @@ mod tests {
     #[test]
     fn test_nonce_counter() {
         let mut keystore = Keystore::new();
-        
+
         let nonce1 = keystore.get_nonce("test_context");
         assert_eq!(nonce1, 0);
-        
+
         let nonce2 = keystore.get_nonce("test_context");
         assert_eq!(nonce2, 1);
-        
+
         // Different context should have its own counter
         let nonce3 = keystore.get_nonce("another_context");
         assert_eq!(nonce3, 0);
@@ -203,13 +198,13 @@ mod tests {
     #[test]
     fn test_key_metadata() {
         let mut keystore = Keystore::new();
-        
+
         keystore.increment_key_usage("test_key");
         assert_eq!(keystore.key_metadata.get("test_key").unwrap().usage_count, 1);
-        
+
         keystore.increment_key_usage("test_key");
         assert_eq!(keystore.key_metadata.get("test_key").unwrap().usage_count, 2);
-        
+
         keystore.revoke_key("test_key");
         assert!(keystore.is_key_revoked("test_key"));
     }

@@ -31,11 +31,16 @@ pub extern "C" fn FiSH11_LogSetKey(key: PCSTR) -> i32 {
     {
         let mut key_guard = match LOGGING_KEY.lock() {
             Ok(g) => g,
-            Err(_) => return DllError::new("Failed to acquire logging key lock").log_and_return_error_code(),
+            Err(_) => {
+                return DllError::new("Failed to acquire logging key lock")
+                    .log_and_return_error_code();
+            }
         };
         *key_guard = Some(key_bytes);
     }
 
-    log::info!("FiSH11_LogSetKey: in-memory log encryption key has been set for the current session.");
+    log::info!(
+        "FiSH11_LogSetKey: in-memory log encryption key has been set for the current session."
+    );
     0 // Success
 }

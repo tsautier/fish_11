@@ -4,11 +4,11 @@
 
 pub mod derivation;
 pub mod encryption;
-pub mod memory;
 pub mod keystore;
-pub mod rotation;
+pub mod memory;
 pub mod password_change;
 pub mod password_validation;
+pub mod rotation;
 
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
@@ -18,34 +18,22 @@ static MASTER_KEY_HANDLE: Lazy<Mutex<Option<Vec<u8>>>> = Lazy::new(|| Mutex::new
 
 // Re-export derivation functions
 pub use derivation::{
-    derive_master_key,
-    derive_master_key_with_salt,
-    derive_config_kek,
-    derive_logs_kek,
-    derive_export_kek,
-    derive_channel_key,
-    derive_log_key,
+    derive_channel_key, derive_config_kek, derive_export_kek, derive_log_key, derive_logs_kek,
+    derive_master_key, derive_master_key_with_salt,
 };
 
 // Re-export encryption functions
 pub use encryption::{
-    EncryptedBlob,
-    encrypt_data,
-    decrypt_data,
-    get_nonce_counter,
-    set_nonce_counter,
+    EncryptedBlob, decrypt_data, encrypt_data, get_nonce_counter, set_nonce_counter,
 };
 
 // Re-export memory wrappers
 pub use memory::{SecureBytes, SecureString};
 
 // Re-export keystore
-pub use keystore::{Keystore, KeyMetadata};
+pub use keystore::{KeyMetadata, Keystore};
 
 // Re-export rotation
 pub use rotation::{
-    should_rotate_key,
-    calculate_usage_percentages,
-    rotation_warning_message,
-    RotationReason,
+    RotationReason, calculate_usage_percentages, rotation_warning_message, should_rotate_key,
 };

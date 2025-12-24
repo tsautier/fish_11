@@ -3,7 +3,7 @@
 //! Handles the derivation of the master key from a password using Argon2id,
 //! and derivation of subkeys using HKDF with proper context separation.
 
-use argon2::{Argon2, PasswordHasher, Algorithm, Version, Params, password_hash::SaltString};
+use argon2::{Algorithm, Argon2, Params, PasswordHasher, Version, password_hash::SaltString};
 use hkdf::Hkdf;
 use sha2::Sha256;
 
@@ -18,36 +18,40 @@ const HKDF_PREFIX: &str = "fish11:";
 ///
 /// # Returns
 /// * `Result<([u8; 32], String), String>` - The derived 32-byte master key and the salt string
-pub fn derive_master_key_with_salt(password: &str, salt: Option<&str>) -> Result<([u8; 32], String), String> {
+pub fn derive_master_key_with_salt(
+    password: &str,
+    salt: Option<&str>,
+) -> Result<([u8; 32], String), String> {
     use argon2::password_hash::rand_core::OsRng;
 
     // Use provided salt or generate a new one
     let salt_string = if let Some(s) = salt {
-        SaltString::from_b64(s)
-            .map_err(|e| format!("Invalid salt: {}", e))?
+        SaltString::from_b64(s).map_err(|e| format!("Invalid salt: {}", e))?
     } else {
         SaltString::generate(&mut OsRng)
     };
 
     // Create Argon2id instance with parameters
     let params = Params::new(
-        65536, // memory cost (64 MB)
-        3,     // time cost
-        4,     // parallelism
+        65536,    // memory cost (64 MB)
+        3,        // time cost
+        4,        // parallelism
         Some(32), // output length
-    ).map_err(|e| format!("Argon2 params error: {}", e))?;
+    )
+    .map_err(|e| format!("Argon2 params error: {}", e))?;
 
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
 
     // Hash the password
-    let password_hash = argon2.hash_password(password.as_bytes(), salt_string.as_salt())
+    let password_hash = argon2
+        .hash_password(password.as_bytes(), salt_string.as_salt())
         .map_err(|e| format!("Argon2 hashing error: {}", e))?;
 
     // Extract the hash and convert to 32-byte array
     let hash = password_hash.hash.unwrap();
     let hash_bytes = hash.as_bytes();
     let mut key = [0u8; 32];
-    
+
     key.copy_from_slice(hash_bytes);
 
     Ok((key, salt_string.to_string()))
@@ -65,11 +69,11 @@ pub fn derive_master_key(password: &str) -> Result<([u8; 32], String), String> {
 }
 
 /// Derive a subkey from the master key using HKDF
-/// 
+///
 /// # Arguments
 /// * `master_key` - The master key (32 bytes)
 /// * `context` - The context string for HKDF (without prefix, e.g., "config", "logs")
-/// 
+///
 /// # Returns
 /// * `[u8; 32]` - The derived 32-byte subkey
 pub fn derive_subkey(master_key: &[u8; 32], context: &str) -> [u8; 32] {
@@ -120,7 +124,7 @@ mod tests {
 
         let (key1, salt1) = derive_master_key(password).expect("Failed to derive key");
         let (key2, salt2) = derive_master_key(password).expect("Failed to derive key again");
-        
+
         // Keys should be different due to random salt
         assert_ne!(key1, key2);
         assert_ne!(salt1, salt2);
@@ -130,8 +134,9 @@ mod tests {
     fn test_derive_master_key_with_same_salt() {
         let password = "test_password_123";
         let (key1, salt) = derive_master_key(password).expect("Failed to derive key");
-        let (key2, _) = derive_master_key_with_salt(password, Some(&salt)).expect("Failed to derive key with salt");
-        
+        let (key2, _) = derive_master_key_with_salt(password, Some(&salt))
+            .expect("Failed to derive key with salt");
+
         // Keys should be same with same password and salt
         assert_eq!(key1, key2);
     }
@@ -142,10 +147,10 @@ mod tests {
 
         let subkey1 = derive_subkey(&master_key, "config");
         let subkey2 = derive_subkey(&master_key, "logs");
-        
+
         // Subkeys should be different for different contexts
         assert_ne!(subkey1, subkey2);
-        
+
         // Same context should produce same subkey
         let subkey3 = derive_subkey(&master_key, "config");
         assert_eq!(subkey1, subkey3);
@@ -159,7 +164,7 @@ mod tests {
         let config_kek = derive_config_kek(&master_key);
         let logs_kek = derive_logs_kek(&master_key);
         let export_kek = derive_export_kek(&master_key);
-        
+
         // All KEKs should be different
         assert_ne!(config_kek, logs_kek);
         assert_ne!(config_kek, export_kek);
@@ -172,7 +177,7 @@ mod tests {
         let chan1_gen0 = derive_channel_key(&config_kek, "#test", 0);
         let chan1_gen1 = derive_channel_key(&config_kek, "#test", 1);
         let chan2_gen0 = derive_channel_key(&config_kek, "#other", 0);
-        
+
         // Different generations should produce different keys
 
         assert_ne!(chan1_gen0, chan1_gen1);

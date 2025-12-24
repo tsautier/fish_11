@@ -9,8 +9,9 @@ use base64;
 use crate::config::models::{EntryData, FishConfig};
 use crate::error::{FishError, Result};
 //use crate::utils::base64_encode;
-use fish_11_core::master_key::{derive_master_key, derive_config_kek, encrypt_data, decrypt_data, EncryptedBlob};
-
+use fish_11_core::master_key::{
+    EncryptedBlob, decrypt_data, derive_config_kek, derive_master_key, encrypt_data,
+};
 
 /// Configuration header for encrypted files
 const ENCRYPTED_CONFIG_HEADER: &str = "# FiSH_11_ENCRYPTED_CONFIG_V1";
@@ -99,7 +100,10 @@ fn load_encrypted_config_from_file(config_path: &PathBuf) -> Result<FishConfig> 
 
     // Get the master key from memory (this assumes the user has unlocked it)
     // For now, we'll return an error indicating that the config is encrypted but not unlocked
-    return Err(FishError::ConfigError("Encrypted config detected but master key not unlocked. Use FiSH11_MasterKeyUnlock first.".to_string()));
+    return Err(FishError::ConfigError(
+        "Encrypted config detected but master key not unlocked. Use FiSH11_MasterKeyUnlock first."
+            .to_string(),
+    ));
 }
 
 /// Check if master key is available in memory
@@ -178,7 +182,10 @@ pub fn save_encrypted_config(config: &FishConfig, path_override: Option<PathBuf>
 
     // For now, we'll return an error indicating that encryption is not yet fully implemented
     // since we need to actually implement the encryption functionality
-    Err(FishError::ConfigError("Encryption of config not yet fully implemented - requires master key in memory".to_string()))
+    Err(FishError::ConfigError(
+        "Encryption of config not yet fully implemented - requires master key in memory"
+            .to_string(),
+    ))
 }
 
 /// Get the path to the config file
