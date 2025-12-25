@@ -739,14 +739,16 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
 
     // Extract sender nickname (remove : prefix and everything after !)
     let sender_raw = parts[0].trim_start_matches(':');
-    let sender = if let Some(pos) = sender_raw.find('!') { &sender_raw[..pos] } else { sender_raw };
+    let sender_raw = if let Some(pos) = sender_raw.find('!') { &sender_raw[..pos] } else { sender_raw };
+    // Normalize sender to lowercase for consistent key lookup
+    let sender = sender_raw.to_lowercase();
 
     // Extract target (channel or nickname)
     // Format: ":nick!user@host PRIVMSG target :message"
     let target_raw = parts.get(2).unwrap_or(&"");
 
-    // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan..)
-    let target = crate::utils::normalize_target(target_raw);
+    // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan..) and convert to lowercase
+    let target = crate::utils::normalize_target(target_raw).to_lowercase();
 
     // Find the encrypted data after the configured prefix (e.g., ":+FiSH ")
     let fish_marker_search = format!(":{}", encryption_prefix);

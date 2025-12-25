@@ -108,8 +108,8 @@ pub use fish11_logdecryptfile::FiSH11_LogDecryptFile;
 pub use fish11_logencrypt::FiSH11_LogEncrypt;
 pub use fish11_logsetkey::FiSH11_LogSetKey;
 pub use fish11_masterkey::{
-    FiSH11_MasterKeyChangePassword, FiSH11_MasterKeyInit, FiSH11_MasterKeyLock,
-    FiSH11_MasterKeyStatus, FiSH11_MasterKeyUnlock,
+    FiSH11_MasterKeyChangePassword, FiSH11_MasterKeyInit, FiSH11_MasterKeyIsUnlocked,
+    FiSH11_MasterKeyLock, FiSH11_MasterKeyStatus, FiSH11_MasterKeyUnlock,
 };
 pub use fish11_setmanualchannelkey::FiSH11_SetManualChannelKey;
 pub use key_management::{FiSH11_ProcessPublicKey, FiSH11_TestCrypt};

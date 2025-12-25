@@ -1,11 +1,18 @@
-use crate::dll_interface::dll_error::DllError;
-use crate::platform_types::{PCSTR, PSTR};
-use fish_11_core::master_key::derive_master_key; // Use the correct function name
+// Master Key Management Functions for FiSH_11
+// These functions provide secure master key initialization, unlocking, and management
+
+use std::ffi::c_char;
+use std::os::raw::c_int;
+
+use crate::platform_types::{BOOL, HWND};
+use crate::unified_error::DllError;
+use crate::{buffer_utils, dll_function_identifier};
+
+use fish_11_core::master_key::derive_master_key;
 use fish_11_core::master_key::derivation::derive_master_key_with_salt;
 use fish_11_core::master_key::keystore::Keystore;
 use fish_11_core::master_key::password_change::change_master_password;
 use fish_11_core::master_key::password_validation::PasswordValidator;
-use std::ffi::CStr;
 
 // Global storage for the master key in memory
 use once_cell::sync::Lazy;
@@ -13,44 +20,36 @@ use std::sync::Mutex;
 
 static MASTER_KEY: Lazy<Mutex<Option<[u8; 32]>>> = Lazy::new(|| Mutex::new(None));
 
-#[no_mangle]
-pub extern "C" fn FiSH11_MasterKeyInit(
-    password: PCSTR,
-    ret_buffer: PSTR,
-    _ret_buffer_size: i32,
-) -> i32 {
-    if password.is_null() {
-        return DllError::new("password pointer is null").log_and_return_error_code();
+dll_function_identifier!(FiSH11_MasterKeyInit, data, {
+    // Initialize master key with password
+    // Expected input format: <password>
+    // Returns: "1" on success, error message on failure
+    let input = unsafe { buffer_utils::parse_buffer_input(data)? };
+    
+    if input.is_empty() {
+        return Err(DllError::MissingParameter("password".to_string()));
     }
-    if ret_buffer.is_null() {
-        return DllError::new("return buffer is null").log_and_return_error_code();
-    }
-
-    let password_str = unsafe { CStr::from_ptr(password) };
-    let password_r = match password_str.to_str() {
-        Ok(s) => s,
-        Err(_) => {
-            return DllError::new("Failed to convert password to string")
-                .log_and_return_error_code();
-        }
-    };
 
     // Validate password strength before deriving key
-    if let Err(e) = PasswordValidator::validate_password_strength(password_r) {
-        return DllError::new(&format!("Password validation failed: {}", e))
-            .log_and_return_error_code();
+    if let Err(e) = PasswordValidator::validate_password_strength(&input) {
+        return Err(DllError::InvalidInput {
+            param: "password".to_string(),
+            reason: format!("Password validation failed: {}", e),
+        });
     }
 
     // Derive the master key from the password
-    match derive_master_key(password_r) {
+    match derive_master_key(&input) {
         Ok((key, salt)) => {
             // Store the key in memory
             {
                 let mut key_guard = match MASTER_KEY.lock() {
                     Ok(g) => g,
                     Err(_) => {
-                        return DllError::new("Failed to acquire master key lock")
-                            .log_and_return_error_code();
+                        return Err(DllError::InvalidInput {
+                            param: "master_key_lock".to_string(),
+                            reason: "Failed to acquire master key lock".to_string(),
+                        });
                     }
                 };
                 *key_guard = Some(key);
@@ -63,160 +62,182 @@ pub extern "C" fn FiSH11_MasterKeyInit(
                 log::warn!("Failed to save keystore: {}", e);
             }
 
-            // Return success message
-            unsafe { crate::buffer_utils::write_result(ret_buffer, "1") }
+            Ok("1".to_string())
         }
-        Err(e) => DllError::new(&format!("Failed to derive master key: {}", e))
-            .log_and_return_error_code(),
+        Err(e) => Err(DllError::InvalidInput {
+            param: "password".to_string(),
+            reason: format!("Failed to derive master key: {}", e),
+        }),
     }
-}
+});
 
-#[no_mangle]
-pub extern "C" fn FiSH11_MasterKeyUnlock(
-    password: PCSTR,
-    ret_buffer: PSTR,
-    _ret_buffer_size: i32,
-) -> i32 {
-    if password.is_null() {
-        return DllError::new("password pointer is null").log_and_return_error_code();
-    }
-    if ret_buffer.is_null() {
-        return DllError::new("return buffer is null").log_and_return_error_code();
-    }
+dll_function_identifier!(FiSH11_MasterKeyUnlock, data, {
+    // Unlock master key with password
+    // Expected input format: <password>
+    // Returns: "1" on success, error message on failure
+    let input = unsafe { buffer_utils::parse_buffer_input(data)? };
 
-    let password_str = unsafe { CStr::from_ptr(password) };
-    let password_r = match password_str.to_str() {
-        Ok(s) => s,
-        Err(_) => {
-            return DllError::new("Failed to convert password to string")
-                .log_and_return_error_code();
-        }
-    };
+    if input.is_empty() {
+        return Err(DllError::MissingParameter("password".to_string()));
+    }
 
     // Load keystore to get the salt
     let keystore = match Keystore::load() {
         Ok(ks) => ks,
         Err(_) => {
             // If keystore doesn't exist, treat as first-time init
-            return FiSH11_MasterKeyInit(password, ret_buffer, _ret_buffer_size);
+            // Replicate the initialization logic here instead of calling the other function
+            // Validate password strength before deriving key
+            if let Err(e) = PasswordValidator::validate_password_strength(&input) {
+                return Err(DllError::InvalidInput {
+                    param: "password".to_string(),
+                    reason: format!("Password validation failed: {}", e),
+                });
+            }
+
+            // Derive the master key from the password
+            match derive_master_key(&input) {
+                Ok((key, salt)) => {
+                    // Store the key in memory
+                    {
+                        let mut key_guard = match MASTER_KEY.lock() {
+                            Ok(g) => g,
+                            Err(_) => {
+                                return Err(DllError::InvalidInput {
+                                    param: "master_key_lock".to_string(),
+                                    reason: "Failed to acquire master key lock".to_string(),
+                                });
+                            }
+                        };
+                        *key_guard = Some(key);
+                    }
+
+                    // Save the salt to keystore for future use
+                    let mut keystore = Keystore::new();
+                    keystore.set_master_salt(&salt);
+                    if let Err(e) = keystore.save() {
+                        log::warn!("Failed to save keystore: {}", e);
+                    }
+
+                    return Ok("1".to_string());
+                }
+                Err(e) => return Err(DllError::InvalidInput {
+                    param: "password".to_string(),
+                    reason: format!("Failed to derive master key: {}", e),
+                }),
+            }
         }
     };
 
     let salt = match keystore.get_master_salt() {
         Some(s) => s,
         None => {
-            return DllError::new("No master salt found in keystore")
-                .log_and_return_error_code();
+            return Err(DllError::InvalidInput {
+                param: "keystore".to_string(),
+                reason: "No master salt found in keystore".to_string(),
+            });
         }
     };
 
     // Derive the master key using the stored salt
-    match derive_master_key_with_salt(password_r, Some(salt)) {
+    match derive_master_key_with_salt(&input, Some(salt)) {
         Ok((key, _)) => {
             // Store the key in memory
             {
                 let mut key_guard = match MASTER_KEY.lock() {
                     Ok(g) => g,
                     Err(_) => {
-                        return DllError::new("Failed to acquire master key lock")
-                            .log_and_return_error_code();
+                        return Err(DllError::Internal("Failed to acquire master key lock".to_string()));
                     }
                 };
                 *key_guard = Some(key);
             }
 
-            // Return success message
-            unsafe { crate::buffer_utils::write_result(ret_buffer, "1") }
+            Ok("1".to_string())
         }
-        Err(e) => DllError::new(&format!("Failed to derive master key: {}", e))
-            .log_and_return_error_code(),
+        Err(e) => Err(DllError::InvalidInput {
+            param: "password".to_string(),
+            reason: format!("Failed to derive master key: {}", e),
+        }),
     }
-}
+});
 
-#[no_mangle]
-pub extern "C" fn FiSH11_MasterKeyLock(ret_buffer: PSTR, _ret_buffer_size: i32) -> i32 {
-    if ret_buffer.is_null() {
-        return DllError::new("return buffer is null").log_and_return_error_code();
-    }
-
+dll_function_identifier!(FiSH11_MasterKeyLock, data, {
+    // Lock master key (clear from memory)
+    // Returns: "1" on success, error message on failure
     // Clear the master key from memory
     {
         let mut key_guard = match MASTER_KEY.lock() {
             Ok(g) => g,
             Err(_) => {
-                return DllError::new("Failed to acquire master key lock")
-                    .log_and_return_error_code();
+                return Err(DllError::Internal("Failed to acquire master key lock".to_string()));
             }
         };
         *key_guard = None;
     }
 
-    // Return success message
-    unsafe { crate::buffer_utils::write_result(ret_buffer, "1") }
-}
+    Ok("1".to_string())
+});
 
-#[no_mangle]
-pub extern "C" fn FiSH11_MasterKeyChangePassword(
-    old_password: PCSTR,
-    new_password: PCSTR,
-    ret_buffer: PSTR,
-    _ret_buffer_size: i32,
-) -> i32 {
-    if old_password.is_null() || new_password.is_null() {
-        return DllError::new("password pointer is null").log_and_return_error_code();
+dll_function_identifier!(FiSH11_MasterKeyChangePassword, data, {
+    // Change master password
+    // Expected input format: <old_password> <new_password>
+    // Returns: "1" on success, error message on failure
+    let input = unsafe { buffer_utils::parse_buffer_input(data)? };
+    let parts: Vec<&str> = input.splitn(2, ' ').collect();
+    
+    if parts.len() < 2 {
+        return Err(DllError::InvalidInput {
+            param: "input".to_string(),
+            reason: "expected format: <old_password> <new_password>".to_string(),
+        });
     }
-    if ret_buffer.is_null() {
-        return DllError::new("return buffer is null").log_and_return_error_code();
+
+    let old_password = parts[0].trim();
+    let new_password = parts[1].trim();
+
+    if old_password.is_empty() {
+        return Err(DllError::MissingParameter("old_password".to_string()));
+    }
+    if new_password.is_empty() {
+        return Err(DllError::MissingParameter("new_password".to_string()));
     }
 
-    let old_password_str = unsafe { CStr::from_ptr(old_password) };
-    let old_password_r = match old_password_str.to_str() {
-        Ok(s) => s,
-        Err(_) => {
-            return DllError::new("Failed to convert old password to string")
-                .log_and_return_error_code();
-        }
-    };
-
-    let new_password_str = unsafe { CStr::from_ptr(new_password) };
-    let new_password_r = match new_password_str.to_str() {
-        Ok(s) => s,
-        Err(_) => {
-            return DllError::new("Failed to convert new password to string")
-                .log_and_return_error_code();
-        }
-    };
+    // Validate new password strength
+    if let Err(e) = PasswordValidator::validate_password_strength(new_password) {
+        return Err(DllError::InvalidInput {
+            param: "new_password".to_string(),
+            reason: format!("Password validation failed: {}", e),
+        });
+    }
 
     // Load keystore to get the current salt
     let keystore = match Keystore::load() {
         Ok(ks) => ks,
         Err(_) => {
-            return DllError::new("Failed to load keystore - master key may not be initialized")
-                .log_and_return_error_code();
+            return Err(DllError::Internal("Failed to load keystore - master key may not be initialized".to_string()));
         }
     };
 
     let current_salt = match keystore.get_master_salt() {
         Some(s) => s,
         None => {
-            return DllError::new("No master salt found in keystore")
-                .log_and_return_error_code();
+            return Err(DllError::Internal("No master salt found in keystore".to_string()));
         }
     };
 
     // Use the password change function to properly validate and change password
-    match change_master_password(old_password_r, current_salt, new_password_r) {
+    match change_master_password(old_password, current_salt, new_password) {
         Ok(new_salt) => {
             // Derive the new key for storage in memory
-            match derive_master_key_with_salt(new_password_r, Some(&new_salt)) {
+            match derive_master_key_with_salt(new_password, Some(&new_salt)) {
                 Ok((new_key, _)) => {
                     // Store the new key in memory
                     {
                         let mut key_guard = match MASTER_KEY.lock() {
                             Ok(g) => g,
                             Err(_) => {
-                                return DllError::new("Failed to acquire master key lock")
-                                    .log_and_return_error_code();
+                                return Err(DllError::Internal("Failed to acquire master key lock".to_string()));
                             }
                         };
                         *key_guard = Some(new_key);
@@ -229,31 +250,47 @@ pub extern "C" fn FiSH11_MasterKeyChangePassword(
                         log::warn!("Failed to save updated keystore: {}", e);
                     }
 
-                    // Return success message
-                    unsafe { crate::buffer_utils::write_result(ret_buffer, "1") }
+                    Ok("1".to_string())
                 }
-                Err(e) => DllError::new(&format!("Failed to derive new master key: {}", e))
-                    .log_and_return_error_code(),
+                Err(e) => Err(DllError::InvalidInput {
+                    param: "new_password".to_string(),
+                    reason: format!("Failed to derive new master key: {}", e),
+                }),
             }
         }
-        Err(e) => DllError::new(&format!("Password change failed: {}", e))
-            .log_and_return_error_code(),
+        Err(e) => Err(DllError::InvalidInput {
+            param: "old_password".to_string(),
+            reason: format!("Password change failed: {}", e),
+        }),
     }
-}
+});
 
-#[no_mangle]
-pub extern "C" fn FiSH11_MasterKeyStatus(ret_buffer: PSTR, _ret_buffer_size: i32) -> i32 {
-    if ret_buffer.is_null() {
-        return DllError::new("return buffer is null").log_and_return_error_code();
-    }
-
+dll_function_identifier!(FiSH11_MasterKeyStatus, data, {
+    // Get master key status
+    // Returns: "locked" or "unlocked"
     let key_guard = match MASTER_KEY.lock() {
         Ok(g) => g,
         Err(_) => {
-            return DllError::new("Failed to acquire master key lock").log_and_return_error_code();
+            return Err(DllError::Internal("Failed to acquire master key lock".to_string()));
         }
     };
-    let status = if key_guard.is_some() { "locked" } else { "unlocked" };
+    let status = if key_guard.is_some() { "unlocked" } else { "locked" };
 
-    unsafe { crate::buffer_utils::write_result(ret_buffer, status) }
-}
+    Ok(status.to_string())
+});
+
+dll_function_identifier!(FiSH11_MasterKeyIsUnlocked, data, {
+    // Check if master key is unlocked
+    // Returns: "1" if unlocked, "0" if locked
+    let key_guard = match MASTER_KEY.lock() {
+        Ok(g) => g,
+        Err(_) => {
+            return Err(DllError::Internal("Failed to acquire master key lock".to_string()));
+        }
+    };
+    
+    // Return "1" if unlocked (key is Some), "0" if locked (key is None)
+    let result = if key_guard.is_some() { "1" } else { "0" };
+
+    Ok(result.to_string())
+});

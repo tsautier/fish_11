@@ -65,6 +65,7 @@ alias fish11_startup {
 
   ; Get and display core DLL version
   var %raw_version_info = $dll(%Fish11DllFile, FiSH11_GetVersion, $null)
+  
   if (%raw_version_info) {
     ; Parse the raw string: VERSION|BUILD_TYPE
     ; 124 is ASCII for |

@@ -8,4 +8,4 @@ resolver = "2"
 
 [workspace.metadata]
 # Configuration par défaut pour Windows
-default-target = "x86_64-pc-windows-msvc"
+default-target = "i686-pc-windows-msvc"
