@@ -739,16 +739,14 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
 
     // Extract sender nickname (remove : prefix and everything after !)
     let sender_raw = parts[0].trim_start_matches(':');
-    let sender_raw = if let Some(pos) = sender_raw.find('!') { &sender_raw[..pos] } else { sender_raw };
-    // Normalize sender to lowercase for consistent key lookup
-    let sender = sender_raw.to_lowercase();
+    let sender = if let Some(pos) = sender_raw.find('!') { &sender_raw[..pos] } else { sender_raw };
 
     // Extract target (channel or nickname)
     // Format: ":nick!user@host PRIVMSG target :message"
     let target_raw = parts.get(2).unwrap_or(&"");
 
-    // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan..) and convert to lowercase
-    let target = crate::utils::normalize_target(target_raw).to_lowercase();
+    // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan..)
+    let target = crate::utils::normalize_target(target_raw);
 
     // Find the encrypted data after the configured prefix (e.g., ":+FiSH ")
     let fish_marker_search = format!(":{}", encryption_prefix);
@@ -762,10 +760,10 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
     let encrypted_data = line[fish_start..].trim();
 
     // Determine which identifier to use for key lookup
-    // For channels (#, &) : we use the channel name and it's already normalized.
-    // For private messages :  we use the sender's nickname
+    // For channels (#, &) : we use the channel name and normalize to lowercase.
+    // For private messages :  we use the sender's nickname and normalize to lowercase.
     let key_identifier =
-        if target.starts_with('#') || target.starts_with('&') { target } else { sender };
+        if target.starts_with('#') || target.starts_with('&') { target.to_lowercase() } else { sender.to_lowercase() };
 
     log_debug!(
         "Engine: sender={}, target={}, key_identifier={}, encrypted_data_len={}",
@@ -778,14 +776,14 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
     // Try to get the decryption key
     let key = if key_identifier.starts_with('#') || key_identifier.starts_with('&') {
         // For channel messages, try channel key (manual or ratchet-based) first
-        match crate::config::get_channel_key_with_fallback(key_identifier) {
+        match crate::config::get_channel_key_with_fallback(&key_identifier) {
             Ok(k) => {
                 log_debug!("Engine: using channel key for '{}'", key_identifier);
                 k.to_vec() // Convert to vec for compatibility with existing code
             }
             Err(_) => {
                 // If no channel key, try the regular key lookup
-                match crate::config::get_key(key_identifier, network) {
+                match crate::config::get_key(&key_identifier, network) {
                     Ok(k) => {
                         log_debug!("Engine: using regular key for '{}'", key_identifier);
                         k
@@ -798,8 +796,8 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
             }
         }
     } else {
-        // For private messages, use regular key lookup
-        match crate::config::get_key(key_identifier, network) {
+        // For private messages, use regular key lookup with normalized key_identifier
+        match crate::config::get_key(&key_identifier, network) {
             Ok(k) => {
                 log_debug!("Engine: using private key for '{}'", key_identifier);
                 k
