@@ -8,8 +8,8 @@ use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::{buffer_utils, dll_function_identifier};
 
-use fish_11_core::master_key::derive_master_key;
 use fish_11_core::master_key::derivation::derive_master_key_with_salt;
+use fish_11_core::master_key::derive_master_key;
 use fish_11_core::master_key::keystore::Keystore;
 use fish_11_core::master_key::password_change::change_master_password;
 use fish_11_core::master_key::password_validation::PasswordValidator;
@@ -25,7 +25,7 @@ dll_function_identifier!(FiSH11_MasterKeyInit, data, {
     // Expected input format: <password>
     // Returns: "1" on success, error message on failure
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
-    
+
     if input.is_empty() {
         return Err(DllError::MissingParameter("password".to_string()));
     }
@@ -121,10 +121,12 @@ dll_function_identifier!(FiSH11_MasterKeyUnlock, data, {
 
                     return Ok("1".to_string());
                 }
-                Err(e) => return Err(DllError::InvalidInput {
-                    param: "password".to_string(),
-                    reason: format!("Failed to derive master key: {}", e),
-                }),
+                Err(e) => {
+                    return Err(DllError::InvalidInput {
+                        param: "password".to_string(),
+                        reason: format!("Failed to derive master key: {}", e),
+                    });
+                }
             }
         }
     };
@@ -147,7 +149,9 @@ dll_function_identifier!(FiSH11_MasterKeyUnlock, data, {
                 let mut key_guard = match MASTER_KEY.lock() {
                     Ok(g) => g,
                     Err(_) => {
-                        return Err(DllError::Internal("Failed to acquire master key lock".to_string()));
+                        return Err(DllError::Internal(
+                            "Failed to acquire master key lock".to_string(),
+                        ));
                     }
                 };
                 *key_guard = Some(key);
@@ -185,7 +189,7 @@ dll_function_identifier!(FiSH11_MasterKeyChangePassword, data, {
     // Returns: "1" on success, error message on failure
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
     let parts: Vec<&str> = input.splitn(2, ' ').collect();
-    
+
     if parts.len() < 2 {
         return Err(DllError::InvalidInput {
             param: "input".to_string(),
@@ -215,7 +219,9 @@ dll_function_identifier!(FiSH11_MasterKeyChangePassword, data, {
     let keystore = match Keystore::load() {
         Ok(ks) => ks,
         Err(_) => {
-            return Err(DllError::Internal("Failed to load keystore - master key may not be initialized".to_string()));
+            return Err(DllError::Internal(
+                "Failed to load keystore - master key may not be initialized".to_string(),
+            ));
         }
     };
 
@@ -237,7 +243,9 @@ dll_function_identifier!(FiSH11_MasterKeyChangePassword, data, {
                         let mut key_guard = match MASTER_KEY.lock() {
                             Ok(g) => g,
                             Err(_) => {
-                                return Err(DllError::Internal("Failed to acquire master key lock".to_string()));
+                                return Err(DllError::Internal(
+                                    "Failed to acquire master key lock".to_string(),
+                                ));
                             }
                         };
                         *key_guard = Some(new_key);
@@ -288,7 +296,7 @@ dll_function_identifier!(FiSH11_MasterKeyIsUnlocked, data, {
             return Err(DllError::Internal("Failed to acquire master key lock".to_string()));
         }
     };
-    
+
     // Return "1" if unlocked (key is Some), "0" if locked (key is None)
     let result = if key_guard.is_some() { "1" } else { "0" };
 

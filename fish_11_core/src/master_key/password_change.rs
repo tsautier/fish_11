@@ -104,7 +104,11 @@ mod tests {
 
         // Attempt to change the password with the correct salt
         let result = change_master_password(current_pwd, &salt, new_pwd);
-        assert!(result.is_ok(), "Password change should succeed with valid passwords: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Password change should succeed with valid passwords: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -114,7 +118,7 @@ mod tests {
         // we cannot detect wrong passwords at this level.
         let wrong_pwd = "Wr0ng#P@ss!K3y!";
         let new_pwd = "N3w$3cur3#P@ss!";
-        
+
         // Derive with a different password to get a valid salt
         let correct_pwd = "C0rr3ct#P@ss!K3y";
         let (_key, salt) = derive_master_key(correct_pwd).expect("Should derive key");

@@ -340,7 +340,10 @@ mod tests {
         assert_eq!(PasswordValidator::get_strength_rating("password"), "Very Weak");
         // Score of ~70 maps to "Good" (61-80 range)
         let rating = PasswordValidator::get_strength_rating("MyC0mpl3x#P@ss!K");
-        assert!(rating == "Fair" || rating == "Good" || rating == "Strong", 
-            "Expected Fair, Good or Strong, got: {}", rating);
+        assert!(
+            rating == "Fair" || rating == "Good" || rating == "Strong",
+            "Expected Fair, Good or Strong, got: {}",
+            rating
+        );
     }
 }

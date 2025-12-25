@@ -762,8 +762,11 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
     // Determine which identifier to use for key lookup
     // For channels (#, &) : we use the channel name and normalize to lowercase.
     // For private messages :  we use the sender's nickname and normalize to lowercase.
-    let key_identifier =
-        if target.starts_with('#') || target.starts_with('&') { target.to_lowercase() } else { sender.to_lowercase() };
+    let key_identifier = if target.starts_with('#') || target.starts_with('&') {
+        target.to_lowercase()
+    } else {
+        sender.to_lowercase()
+    };
 
     log_debug!(
         "Engine: sender={}, target={}, key_identifier={}, encrypted_data_len={}",
