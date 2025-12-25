@@ -2,9 +2,10 @@
 //!
 //! Handles persistent storage of sensitive data like salts, nonce counters, etc.
 
+
 use std::collections::HashMap;
-use std::fs;
 use std::path::PathBuf;
+use configparser::ini::Ini;
 //use secrecy::{Secret, SecretString};
 use serde::{Deserialize, Serialize};
 //use zeroize::Zeroize;
@@ -49,7 +50,6 @@ impl KeyMetadata {
 }
 
 /// A secure keystore that manages sensitive data
-#[derive(Serialize, Deserialize)]
 pub struct Keystore {
     /// Salt used for deriving the master key
     pub master_key_salt: String,
@@ -61,7 +61,6 @@ pub struct Keystore {
     pub key_metadata: HashMap<String, KeyMetadata>,
 
     /// File path where this keystore is persisted
-    #[serde(skip)]
     pub file_path: Option<PathBuf>,
 }
 
@@ -145,18 +144,71 @@ impl Keystore {
 
     /// Load keystore from a file
     pub fn load_from_file(path: &PathBuf) -> Result<Self, Box<dyn std::error::Error>> {
-        let content = fs::read_to_string(path)?;
-        let mut keystore: Keystore = serde_json::from_str(&content)?;
-        keystore.file_path = Some(path.clone());
+        let mut ini = Ini::new();
+        ini.load(path)?;
+
+        let master_key_salt = ini.get("MasterKey", "salt").unwrap_or_default();
+
+        // Load nonce counters
+        let mut nonce_counters = HashMap::new();
+        if let Some(nonce_section) = ini.get_map_ref().get("NonceCounters") {
+            for (key, value_opt) in nonce_section.iter() {
+                if let Some(value_str) = value_opt {
+                    if let Ok(value) = value_str.parse::<u64>() {
+                        nonce_counters.insert(key.clone(), value);
+                    }
+                }
+            }
+        }
+
+        // Load key metadata
+        let mut key_metadata = HashMap::new();
+        if let Some(metadata_section) = ini.get_map_ref().get("KeyMetadata") {
+            for (key_id, value_opt) in metadata_section.iter() {
+                if let Some(metadata_str) = value_opt {
+                    // Parse metadata from string representation
+                    // Format: "created_at:last_used:usage_count:message_count:data_size_bytes:description:is_revoked"
+                    let parts: Vec<&str> = metadata_str.split(':').collect();
+                    if parts.len() >= 7 {
+                        if let (Ok(created_at), Ok(last_used), Ok(usage_count), Ok(message_count), Ok(data_size_bytes), Ok(is_revoked)) = (
+                            parts[0].parse::<u64>(),
+                            parts[1].parse::<u64>(),
+                            parts[2].parse::<u64>(),
+                            parts[3].parse::<u64>(),
+                            parts[4].parse::<u64>(),
+                            parts[6].parse::<bool>()
+                        ) {
+                            let description = parts[5..].join(":"); // Join remaining parts for description
+                            let metadata = KeyMetadata {
+                                created_at,
+                                last_used,
+                                usage_count,
+                                message_count,
+                                data_size_bytes,
+                                description,
+                                is_revoked,
+                            };
+                            key_metadata.insert(key_id.clone(), metadata);
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut keystore = Keystore {
+            master_key_salt,
+            nonce_counters,
+            key_metadata,
+            file_path: Some(path.clone()),
+        };
+
         Ok(keystore)
     }
 
     /// Save keystore to a file
     pub fn save_to_file(&self) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(ref path) = self.file_path {
-            let content = serde_json::to_string_pretty(self)?;
-            fs::write(path, content)?;
-            Ok(())
+            self.save_to_path(path)
         } else {
             Err("No file path specified for keystore".into())
         }
@@ -164,8 +216,32 @@ impl Keystore {
 
     /// Save keystore to a specific file path
     pub fn save_to_path(&self, path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-        let content = serde_json::to_string_pretty(self)?;
-        fs::write(path, content)?;
+        let mut ini = Ini::new();
+
+        // Save master key salt
+        ini.set("MasterKey", "salt", Some(self.master_key_salt.clone()));
+
+        // Save nonce counters
+        for (context, counter) in &self.nonce_counters {
+            ini.set("NonceCounters", context, Some(counter.to_string()));
+        }
+
+        // Save key metadata
+        for (key_id, metadata) in &self.key_metadata {
+            let metadata_str = format!(
+                "{}:{}:{}:{}:{}:{}:{}",
+                metadata.created_at,
+                metadata.last_used,
+                metadata.usage_count,
+                metadata.message_count,
+                metadata.data_size_bytes,
+                metadata.description,
+                metadata.is_revoked
+            );
+            ini.set("KeyMetadata", key_id, Some(metadata_str));
+        }
+
+        ini.write(path)?;
         Ok(())
     }
 
@@ -177,13 +253,13 @@ impl Keystore {
         match env::var("MIRCDIR") {
             Ok(mirc_path) => {
                 let mut path = PathBuf::from(mirc_path);
-                path.push("fish_11_keystore.json");
+                path.push("fish_11_keystore.ini");
                 Ok(path)
             }
             Err(_) => {
                 // Fallback to current directory
                 let mut path = env::current_dir()?;
-                path.push("fish_11_keystore.json");
+                path.push("fish_11_keystore.ini");
                 Ok(path)
             }
         }
