@@ -46,6 +46,7 @@ dll_function_identifier!(INI_GetBool, data, {
         "encrypt_notice" => config.encrypt_notice,
         "encrypt_action" => config.encrypt_action,
         "no_fish10_legacy" => config.no_fish10_legacy,
+        "fish_prefix" => config.fish_prefix,
         _ => default,
     };
 
@@ -70,6 +71,7 @@ dll_function_identifier!(INI_GetString, data, {
     let value = match key.to_lowercase().as_str() {
         "plain_prefix" => config.plain_prefix,
         "mark_encrypted" => config.mark_encrypted,
+        "encryption_prefix" => config.encryption_prefix,
         _ => default,
     };
 

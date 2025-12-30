@@ -10,6 +10,12 @@ use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION};
 use log::{LevelFilter, SetLoggerError};
 
 use crate::{log_debug, log_info};
+use base64;
+use chacha20poly1305::{
+    ChaCha20Poly1305,
+    aead::{Aead, KeyInit, OsRng},
+};
+use fish_11_core::globals::LOGGING_KEY;
 
 // Ensure initialization happens only once
 static LOGGER_INIT: Once = Once::new();
@@ -60,6 +66,30 @@ impl FileLogger {
     }
 }
 
+impl FileLogger {
+    fn encrypt_log_message(
+        &self,
+        key: &[u8; 32],
+        plaintext: &str,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        let cipher = ChaCha20Poly1305::new_from_slice(key)
+            .map_err(|e| format!("Invalid key length: {}", e))?;
+
+        let nonce =
+            <ChaCha20Poly1305 as chacha20poly1305::aead::AeadCore>::generate_nonce(&mut OsRng);
+
+        let ciphertext = cipher
+            .encrypt(&nonce, plaintext.as_bytes())
+            .map_err(|e| format!("Encryption failed: {}", e))?;
+
+        // Combine nonce and ciphertext, then encode as base64
+        let mut result = nonce.to_vec();
+        result.extend_from_slice(&ciphertext);
+
+        Ok(base64::encode(&result))
+    }
+}
+
 impl log::Log for FileLogger {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
         metadata.level() <= self.level
@@ -68,7 +98,8 @@ impl log::Log for FileLogger {
     fn log(&self, record: &log::Record) {
         if self.enabled(record.metadata()) {
             let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
-            let log_message = format!(
+
+            let plaintext_message = format!(
                 "[{}] {} [{}:{}] {}\n",
                 timestamp,
                 record.level(),
@@ -77,7 +108,36 @@ impl log::Log for FileLogger {
                 record.args()
             );
 
-            self.write_to_file(&log_message);
+            // Check if logging encryption is enabled by checking for a key
+            let encrypted_message = {
+                let key_guard = match LOGGING_KEY.lock() {
+                    Ok(guard) => guard,
+                    Err(_) => {
+                        // If we can't acquire the lock, log unencrypted
+                        self.write_to_file(&plaintext_message);
+                        return;
+                    }
+                };
+
+                if let Some(ref key_bytes) = *key_guard {
+                    // Encrypt the log message
+                    match self.encrypt_log_message(key_bytes, &plaintext_message) {
+                        Ok(encrypted_data) => {
+                            // Prefix encrypted logs with a special marker
+                            format!("[ENCRYPTED] {}\n", encrypted_data)
+                        }
+                        Err(_) => {
+                            // If encryption fails, log unencrypted as fallback
+                            plaintext_message.clone()
+                        }
+                    }
+                } else {
+                    // No key set, log unencrypted
+                    plaintext_message.clone()
+                }
+            };
+
+            self.write_to_file(&encrypted_message);
         }
     }
 
@@ -123,17 +183,19 @@ pub fn init_logger(level: LevelFilter) -> Result<(), SetLoggerError> {
             }
 
             match get_log_file_path() {
-                Ok(log_path) => {                        match OpenOptions::new().create(true).append(true).open(&log_path) {
+                Ok(log_path) => {
+                    match OpenOptions::new().create(true).append(true).open(&log_path) {
                         Ok(log_file) => {
                             let logger = Box::new(FileLogger::new(effective_level, log_file));
 
                             match log::set_boxed_logger(logger) {
-                                Ok(_) => {                                    log::set_max_level(level);                                    LOGGER_INITIALIZED = true;
+                                Ok(_) => {
+                                    log::set_max_level(level);                                    LOGGER_INITIALIZED = true;
                                     // If effective level differs from requested, set max level accordingly
                                     log::set_max_level(effective_level);
 
                                     // Log to file only, no console output
-                                    log_info!("*********** *********** FiSH_11 core DLL logger initialized *************** ***********");
+                                    log_info!("*********** *********** FiSH_11 : core dll logger initialized *************** ***********");
 
                                     // Log the initialization
                                     log_info!(
@@ -146,12 +208,15 @@ pub fn init_logger(level: LevelFilter) -> Result<(), SetLoggerError> {
                                         log_info!("Current working directory: {}", cwd.display());
                                     }
                                     log_info!("FiSH_11 DLL version: {}", BUILD_VERSION);
+
                                     log_info!(
                                         "Build date: {}, Build time: {}",
                                         BUILD_DATE.as_str(),
                                         BUILD_TIME.as_str()
                                     );
-                                }                                Err(e) => {
+                                }
+
+                                Err(e) => {
                                     // Don't output to console, just return error
                                     result = Err(e);
                                 }
@@ -183,7 +248,7 @@ pub fn log_module_init(module_name: &str, version: &str) {
     if is_logger_initialized() {
         log_info!("Module initialized: {} (version: {})", module_name, version);
         log_debug!(
-            "Module initialization details - Build date: {}, Build time: {}",
+            "Module initialization details - build date: {}, build time: {}",
             BUILD_DATE.as_str(),
             BUILD_TIME.as_str()
         );

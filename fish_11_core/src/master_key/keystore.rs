@@ -2,10 +2,9 @@
 //!
 //! Handles persistent storage of sensitive data like salts, nonce counters, etc.
 
-
+use configparser::ini::Ini;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use configparser::ini::Ini;
 //use secrecy::{Secret, SecretString};
 use serde::{Deserialize, Serialize};
 //use zeroize::Zeroize;
@@ -170,13 +169,20 @@ impl Keystore {
                     // Format: "created_at:last_used:usage_count:message_count:data_size_bytes:description:is_revoked"
                     let parts: Vec<&str> = metadata_str.split(':').collect();
                     if parts.len() >= 7 {
-                        if let (Ok(created_at), Ok(last_used), Ok(usage_count), Ok(message_count), Ok(data_size_bytes), Ok(is_revoked)) = (
+                        if let (
+                            Ok(created_at),
+                            Ok(last_used),
+                            Ok(usage_count),
+                            Ok(message_count),
+                            Ok(data_size_bytes),
+                            Ok(is_revoked),
+                        ) = (
                             parts[0].parse::<u64>(),
                             parts[1].parse::<u64>(),
                             parts[2].parse::<u64>(),
                             parts[3].parse::<u64>(),
                             parts[4].parse::<u64>(),
-                            parts[6].parse::<bool>()
+                            parts[6].parse::<bool>(),
                         ) {
                             let description = parts[5..].join(":"); // Join remaining parts for description
                             let metadata = KeyMetadata {

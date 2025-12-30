@@ -361,7 +361,11 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
 
     // Save [NickNetworks] section
     let nick_section = "NickNetworks";
-    for (k, v) in &config.nick_networks {
+    // Sort entries by key to ensure consistent order in the INI file
+    let mut sorted_nick_networks: Vec<(&String, &String)> = config.nick_networks.iter().collect();
+    sorted_nick_networks.sort_by(|a, b| a.0.cmp(b.0));
+
+    for (k, v) in sorted_nick_networks {
         ini.set(nick_section, k, Some(v.clone()));
     }
 
@@ -391,7 +395,11 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
     let dates_section = "Dates";
 
     // Save the new format entries (with network information)
-    for (entry_key, entry_data) in &config.entries {
+    // Sort entries by key to ensure consistent order in the INI file
+    let mut sorted_entries: Vec<(&String, &EntryData)> = config.entries.iter().collect();
+    sorted_entries.sort_by(|a, b| a.0.cmp(b.0));
+
+    for (entry_key, entry_data) in sorted_entries {
         // The entry_key is already in "name@network" format.
         // It is now a key in a section, so special characters are not a problem.
         if let Some(key_val) = &entry_data.key {
