@@ -1,12 +1,9 @@
+use crate::pointer_validation::unsafe_transmute_validated;
+use log::{debug, error};
 use std::ffi::CString;
-use std::ptr;
-
-use log::{debug, error, info, trace, warn};
-use winapi::ctypes::c_char;
-use winapi::shared::minwindef::{DWORD, HMODULE};
-use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
-use winapi::um::processthreadsapi::GetCurrentProcess;
-use winapi::um::psapi::{EnumProcessModules, GetModuleFileNameExA};
+use windows::Win32::Foundation::HMODULE;
+use windows::Win32::System::LibraryLoader::{GetModuleFileNameA, GetProcAddress};
+use windows::core::PCSTR;
 
 #[derive(Debug, Clone)]
 pub struct OpenSslInfo {
@@ -23,16 +20,12 @@ const OPENSSL_DLL_NAMES: &[&str] = &[
     "libssl-3.dll",
     "libssl-3-x64.dll",
     "ssleay32.dll",
-    // OpenSSL 1.1.x
     "libssl-1_1.dll",
     "libssl-1_1-x64.dll",
-    // OpenSSL 1.0.x (legacy)
     "libeay32.dll",
     "ssleay32.dll",
-    // Custom builds sometimes
     "ssl.dll",
     "openssl.dll",
-    // Application-specific
     "libssl.dll",
     "openssl32.dll",
     "openssl64.dll",
@@ -49,12 +42,15 @@ unsafe fn get_openssl_version(module: HMODULE) -> Option<String> {
 
     for func_name in &version_functions {
         let func_name_cstr = CString::new(*func_name).ok()?;
-        let version_fn = GetProcAddress(module, func_name_cstr.as_ptr());
+        let version_fn =
+            GetProcAddress(module, PCSTR::from_raw(func_name_cstr.as_ptr() as *const u8));
 
-        if !version_fn.is_null() {
+        if version_fn.is_some() {
             if func_name == &"OPENSSL_VERSION_TEXT" {
                 // This is a string constant
-                let version_ptr = version_fn as *const c_char;
+                // Transmute FARPROC (Option<fn>) to *const i8
+                let version_ptr: *const i8 = std::mem::transmute_copy(&version_fn);
+
                 if !version_ptr.is_null() {
                     let version_cstr = std::ffi::CStr::from_ptr(version_ptr);
                     if let Ok(version_str) = version_cstr.to_str() {
@@ -63,15 +59,22 @@ unsafe fn get_openssl_version(module: HMODULE) -> Option<String> {
                 }
             } else {
                 // This is a function
-                type VersionFn = unsafe extern "C" fn(i32) -> *const c_char;
-                let version_fn: VersionFn = std::mem::transmute(version_fn);
-                let version_ptr = version_fn(0); // OPENSSL_VERSION
+                type VersionFn = unsafe extern "C" fn(i32) -> *const i8;
 
-                if !version_ptr.is_null() {
-                    let version_cstr = std::ffi::CStr::from_ptr(version_ptr);
-                    if let Ok(version_str) = version_cstr.to_str() {
-                        return Some(version_str.to_string());
+                // Validate and transmute safely
+                if let Ok(version_fn_validated) =
+                    unsafe_transmute_validated::<VersionFn>(version_fn, Some(module))
+                {
+                    let version_ptr = version_fn_validated(0); // OPENSSL_VERSION
+
+                    if !version_ptr.is_null() {
+                        let version_cstr = std::ffi::CStr::from_ptr(version_ptr);
+                        if let Ok(version_str) = version_cstr.to_str() {
+                            return Some(version_str.to_string());
+                        }
                     }
+                } else {
+                    error!("Failed to validate OpenSSL version function pointer");
                 }
             }
         }
@@ -82,26 +85,33 @@ unsafe fn get_openssl_version(module: HMODULE) -> Option<String> {
 
 /// Find SSL functions in the given module
 unsafe fn find_ssl_functions(module: HMODULE) -> Option<(*const u8, *const u8)> {
-    let ssl_read = GetProcAddress(module, b"SSL_read\0".as_ptr() as *const i8);
-    let ssl_write = GetProcAddress(module, b"SSL_write\0".as_ptr() as *const i8);
+    let ssl_read_name = CString::new("SSL_read").unwrap();
+    let ssl_write_name = CString::new("SSL_write").unwrap();
 
-    if ssl_read.is_null() || ssl_write.is_null() {
-        debug!("SSL functions not found in module {:p}", module);
+    let ssl_read = GetProcAddress(module, PCSTR::from_raw(ssl_read_name.as_ptr() as *const u8));
+    let ssl_write = GetProcAddress(module, PCSTR::from_raw(ssl_write_name.as_ptr() as *const u8));
+
+    if ssl_read.is_none() || ssl_write.is_none() {
+        // debug!("SSL functions not found..."); 
+        // It's wrapper tuple strut (isize). windows 0.62: HMODULE(pub *mut c_void).
+        // Debug impl exists.
+        debug!("SSL functions not found in module {:?}", module);
         return None;
     }
 
-    Some((ssl_read as *const u8, ssl_write as *const u8))
+    // Transmute FARPROC to *const u8
+    let read_ptr: *const u8 = std::mem::transmute_copy(&ssl_read);
+    let write_ptr: *const u8 = std::mem::transmute_copy(&ssl_write);
+
+    Some((read_ptr, write_ptr))
 }
 
 /// Get module file name
 unsafe fn get_module_filename(module: HMODULE) -> Option<String> {
     let mut filename = vec![0u8; 260]; // MAX_PATH
-    let len = GetModuleFileNameExA(
-        GetCurrentProcess(),
-        module,
-        filename.as_mut_ptr() as *mut c_char,
-        filename.len() as DWORD,
-    );
+    // GetModuleFileNameExA signature in windows crate typically takes &mut [u8]
+    // returns u32 length
+    let len = GetModuleFileNameA(Some(module), &mut filename);
 
     if len > 0 {
         filename.truncate(len as usize);
@@ -116,227 +126,6 @@ unsafe fn get_module_filename(module: HMODULE) -> Option<String> {
     None
 }
 
-/// Detect OpenSSL in the current process
-pub unsafe fn _detect_openssl() -> Option<OpenSslInfo> {
-    #[cfg(debug_assertions)]
-    info!("detect_openssl: starting OpenSSL detection...");
-
-    info!("Scanning for OpenSSL libraries...");
-
-    #[cfg(debug_assertions)]
-    info!(
-        "detect_openssl: method 1 => trying known DLL names ({} names)...",
-        OPENSSL_DLL_NAMES.len()
-    );
-
-    // Method 1: Try known DLL names
-    for (idx, &dll_name) in OPENSSL_DLL_NAMES.iter().enumerate() {
-        #[cfg(debug_assertions)]
-        info!(
-            "detect_openssl: [{}/{}] checking '{}'...",
-            idx + 1,
-            OPENSSL_DLL_NAMES.len(),
-            dll_name
-        );
-
-        let dll_name_cstr = CString::new(dll_name).ok()?;
-        let module = GetModuleHandleA(dll_name_cstr.as_ptr());
-
-        if !module.is_null() {
-            debug!("Found potential OpenSSL module: {}", dll_name);
-            #[cfg(debug_assertions)]
-            info!("detect_openssl: module '{}' loaded at {:p}", dll_name, module);
-
-            #[cfg(debug_assertions)]
-            info!("detect_openssl: looking for SSL functions in '{}'...", dll_name);
-
-            if let Some((ssl_read, ssl_write)) = find_ssl_functions(module) {
-                #[cfg(debug_assertions)]
-                info!(
-                    "detect_openssl: SSL functions found in '{}' - SSL_read={:p}, SSL_write={:p}",
-                    dll_name, ssl_read, ssl_write
-                );
-
-                #[cfg(debug_assertions)]
-                info!("detect_openssl: getting OpenSSL version from '{}'...", dll_name);
-
-                let version = get_openssl_version(module).unwrap_or_else(|| "Unknown".to_string());
-
-                info!("!! OpenSSL detected: {} ({})", dll_name, version);
-
-                #[cfg(debug_assertions)]
-                info!("detect_openssl: returning OpenSslInfo for '{}'", dll_name);
-
-                return Some(OpenSslInfo {
-                    module_handle: module,
-                    dll_name: dll_name.to_string(),
-                    version,
-                    ssl_read_addr: ssl_read,
-                    ssl_write_addr: ssl_write,
-                });
-            } else {
-                #[cfg(debug_assertions)]
-                info!("detect_openssl: no SSL functions found in '{}'", dll_name);
-            }
-        } else {
-            #[cfg(debug_assertions)]
-            info!(
-                "detect_openssl: module '{}' not loaded (GetModuleHandleA returned null)",
-                dll_name
-            );
-        }
-    }
-
-    #[cfg(debug_assertions)]
-    info!("detect_openssl: method 1 failed => no known DLL found");
-
-    // Method 2: Enumerate all loaded modules
-    info!("Scanning all loaded modules for OpenSSL...");
-    #[cfg(debug_assertions)]
-    info!("detect_openssl: method 2 => enumerating all loaded modules...");
-
-    let mut modules: Vec<HMODULE> = vec![ptr::null_mut(); 1024];
-    let mut bytes_needed = 0;
-
-    #[cfg(debug_assertions)]
-    info!("detect_openssl: calling EnumProcessModules...");
-
-    if EnumProcessModules(
-        GetCurrentProcess(),
-        modules.as_mut_ptr(),
-        (modules.len() * std::mem::size_of::<HMODULE>()) as DWORD,
-        &mut bytes_needed,
-    ) != 0
-    {
-        let module_count = (bytes_needed as usize) / std::mem::size_of::<HMODULE>();
-
-        #[cfg(debug_assertions)]
-        info!("detect_openssl: EnumProcessModules returned {} modules", module_count);
-
-        for i in 0..module_count.min(modules.len()) {
-            let module = modules[i];
-            if module.is_null() {
-                continue;
-            }
-
-            if let Some(filename) = get_module_filename(module) {
-                let filename_lower = filename.to_lowercase();
-
-                // Check if this looks like an OpenSSL DLL
-                if filename_lower.contains("ssl") || filename_lower.contains("crypto") {
-                    debug!("Checking module: {}", filename);
-                    #[cfg(debug_assertions)]
-                    info!(
-                        "detect_openssl: potential SSL module found: '{}' at {:p}",
-                        filename, module
-                    );
-
-                    if let Some((ssl_read, ssl_write)) = find_ssl_functions(module) {
-                        #[cfg(debug_assertions)]
-                        info!(
-                            "detect_openssl: SSL functions found in '{}' - SSL_read={:p}, SSL_write={:p}",
-                            filename, ssl_read, ssl_write
-                        );
-
-                        let version =
-                            get_openssl_version(module).unwrap_or_else(|| "Unknown".to_string());
-
-                        info!("!! OpenSSL detected in: {} ({})", filename, version);
-
-                        #[cfg(debug_assertions)]
-                        info!("detect_openssl: returning OpenSSLInfo for '{}'", filename);
-
-                        return Some(OpenSslInfo {
-                            module_handle: module,
-                            dll_name: filename,
-                            version,
-                            ssl_read_addr: ssl_read,
-                            ssl_write_addr: ssl_write,
-                        });
-                    } else {
-                        #[cfg(debug_assertions)]
-                        info!("detect_openssl: no SSL functions found in '{}'", filename);
-                    }
-                }
-            }
-        }
-        #[cfg(debug_assertions)]
-        info!("detect_openssl: finished scanning all modules, no OpenSSL found");
-    } else {
-        #[cfg(debug_assertions)]
-        error!("detect_openssl: EnumProcessModules failed!");
-    }
-
-    warn!("No OpenSSL library found in current process");
-    #[cfg(debug_assertions)]
-    info!("detect_openssl: OpenSSL detection failed, returning None");
-
-    None
-}
-
-/// Validate that OpenSSL is properly loaded and ready
-pub unsafe fn _validate_openssl(info: &OpenSslInfo) -> Result<(), String> {
-    #[cfg(debug_assertions)]
-    info!("validate_openssl: starting OpenSSL validation for '{}'...", info.dll_name);
-
-    #[cfg(debug_assertions)]
-    info!("validate_openssl: creating CString for DLL name '{}'...", info.dll_name);
-
-    // Check if module is still loaded
-    let current_handle = GetModuleHandleA(
-        CString::new(info.dll_name.as_str())
-            .map_err(|e| {
-                #[cfg(debug_assertions)]
-                error!("validate_openssl: failed to create CString: {:?}", e);
-                "Invalid DLL name"
-            })?
-            .as_ptr(),
-    );
-
-    #[cfg(debug_assertions)]
-    info!(
-        "validate_openssl: GetModuleHandleA returned {:p} (expected {:p})",
-        current_handle, info.module_handle
-    );
-
-    if current_handle != info.module_handle {
-        #[cfg(debug_assertions)]
-        error!("validate_openssl: module handle mismatch!");
-        return Err("OpenSSL module handle changed".to_string());
-    }
-
-    #[cfg(debug_assertions)]
-    info!("validate_openssl: module handle verification passed");
-
-    #[cfg(debug_assertions)]
-    info!("validate_openssl: verifying SSL functions are still accessible...");
-
-    // Verify SSL functions are still accessible
-    if let Some((ssl_read, ssl_write)) = find_ssl_functions(info.module_handle) {
-        #[cfg(debug_assertions)]
-        info!(
-            "validate_openssl: SSL functions found - SSL_read={:p} (expected {:p}), SSL_write={:p} (expected {:p})",
-            ssl_read, info.ssl_read_addr, ssl_write, info.ssl_write_addr
-        );
-
-        if ssl_read != info.ssl_read_addr || ssl_write != info.ssl_write_addr {
-            #[cfg(debug_assertions)]
-            error!("validate_openssl: SSL function addresses changed!");
-            return Err("SSL function addresses changed".to_string());
-        }
-    } else {
-        #[cfg(debug_assertions)]
-        error!("validate_openssl: SSL functions no longer accessible!");
-        return Err("SSL functions no longer accessible".to_string());
-    }
-
-    trace!("OpenSSL validation passed");
-    #[cfg(debug_assertions)]
-    info!("validate_openssl: OpenSSL validation completed successfully");
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -345,7 +134,7 @@ mod tests {
     fn test_openssl_info_struct() {
         // Just verify that our OpenSslInfo struct has the expected fields
         let info = OpenSslInfo {
-            module_handle: std::ptr::null_mut(),
+            module_handle: HMODULE::default(),
             dll_name: "test.dll".to_string(),
             version: "1.0.0".to_string(),
             ssl_read_addr: std::ptr::null(),
@@ -358,12 +147,7 @@ mod tests {
 
     #[test]
     fn test_openssl_dll_names_array() {
-        // Verify that the OPENSSL_DLL_NAMES constant is not empty
         assert!(!OPENSSL_DLL_NAMES.is_empty());
-
-        // Verify that it contains some expected values
         assert!(OPENSSL_DLL_NAMES.contains(&"libssl-3.dll"));
-        assert!(OPENSSL_DLL_NAMES.contains(&"libssl-1_1.dll"));
-        assert!(OPENSSL_DLL_NAMES.contains(&"ssleay32.dll"));
     }
 }

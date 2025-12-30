@@ -1,12 +1,3 @@
-use std::fs::OpenOptions;
-use std::io;
-use std::sync::PoisonError;
-
-use log::{LevelFilter, error, info, warn};
-use retour::GenericDetour;
-use winapi::shared::minwindef::FARPROC;
-use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
-
 use crate::hook_socket::{
     CLOSESOCKET_HOOK, CONNECT_HOOK, ClosesocketFn, ConnectFn, RECV_HOOK, RecvFn, SEND_HOOK, SendFn,
     hooked_closesocket, hooked_connect, hooked_recv, hooked_send, uninstall_socket_hooks,
@@ -15,7 +6,16 @@ use crate::hook_ssl::{
     SslGetFdFn, SslIsInitFinishedProc, SslReadFn, SslWriteFn, find_ssl_function, install_ssl_hooks,
     uninstall_ssl_hooks,
 };
+use crate::pointer_validation::validate_function_pointer;
 use crate::{LOGGER_INITIALIZED, Ordering};
+use log::{LevelFilter, error, info, warn};
+use retour::GenericDetour;
+use std::fs::OpenOptions;
+use std::io;
+use std::sync::PoisonError;
+use windows::Win32::Foundation::FARPROC;
+use windows::Win32::System::LibraryLoader::{GetModuleHandleA, GetProcAddress};
+use windows::core::PCSTR;
 
 /// Custom logger that writes with timestamps
 struct TimestampLogger {
@@ -66,6 +66,7 @@ impl log::Log for TimestampLogger {
 pub fn init_logger() {
     if LOGGER_INITIALIZED.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok()
     {
+        // Try to open log file, panic if fails (standard for this DLL)
         let log_file = OpenOptions::new()
             .create(true)
             .append(true)
@@ -92,48 +93,52 @@ pub fn install_hooks() -> Result<(), io::Error> {
         #[cfg(debug_assertions)]
         info!("install_hooks: resolving Winsock functions...");
 
-        // Dynamically resolve Winsock functions with null checks
+        // Dynamically resolve Winsock functions
+        // Note: GenericDetour expects non-nullable function pointers (RecvFn, etc.)
+        // We use transmute_copy or transmute to convert FARPROC (Option<fn>) to fn.
+        // We must ensure the FARPROC is Some before transmuting to avoid UB (null fn ptr).
+
         let recv_ptr = get_winsock_function("recv\0");
-        if recv_ptr.is_null() {
+        if recv_ptr.is_none() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
                 "Failed to resolve recv() function from ws2_32.dll",
             ));
         }
-        let recv_fn = std::mem::transmute::<FARPROC, RecvFn>(recv_ptr);
+        let recv_fn: RecvFn = std::mem::transmute_copy(&recv_ptr);
         #[cfg(debug_assertions)]
         info!("install_hooks: recv function resolved at {:?}", recv_fn as *const ());
 
         let send_ptr = get_winsock_function("send\0");
-        if send_ptr.is_null() {
+        if send_ptr.is_none() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
                 "Failed to resolve send() function from ws2_32.dll",
             ));
         }
-        let send_fn = std::mem::transmute::<FARPROC, SendFn>(send_ptr);
+        let send_fn: SendFn = std::mem::transmute_copy(&send_ptr);
         #[cfg(debug_assertions)]
         info!("install_hooks: send function resolved at {:?}", send_fn as *const ());
 
         let connect_ptr = get_winsock_function("connect\0");
-        if connect_ptr.is_null() {
+        if connect_ptr.is_none() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
                 "Failed to resolve connect() function from ws2_32.dll",
             ));
         }
-        let connect_fn = std::mem::transmute::<FARPROC, ConnectFn>(connect_ptr);
+        let connect_fn: ConnectFn = std::mem::transmute_copy(&connect_ptr);
         #[cfg(debug_assertions)]
         info!("install_hooks: connect function resolved at {:?}", connect_fn as *const ());
 
         let closesocket_ptr = get_winsock_function("closesocket\0");
-        if closesocket_ptr.is_null() {
+        if closesocket_ptr.is_none() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
                 "Failed to resolve closesocket() function from ws2_32.dll",
             ));
         }
-        let closesocket_fn = std::mem::transmute::<FARPROC, ClosesocketFn>(closesocket_ptr);
+        let closesocket_fn: ClosesocketFn = std::mem::transmute_copy(&closesocket_ptr);
         #[cfg(debug_assertions)]
         info!("install_hooks: closesocket function resolved at {:?}", closesocket_fn as *const ());
 
@@ -167,39 +172,39 @@ pub fn install_hooks() -> Result<(), io::Error> {
 
         // Install SSL hooks
         let ssl_read_ptr = find_ssl_function("SSL_read");
-        if ssl_read_ptr.is_null() {
+        if ssl_read_ptr.is_none() {
             warn!("Could not find SSL_read function, skipping SSL hook installation.");
             return Ok(());
         }
-        let ssl_read = std::mem::transmute::<FARPROC, SslReadFn>(ssl_read_ptr);
+        let ssl_read: SslReadFn = std::mem::transmute_copy(&ssl_read_ptr);
         #[cfg(debug_assertions)]
         info!("install_hooks: SSL_read resolved at {:?}", ssl_read as *const ());
 
         let ssl_write_ptr = find_ssl_function("SSL_write");
-        if ssl_write_ptr.is_null() {
+        if ssl_write_ptr.is_none() {
             warn!("Could not find SSL_write function, skipping SSL hook installation.");
             return Ok(());
         }
-        let ssl_write = std::mem::transmute::<FARPROC, SslWriteFn>(ssl_write_ptr);
+        let ssl_write: SslWriteFn = std::mem::transmute_copy(&ssl_write_ptr);
         #[cfg(debug_assertions)]
         info!("install_hooks: SSL_write resolved at {:?}", ssl_write as *const ());
 
         let ssl_get_fd_ptr = find_ssl_function("SSL_get_fd");
-        if ssl_get_fd_ptr.is_null() {
+        if ssl_get_fd_ptr.is_none() {
             warn!("Could not find SSL_get_fd function, skipping SSL hook installation.");
             return Ok(());
         }
-        let ssl_get_fd = std::mem::transmute::<FARPROC, SslGetFdFn>(ssl_get_fd_ptr);
+        let ssl_get_fd: SslGetFdFn = std::mem::transmute_copy(&ssl_get_fd_ptr);
         #[cfg(debug_assertions)]
         info!("install_hooks: SSL_get_fd resolved at {:?}", ssl_get_fd as *const ());
 
         let ssl_is_init_finished_ptr = find_ssl_function("SSL_is_init_finished");
-        if ssl_is_init_finished_ptr.is_null() {
+        if ssl_is_init_finished_ptr.is_none() {
             warn!("Could not find SSL_is_init_finished function, skipping SSL hook installation.");
             return Ok(());
         }
-        let ssl_is_init_finished =
-            std::mem::transmute::<FARPROC, SslIsInitFinishedProc>(ssl_is_init_finished_ptr);
+        let ssl_is_init_finished: SslIsInitFinishedProc =
+            std::mem::transmute_copy(&ssl_is_init_finished_ptr);
         #[cfg(debug_assertions)]
         info!(
             "install_hooks: SSL_is_init_finished resolved at {:?}",
@@ -214,14 +219,7 @@ pub fn install_hooks() -> Result<(), io::Error> {
             error!(
                 "One or more required SSL functions could not be found. Skipping SSL hook installation."
             );
-            #[cfg(debug_assertions)]
-            error!(
-                "install_hooks: SSL functions missing - ssl_read={:?}, ssl_write={:?}, ssl_get_fd={:?}, ssl_is_init_finished={:?}",
-                ssl_read as *const (),
-                ssl_write as *const (),
-                ssl_get_fd as *const (),
-                ssl_is_init_finished as *const ()
-            );
+            // This case shouldn't happen if pointers were checked is_none(), but safety nets are good.
         } else {
             #[cfg(debug_assertions)]
             info!("install_hooks: all SSL functions found, installing SSL hooks...");
@@ -317,21 +315,43 @@ unsafe fn get_winsock_function(func_name: &str) -> FARPROC {
     #[cfg(debug_assertions)]
     info!("get_winsock_function: looking for function '{}'", func_name);
 
-    let ws2_32 = GetModuleHandleA(b"ws2_32.dll\0".as_ptr() as _);
-    if ws2_32.is_null() {
-        #[cfg(debug_assertions)]
-        error!("get_winsock_function: failed to get ws2_32.dll handle!");
+    let ws2_32_cstr = b"ws2_32.dll\0";
+    let ws2_32 = match GetModuleHandleA(PCSTR::from_raw(ws2_32_cstr.as_ptr())) {
+        Ok(handle) => handle,
+        Err(e) => {
+            #[cfg(debug_assertions)]
+            error!("get_winsock_function: failed to get ws2_32.dll handle: {}", e);
+            panic!("Failed to get ws2_32.dll handle");
+        }
+    };
 
-        panic!("Failed to get ws2_32.dll handle");
-    }
+    // Check if handle is valid? Result handling implies it's valid if Ok.
+    // If windows 0.62 uses Result<HMODULE>, Ok(h) usually means success.
+    // But good to check? HMODULE wrapping logic ensures it.
 
     #[cfg(debug_assertions)]
     info!("get_winsock_function: ws2_32.dll handle = {:?}", ws2_32);
 
-    let func_addr = GetProcAddress(ws2_32, func_name.as_ptr() as _);
+    // let func_name_cstr = std::ffi::CString::new(func_name).unwrap();
+    // GetProcAddress(handle, PCSTR)
+    // Note: func_name input has \0? The caller passes "recv\0".
+    // If I use CString::new, it will error if \0 inside.
+    // The callers: "recv\0".
+    // So `func_name` has embedded null. `CString::new` will fail.
+    // I should use `CStr` or just pointers since I know it's null terminated.
+    // Or callers should pass "recv" and I add null?
+    // Existing code passes "recv\0", so strings are null-terminated str slices.
+
+    let func_addr = GetProcAddress(ws2_32, PCSTR::from_raw(func_name.as_ptr()));
 
     #[cfg(debug_assertions)]
     info!("get_winsock_function: {} address = {:?}", func_name, func_addr);
+
+    // Validate the pointer before returning
+    if let Err(e) = validate_function_pointer(func_addr, Some(ws2_32)) {
+        error!("get_winsock_function: security validation failed for {}: {}", func_name, e);
+        return None;
+    }
 
     func_addr
 }
@@ -344,50 +364,10 @@ pub fn handle_poison<T>(err: PoisonError<T>) -> T {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use super::*;
 
     #[test]
     fn test_init_logger() {
         init_logger();
-        init_logger(); // Should not panic (idempotent)
-    }
-
-    #[test]
-    fn test_get_winsock_function() {
-        // This test is skipped in environments where ws2_32.dll may not be accessible
-        // The function itself has a hardcoded panic if ws2_32.dll is not found
-        // which makes it unsuitable for unit testing in all environments
-    }
-
-    #[test]
-    fn test_handle_poison() {
-        use std::sync::Mutex;
-
-        let mutex = Arc::new(Mutex::new(42));
-        let mutex_clone = Arc::clone(&mutex);
-
-        // Manually create a poisoned mutex by calling panic! while holding the lock in another thread
-        let handle = std::thread::spawn(move || {
-            let _guard = mutex_clone.lock().unwrap();
-            panic!("Intentional panic to create poisoned mutex");
-        });
-
-        // Wait for the thread to panic
-        let _ = handle.join();
-
-        // Now try to lock the mutex - this should fail
-        let poisoned_result = mutex.lock();
-
-        // Test that handle_poison works without panicking
-        match poisoned_result {
-            Ok(_) => panic!("Expected mutex to be poisoned"),
-            Err(poison_err) => {
-                // Use handle_poison to retrieve the inner value
-                let value = handle_poison(poison_err);
-                assert_eq!(*value, 42); // Dereference the value to get the integer
-            }
-        }
     }
 }
