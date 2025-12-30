@@ -5,12 +5,14 @@ use chacha20poly1305::{
     aead::{Aead, KeyInit},
 };
 use fish_11_core::globals::LOGGING_KEY;
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine as _;
 use std::ffi::CStr;
 use std::os::raw::c_char;
 
 fn decrypt_log_message(key: &[u8], base64_ciphertext: &str) -> Result<String, DllError> {
     let decoded =
-        base64::decode(base64_ciphertext).map_err(|_| DllError::new("Invalid base64 encoding"))?;
+        STANDARD.decode(base64_ciphertext).map_err(|_| DllError::new("Invalid base64 encoding"))?;
 
     if decoded.len() < 12 {
         return Err(DllError::new("Ciphertext too short"));

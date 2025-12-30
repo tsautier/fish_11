@@ -1,6 +1,7 @@
 // Configuration Key - Specialized key for encrypting/decrypting configuration
 
 use super::master_key::MasterKey;
+use base64::Engine;
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key};
 use std::sync::{Arc, Mutex};
@@ -22,6 +23,7 @@ impl ConfigKey {
     /// Encrypt configuration data
     pub fn encrypt_config(&self, config_data: &str) -> Result<String, String> {
         use chacha20poly1305::Nonce;
+
         let cipher = ChaCha20Poly1305::new(Key::from_slice(&self.key_material));
         let nonce = self.generate_nonce();
         let nonce = Nonce::from_slice(&nonce);
@@ -33,15 +35,17 @@ impl ConfigKey {
                 let mut result = Vec::with_capacity(nonce.len() + ciphertext.len());
                 result.extend_from_slice(&nonce);
                 result.extend_from_slice(&ciphertext);
-                base64::encode(&result)
+                base64::engine::general_purpose::STANDARD.encode(&result)
             })
     }
 
     /// Decrypt configuration data
     pub fn decrypt_config(&self, encrypted_config: &str) -> Result<String, String> {
+        use base64::Engine;
         use chacha20poly1305::Nonce;
-        let encrypted_bytes =
-            base64::decode(encrypted_config).map_err(|e| format!("Base64 decode failed: {}", e))?;
+        let encrypted_bytes = base64::engine::general_purpose::STANDARD
+            .decode(encrypted_config)
+            .map_err(|e| format!("Base64 decode failed: {}", e))?;
 
         if encrypted_bytes.len() < 12 {
             return Err("Encrypted config data too short".to_string());
