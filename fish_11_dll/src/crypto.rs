@@ -7,28 +7,25 @@
 //! - Public key validation against low-order points
 //! - Secure key pair generation and rotation
 
-use std::fs::OpenOptions;
-use std::io::Write;
-use std::sync::Mutex;
-use std::sync::atomic::AtomicU64;
-
 use chacha20poly1305::aead::{Aead, KeyInit, OsRng, Payload};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use chrono::{DateTime, Duration, Utc};
 use fish_11_core::globals::MAX_MESSAGE_SIZE;
 use hkdf::Hkdf;
-use log::{debug, warn};
+use log::warn;
 use lru_time_cache::LruCache;
 use secrecy::{ExposeSecret, Secret};
 use sha2::{Digest, Sha256};
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::sync::Mutex;
+use std::sync::atomic::AtomicU64;
 use subtle::ConstantTimeEq;
 use x25519_dalek::{PublicKey, StaticSecret};
 use zeroize::Zeroize;
 
 use crate::error::{FishError, Result};
 use crate::utils::{base64_decode, base64_encode, generate_random_bytes};
-
-// constants
 
 const MAX_CIPHERTEXT_SIZE: usize = MAX_MESSAGE_SIZE + 16 + 12; // message + auth tag + nonce
 const NONCE_SIZE_BYTES: usize = 12; // ChaCha20-Poly1305 standard nonce size (96 bits)
@@ -456,8 +453,8 @@ pub fn extract_public_key(formatted: &str) -> Result<[u8; 32]> {
 
     // Check if the string has the correct prefix using constant-time comparison
     // to prevent timing attacks that could leak information about the prefix
-    if !formatted.len() >= PREFIX.len()
-        || !constant_time_compare(formatted.as_bytes(), PREFIX.as_bytes())
+    if formatted.len() < PREFIX.len()
+        || !constant_time_compare(&formatted.as_bytes()[..PREFIX.len()], PREFIX.as_bytes())
     {
         return Err(FishError::InvalidInput(
             "Formatted key does not have the correct prefix".to_string(),

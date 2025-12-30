@@ -54,6 +54,14 @@ pub static NICK_VALIDATOR: Lazy<Regex> = Lazy::new(|| {
 // This value can be changed at runtime based on mIRC buffer settings
 pub static MIRC_BUFFER_SIZE: Mutex<usize> = Mutex::new(DEFAULT_MIRC_BUFFER_SIZE);
 
+/// In-memory key for encrypted logging, set via FiSH11_LogSetKey.
+/// This key is session-only and is never written to disk.
+pub static LOGGING_KEY: Lazy<Mutex<Option<[u8; 32]>>> = Lazy::new(|| Mutex::new(None));
+
+/// In-memory master key for the key derivation system.
+/// This key is session-only and is never written to disk.
+pub static MASTER_KEY: Lazy<Mutex<Option<[u8; 32]>>> = Lazy::new(|| Mutex::new(None));
+
 // Maximum size of a message that can be encrypted/decrypted
 pub const MAX_MESSAGE_SIZE: usize = 4096;
 

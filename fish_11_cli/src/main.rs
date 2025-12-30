@@ -6,7 +6,6 @@
 //! Written by [GuY], 2025. Licenced under GPL v3.
 
 mod platform_types;
-//use term_size;
 use std::env;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
@@ -110,7 +109,8 @@ struct LoadInfo {
 
 // Function signatures for the DLL functions
 type DllLoadFn = extern "system" fn(*mut LoadInfo) -> c_int;
-type DllFunctionFn = extern "system" fn(HWND, HWND, *mut c_char, usize, *mut c_char, usize, c_int, c_int) -> c_int;
+type DllFunctionFn =
+    extern "system" fn(HWND, HWND, *mut c_char, usize, *mut c_char, usize, c_int, c_int) -> c_int;
 
 /// This is used when the direct DLL call might hang (like FiSH11_FileListKeys with large DBs)
 fn call_dll_function(

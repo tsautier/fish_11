@@ -65,6 +65,7 @@ alias fish11_startup {
 
   ; Get and display core DLL version
   var %raw_version_info = $dll(%Fish11DllFile, FiSH11_GetVersion, $null)
+  
   if (%raw_version_info) {
     ; Parse the raw string: VERSION|BUILD_TYPE
     ; 124 is ASCII for |
@@ -99,6 +100,8 @@ alias fish11_startup {
   ; Key exchange timeout (seconds) - keep in sync with DLL constant; can be overridden by user
   if (%KEY_EXCHANGE_TIMEOUT_SECONDS == $null) { set %KEY_EXCHANGE_TIMEOUT_SECONDS 10 }
 
+  ; Check if master key is unlocked, if not prompt user
+  .fish11_check_masterkey
 }
 
 
@@ -993,6 +996,112 @@ alias fish11_ScheduleBackup {
   }
 }
 
+; === MASTER KEY MANAGEMENT ===
+
+; Check if master key is unlocked, prompt if not
+alias fish11_check_masterkey {
+  var %is_unlocked = $dll(%Fish11DllFile, FiSH11_MasterKeyIsUnlocked, $null)
+  
+  if (%is_unlocked != yes) {
+    ; Prompt user for master key password
+    echo $color(Mode text) -at *** FiSH_11: master key is locked. Configuration and logs are NOT encrypted.
+    echo $color(Mode text) -at *** FiSH_11: use /fish11_unlock to unlock the master key.
+  }
+  else {
+    echo $color(Mode text) -at *** FiSH_11: master key is unlocked. Configuration and logs ARE encrypted.
+  }
+}
+
+; Unlock master key with password
+; Usage: /fish11_unlock [password]
+; If no password provided, prompts with $input dialog
+alias fish11_unlock {
+  var %password = $1-
+  
+  ; If no password provided, prompt with dialog
+  if (%password == $null) {
+    %password = $input(Enter master key password:, pvq, FiSH_11 Master Key, )
+  }
+  
+  ; If user cancelled or empty password
+  if (%password == $null) {
+    echo $color(Error) -at *** FiSH_11: master key unlock cancelled.
+    return
+  }
+  
+  ; Call DLL to unlock
+  var %result = $dll(%Fish11DllFile, FiSH11_MasterKeyUnlock, %password)
+  
+  ; Clear password from memory
+  unset %password
+  
+  ; Display result
+  if (%result) {
+    echo $color(Mode text) -at *** FiSH_11: %result
+  }
+  else {
+    echo $color(Error) -at *** FiSH_11: failed to unlock master key
+  }
+}
+
+; Lock master key (clear from memory)
+; Usage: /fish11_lock
+alias fish11_lock {
+  var %result = $dll(%Fish11DllFile, FiSH11_MasterKeyLock, $null)
+  
+  if (%result) {
+    echo $color(Mode text) -at *** FiSH_11: %result
+  }
+  else {
+    echo $color(Error) -at *** FiSH_11: Failed to lock master key
+  }
+}
+
+; Show master key status
+; Usage: /fish11_masterkey_status
+alias fish11_masterkey_status {
+  var %result = $dll(%Fish11DllFile, FiSH11_MasterKeyStatus, $null)
+  
+  if (%result) {
+    echo $color(Mode text) -at *** FiSH_11: %result
+  }
+  else {
+    echo $color(Error) -at *** FiSH_11: Failed to get master key status
+  }
+}
+
+; Require master key password (loop until unlocked)
+; Similar to mircryption's mc_requirepassphrase
+alias fish11_require_masterkey {
+  var %is_unlocked = $dll(%Fish11DllFile, FiSH11_MasterKeyIsUnlocked, $null)
+  
+  while (%is_unlocked != yes) {
+    var %password = $input(Master key is locked. Enter password to unlock :, pvq, FiSH_11 Master Key Required, )
+    
+    ; If user cancelled
+    if (%password == $null) {
+      echo $color(Error) -at *** FiSH_11: master key unlock is required. Cancelling operation.
+      return
+    }
+    
+    ; Try to unlock
+    var %result = $dll(%Fish11DllFile, FiSH11_MasterKeyUnlock, %password)
+    unset %password
+    
+    ; Check if now unlocked
+    %is_unlocked = $dll(%Fish11DllFile, FiSH11_MasterKeyIsUnlocked, $null)
+    
+    if (%is_unlocked == yes) {
+      echo $color(Mode text) -at *** FiSH_11: master key unlocked successfully
+    }
+    else {
+      echo $color(Error) -at *** FiSH_11: incorrect password. Try again.
+    }
+  }
+}
+
+; === END MASTER KEY MANAGEMENT ===
+
 ; Show help and version information
 alias fish11_help {
   var %helpText
@@ -1002,6 +1111,15 @@ alias fish11_help {
   else {
     echo $color(Mode text) -at *** FiSH: help information unavailable
   }
+  
+  ; Add Master Key help
+  echo $color(Mode text) -at $chr(160)
+  echo $color(Mode text) -at *** FiSH_11 Master Key commands:
+  echo $color(Mode text) -at *** /fish11_unlock [password] - Unlock master key (encrypts config/logs)
+  echo $color(Mode text) -at *** /fish11_lock - Lock master key (clears from memory)
+  echo $color(Mode text) -at *** /fish11_masterkey_status - Show master key status
+  echo $color(Mode text) -at ***   When unlocked: configuration and logs are encrypted with Argon2id + ChaCha20-Poly1305
+  echo $color(Mode text) -at ***   When locked: configuration and logs are stored in plaintext
   
   ; Add FCEP-1 help
   echo $color(Mode text) -at $chr(160)
@@ -1271,6 +1389,12 @@ menu channel {
   ..Encrypt TOPIC
   ...Enable :{ fish11_SetChannelIniValue $chan encrypt_topic 1 | echo $color(Mode text) -at *** FiSH: topic encryption enabled for $chan }
   ...Disable :{ fish11_SetChannelIniValue $chan encrypt_topic 0 | echo $color(Mode text) -at *** FiSH: topic encryption disabled for $chan }
+
+  .Encrypted logging
+  ..Set key for encrypted logging:/fish11_setlogkey
+  ..Encrypt a log line:/fish11_logencrypt
+  ..Decrypt a log line:/fish11_logdecrypt
+  ..View encrypted log file:/fish11_logdecryptfile
 }
 
 ; Menu for query windows
@@ -1307,6 +1431,12 @@ menu query {
       echo $color(Mode text) -at *** FiSH: decrypted message: %decrypted
     }
   }
+
+  .Encrypted logging
+  ..Set key for encrypted logging:/fish11_setlogkey
+  ..Encrypt a log line:/fish11_logencrypt
+  ..Decrypt a log line:/fish11_logdecrypt
+  ..View encrypted log file:/fish11_logdecryptfile
 }
 
 ; Menu for nicklist
@@ -1336,6 +1466,12 @@ menu nicklist {
       echo $color(Mode text) -at *** FiSH: decrypted message: %decrypted
     }
   }
+
+  .Encrypted logging
+  ..Set key for encrypted logging:/fish11_setlogkey
+  ..Encrypt a log line:/fish11_logencrypt
+  ..Decrypt a log line:/fish11_logdecrypt
+  ..View encrypted log file:/fish11_logdecryptfile
 }
 
 ; Common menu available in all windows
@@ -1344,6 +1480,11 @@ menu status,channel,nicklist,query {
   .Core version :fish11_version
   .Injection version : fish11_injection_version
   .Help :fish11_help
+  .-
+  .Master Key
+  ..Unlock master key :fish11_unlock
+  ..Lock master key :fish11_lock
+  ..Show master key status :fish11_masterkey_status
   .-
   .Set topic (encrypted) :{
     ; Only allow in channel windows
@@ -1432,6 +1573,12 @@ menu status,channel,nicklist,query {
   .Debug
   ..Show debug info :fish11_debug
   ..View INI file :fish11_ViewIniFile
+
+  .Encrypted logging
+  ..Set key for encrypted logging:/fish11_setlogkey
+  ..Encrypt a log line:/fish11_logencrypt
+  ..Decrypt a log line:/fish11_logdecrypt
+  ..View encrypted log file:/fish11_logdecryptfile
 }
 
 
@@ -1506,9 +1653,9 @@ alias etopic {
   if (%channelKey == $null) {
     ; No key exists, but the engine may still try to encrypt if a channel key exists
     ; This will be handled by the engine registration code
-    echo $color(Mode text) -at *** FiSH_11: No encryption key found for $active, topic will be sent in plain text
+    echo $color(Mode text) -at *** FiSH_11: no encryption key found for $active, topic will be sent in plain text
   } else {
-    echo $color(Mode text) -at *** FiSH_11: Topic will be encrypted for $active
+    echo $color(Mode text) -at *** FiSH_11: topic will be encrypted for $active
   }
 
   ; Execute the topic command - encryption will be handled by the engine
@@ -1532,5 +1679,112 @@ alias fish_test11 { fish11_test_crypt $1- }
 alias fish_help11 { fish11_help }
 alias fish_version11 { fish11_version }
 alias fish_initchannel11 { fish11_initchannel $1- }
+
+; Short aliases for encrypted logging commands
+alias fish_setlogkey11 { fish11_setlogkey $1- }
+alias fish_logencrypt11 { fish11_logencrypt $1- }
+alias fish_logdecrypt11 { fish11_logdecrypt $1- }
+alias fish_logdecryptfile11 { fish11_logdecryptfile $1- }
+
+; Function to encrypt log lines if logging key is set
+alias fish11_encrypt_log_line {
+  ; Check if logging key is set
+  var %temp_result = $dll(%Fish11DllFile, FiSH11_LogEncrypt, $1-, $chr(0), 8192)
+  if (%temp_result != $null) {
+    return %temp_result
+  }
+  else {
+    ; If encryption fails, return original text but warn user
+    echo 4 -a *** FiSH_11: warning - could not encrypt log line, logging in plaintext
+    return $1-
+  }
+}
+
+; Function to decrypt log lines for viewing
+alias fish11_decrypt_log_line {
+  ; Check if logging key is set
+  var %temp_result = $dll(%Fish11DllFile, FiSH11_LogDecrypt, $1-, $chr(0), 8192)
+  if (%temp_result != $null) {
+    return %temp_result
+  }
+  else {
+    ; If decryption fails, return original text but warn user
+    echo 4 -a *** FiSH_11: warning - could not decrypt log line
+    return $1-
+  }
+}
+
+; === ENCRYPTED LOGGING COMMANDS ===
+
+; Set the logging key
+alias fish11_setlogkey {
+  ; Derive logging key from master key using HKDF
+  var %result = $dll(%Fish11DllFile, FiSH11_LogSetKey, $null)
+  if (%result == 0) {
+    echo 4 -a *** FiSH_11: logging encryption key has been derived from master key and set
+  } else {
+    echo 4 -a *** FiSH_11: failed to set logging encryption key (error code: %result)
+  }
+}
+
+; Encrypt a log line
+alias fish11_logencrypt {
+  if (!$1) {
+    echo 4 -a *** FiSH_11: usage: /fish11_logencrypt <text>
+    echo 4 -a *** FiSH_11: encrypts a line of text for logging
+    return
+  }
+
+  var %result = $dll(%Fish11DllFile, FiSH11_LogEncrypt, $1, $chr(0), 8192)
+  if (%result != $null) {
+    echo 4 -a *** FiSH_11: encrypted log: %result
+  } else {
+    echo 4 -a *** FiSH_11: failed to encrypt log line
+  }
+}
+
+; Decrypt a log line
+alias fish11_logdecrypt {
+  if (!$1) {
+    echo 4 -a *** FiSH_11: usage: /fish11_logdecrypt <encrypted_text>
+    echo 4 -a *** FiSH_11: decrypts a line of text from encrypted log
+    return
+  }
+
+  var %result = $dll(%Fish11DllFile, FiSH11_LogDecrypt, $1, $chr(0), 8192)
+  if (%result != $null) {
+    echo 4 -a *** FiSH_11: decrypted log: %result
+  } else {
+    echo 4 -a *** FiSH_11: failed to decrypt log line
+  }
+}
+
+; Decrypt an entire log file
+alias fish11_logdecryptfile {
+  if (!$1) {
+    echo 4 -a *** FiSH_11: usage: /fish11_logdecryptfile <filepath>
+    echo 4 -a *** FiSH_11: decrypts an entire encrypted log file and displays the content
+    return
+  }
+
+  var %result = $dll(%Fish11DllFile, FiSH11_LogDecryptFile, $1, $chr(0), 8192)
+  if (%result != $null) {
+    ; Display the decrypted content
+    echo 4 -a *** FiSH_11: decrypted content from $1:
+    ; The Rust function returns all decrypted lines joined with actual newline characters
+    ; We need to split and display each line
+    var %i = 1
+    while ($gettok(%result, %i, 10) != $null) {
+      var %line = $gettok(%result, %i, 10)
+      if (%line != $null) {
+        echo -a %line
+      }
+      inc %i
+    }
+  } else {
+    echo 4 -a *** FiSH_11: failed to decrypt log file
+  }
+}
+
 alias fcep11 { fish11_initchannel $1- }
 

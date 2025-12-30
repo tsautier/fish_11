@@ -1,9 +1,8 @@
-use std::ffi::c_char;
-use std::os::raw::c_int;
-
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use sha2::{Digest, Sha256};
+use std::ffi::c_char;
+use std::os::raw::c_int;
 use subtle::ConstantTimeEq;
 use x25519_dalek::PublicKey;
 
@@ -61,7 +60,7 @@ pub struct ParsedInput<'a> {
 /// Parses the input string into target and message parts.
 ///
 /// Expected format: `<target> <message>`
-pub fn parse_input(input: &str) -> Result<ParsedInput, DllError> {
+pub fn parse_input<'a>(input: &'a str) -> Result<ParsedInput<'a>, DllError> {
     let parts: Vec<&str> = input.splitn(2, ' ').collect();
 
     if parts.len() < 2 {

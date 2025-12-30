@@ -1,6 +1,6 @@
 use std::ffi::CStr;
 use std::ptr;
-use std::sync::Mutex;
+//use std::sync::Mutex;
 
 mod fish11_coreversion;
 mod fish11_decryptmsg;
@@ -14,12 +14,37 @@ mod fish11_getconfigpath;
 mod fish11_getkeyttl;
 mod fish11_getratchetstate;
 mod fish11_help;
+mod fish11_logdecrypt;
+mod fish11_logdecryptfile;
+mod fish11_logencrypt;
+mod fish11_logsetkey;
+mod fish11_setencryptionprefix;
+mod fish11_setfishprefix;
 mod fish11_setmanualchannelkey;
 mod fish11_setnetwork;
 mod utility;
 
+pub use fish11_getkeyttl::FiSH11_GetKeyTTL;
+pub use fish11_getratchetstate::FiSH11_GetRatchetState;
+pub use fish11_logdecrypt::FiSH11_LogDecrypt;
+pub use fish11_logdecryptfile::FiSH11_LogDecryptFile;
+pub use fish11_logencrypt::FiSH11_LogEncrypt;
+pub use fish11_logsetkey::FiSH11_LogSetKey;
+pub use fish11_masterkey::{
+    FiSH11_MasterKeyChangePassword, FiSH11_MasterKeyInit, FiSH11_MasterKeyIsUnlocked,
+    FiSH11_MasterKeyLock, FiSH11_MasterKeyStatus, FiSH11_MasterKeyUnlock,
+};
+pub use fish11_setencryptionprefix::FiSH11_SetEncryptionPrefix;
+pub use fish11_setfishprefix::FiSH11_SetFishPrefix;
+pub use fish11_setmanualchannelkey::FiSH11_SetManualChannelKey;
+pub use key_management::{FiSH11_ProcessPublicKey, FiSH11_TestCrypt};
+
+pub use crate::channel_encryption::init_key::FiSH11_InitChannelKey;
+pub use crate::channel_encryption::process_key::FiSH11_ProcessChannelKey;
+
 pub mod dll_error;
 pub mod fish11_exchangekey;
+pub mod fish11_masterkey;
 pub mod fish11_setkey;
 pub mod fish11_setkeyfromplaintext;
 pub mod fish11_setmircdir;
@@ -45,6 +70,7 @@ pub(crate) fn get_buffer_size() -> usize {
     // First try to get buffer size from mIRC information
     let buffer_size = {
         let guard_result = LOAD_INFO.lock();
+
         if guard_result.is_err() {
             log::error!(
                 "FATAL: Failed to acquire LOAD_INFO mutex lock in get_buffer_size. DLL may be in corrupted state. Returning default size."
@@ -64,6 +90,7 @@ pub(crate) fn get_buffer_size() -> usize {
 
     // Always leave room for null terminator, and cap to MAX_MIRC_BUFFER_SIZE
     let available = buffer_size.saturating_sub(1);
+
     std::cmp::min(available, MAX_MIRC_BUFFER_SIZE)
 }
 
@@ -95,11 +122,3 @@ pub(crate) fn restore_buffer_size_for_test(prev_size: Option<usize>) {
         let _ = MIRC_BUFFER_SIZE.lock().ok().map(|mut g| *g = size);
     }
 }
-
-pub use fish11_getkeyttl::FiSH11_GetKeyTTL;
-pub use fish11_getratchetstate::FiSH11_GetRatchetState;
-pub use fish11_setmanualchannelkey::FiSH11_SetManualChannelKey;
-pub use key_management::{FiSH11_ProcessPublicKey, FiSH11_TestCrypt};
-
-pub use crate::channel_encryption::init_key::FiSH11_InitChannelKey;
-pub use crate::channel_encryption::process_key::FiSH11_ProcessChannelKey;

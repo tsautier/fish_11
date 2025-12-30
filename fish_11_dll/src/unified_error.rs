@@ -3,18 +3,19 @@
 //! This module provides a comprehensive, standardized error handling approach
 //! for the entire DLL, replacing fragmented error types with a single unified system.
 
-use std::error::Error;
-use std::ffi::{NulError, c_char};
-use std::os::raw::c_int;
-
-use fish_11_core::globals::MAX_MESSAGE_SIZE;
-use thiserror::Error;
-
 use crate::buffer_utils;
 use crate::buffer_utils::BufferError;
 use crate::dll_interface::{MIRC_COMMAND, MIRC_HALT};
+use fish_11_core::globals::MAX_MESSAGE_SIZE;
+use std::error::Error;
+use std::ffi::{NulError, c_char};
+use std::os::raw::c_int;
+use thiserror::Error;
+
 // Re-export for convenience
 pub use crate::error::FishError;
+
+//use winapi::shared::windef::HWND;
 
 /// Unified error type for all DLL operations
 ///

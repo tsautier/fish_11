@@ -18,6 +18,10 @@ pub type BOOL = std::os::raw::c_int;
 // Common C types used across platforms
 pub use std::os::raw::{c_char, c_int};
 
+// C string pointer aliases for convenience (used by DLL interface code)
+pub type PCSTR = *const c_char;
+pub type PSTR = *mut c_char;
+
 /// Macro for platform-specific ABI
 /// On Windows, use "stdcall" (mIRC convention)
 /// On Unix, use "C" (standard C calling convention)

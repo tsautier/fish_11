@@ -362,7 +362,10 @@ pub extern "system" fn FiSH11_InjectVersion(
     #[cfg(debug_assertions)]
     {
         debug!("[DLL_INTERFACE DEBUG] FiSH11_InjectVersion() : preparing version data buffer");
-        debug!("[DLL_INTERFACE DEBUG] FiSH11_InjectVersion() : data length: {} bytes", data_str.as_bytes_with_nul().len());
+        debug!(
+            "[DLL_INTERFACE DEBUG] FiSH11_InjectVersion() : data length: {} bytes",
+            data_str.as_bytes_with_nul().len()
+        );
         debug!(
             "[DLL_INTERFACE DEBUG] FiSH11_InjectVersion() : data preview : {:?}",
             data_str.to_str().unwrap_or("<invalid UTF-8>")

@@ -10,7 +10,7 @@ use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
 
 use crate::config::settings::get_encryption_prefix;
 use crate::crypto::{decrypt_message, encrypt_message};
-use crate::{log_debug, log_error, log_info, log_warn};
+//use crate::{log_debug, log_error, log_info, log_warn};
 
 type GetNetworkNameFn = unsafe extern "C" fn(u32) -> *mut c_char;
 static GET_NETWORK_NAME_FN: OnceCell<GetNetworkNameFn> = OnceCell::new();
@@ -760,10 +760,13 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
     let encrypted_data = line[fish_start..].trim();
 
     // Determine which identifier to use for key lookup
-    // For channels (#, &) : we use the channel name and it's already normalized.
-    // For private messages :  we use the sender's nickname
-    let key_identifier =
-        if target.starts_with('#') || target.starts_with('&') { target } else { sender };
+    // For channels (#, &) : we use the channel name and normalize to lowercase.
+    // For private messages :  we use the sender's nickname and normalize to lowercase.
+    let key_identifier = if target.starts_with('#') || target.starts_with('&') {
+        target.to_lowercase()
+    } else {
+        sender.to_lowercase()
+    };
 
     log_debug!(
         "Engine: sender={}, target={}, key_identifier={}, encrypted_data_len={}",
@@ -776,14 +779,14 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
     // Try to get the decryption key
     let key = if key_identifier.starts_with('#') || key_identifier.starts_with('&') {
         // For channel messages, try channel key (manual or ratchet-based) first
-        match crate::config::get_channel_key_with_fallback(key_identifier) {
+        match crate::config::get_channel_key_with_fallback(&key_identifier) {
             Ok(k) => {
                 log_debug!("Engine: using channel key for '{}'", key_identifier);
                 k.to_vec() // Convert to vec for compatibility with existing code
             }
             Err(_) => {
                 // If no channel key, try the regular key lookup
-                match crate::config::get_key(key_identifier, network) {
+                match crate::config::get_key(&key_identifier, network) {
                     Ok(k) => {
                         log_debug!("Engine: using regular key for '{}'", key_identifier);
                         k
@@ -796,8 +799,8 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
             }
         }
     } else {
-        // For private messages, use regular key lookup
-        match crate::config::get_key(key_identifier, network) {
+        // For private messages, use regular key lookup with normalized key_identifier
+        match crate::config::get_key(&key_identifier, network) {
             Ok(k) => {
                 log_debug!("Engine: using private key for '{}'", key_identifier);
                 k

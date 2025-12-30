@@ -1,10 +1,9 @@
-use std::ffi::c_char;
-use std::os::raw::c_int;
-
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 use crate::{buffer_utils, config, dll_function_identifier};
+use std::ffi::c_char;
+use std::os::raw::c_int;
 
 dll_function_identifier!(FiSH11_FileDelKey, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };

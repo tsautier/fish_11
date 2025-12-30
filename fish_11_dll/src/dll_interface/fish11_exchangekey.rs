@@ -1,10 +1,9 @@
-use std::ffi::c_char;
-use std::os::raw::c_int;
-use std::time::Instant;
-
 use rand::RngCore;
 use rand::rngs::OsRng;
 use secrecy::ExposeSecret;
+use std::ffi::c_char;
+use std::os::raw::c_int;
+use std::time::Instant;
 use subtle::ConstantTimeEq;
 
 use crate::config::{CONFIG, get_key, get_keypair, save_config, set_key, store_keypair};

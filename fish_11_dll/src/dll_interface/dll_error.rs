@@ -47,6 +47,22 @@ impl DllError {
             }
         }
     }
+
+    /// Convenience constructor used by DLL interface callers
+    pub fn new(msg: &str) -> Self {
+        DllError::InvalidInput(msg.to_string())
+    }
+
+    /// Log the error (to stderr) and return an appropriate mIRC return code
+    pub fn log_and_return_error_code(self) -> c_int {
+        match &self {
+            DllError::NullPointer => MIRC_HALT,
+            _ => {
+                log::error!("DllError: {:?}", self);
+                MIRC_COMMAND
+            }
+        }
+    }
 }
 
 /// Result type for DLL operations

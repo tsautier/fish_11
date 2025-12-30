@@ -197,7 +197,7 @@ pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
             unicode_mode = (*load).m_unicode != 0;
 
             // Store the LOADINFO
-            let mut global_info_result = LOAD_INFO.lock();
+            let global_info_result = LOAD_INFO.lock();
             if global_info_result.is_err() {
                 log::error!(
                     "FATAL: Failed to acquire LOAD_INFO mutex lock in LoadDll. DLL may be in corrupted state."

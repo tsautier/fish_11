@@ -2,6 +2,7 @@
 
 use parking_lot::Mutex;
 pub mod config_access;
+pub mod encrypted_file_storage;
 pub mod entries;
 pub mod file_storage;
 pub mod key_management;
