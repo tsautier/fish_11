@@ -10,6 +10,7 @@ use fish_11_core::master_key::derive_master_key;
 use fish_11_core::master_key::keystore::Keystore;
 use fish_11_core::master_key::password_change::change_master_password;
 use fish_11_core::master_key::password_validation::PasswordValidator;
+use fish_11_core::master_key::core::{initialize_key_system, is_key_system_unlocked, lock_key_system};
 use once_cell::sync::Lazy;
 use sha2::{Digest, Sha256};
 use std::ffi::c_char;
@@ -56,7 +57,7 @@ dll_function_identifier!(FiSH11_MasterKeyInit, data, {
     // Derive the master key from the password
     match derive_master_key(&input) {
         Ok((key, salt)) => {
-            // Store the key in memory
+            // Store the key in memory (old system for compatibility)
             {
                 let mut key_guard = match MASTER_KEY.lock() {
                     Ok(g) => g,
@@ -69,6 +70,9 @@ dll_function_identifier!(FiSH11_MasterKeyInit, data, {
                 };
                 *key_guard = Some(key);
             }
+
+            // Initialize the new key system
+            initialize_key_system(&input, salt.as_bytes());
 
             // Synchronize the logging key
             synchronize_logging_key();
@@ -217,7 +221,7 @@ dll_function_identifier!(FiSH11_MasterKeyUnlock, data, {
 dll_function_identifier!(FiSH11_MasterKeyLock, data, {
     // Lock master key (clear from memory)
     // Returns: "1" on success, error message on failure
-    // Clear the master key from memory
+    // Clear the master key from memory (old system)
     {
         let mut key_guard = match MASTER_KEY.lock() {
             Ok(g) => g,
@@ -230,6 +234,9 @@ dll_function_identifier!(FiSH11_MasterKeyLock, data, {
 
     // Synchronize the logging key (which will clear it since master key is now None)
     synchronize_logging_key();
+
+    // Lock the new key system
+    lock_key_system();
 
     Ok("1".to_string())
 });
@@ -339,31 +346,38 @@ dll_function_identifier!(FiSH11_MasterKeyChangePassword, data, {
 });
 
 dll_function_identifier!(FiSH11_MasterKeyStatus, data, {
-    // Get master key status
+    // Get master key status (check both old and new systems)
     // Returns: "locked" or "unlocked"
-    let key_guard = match MASTER_KEY.lock() {
-        Ok(g) => g,
-        Err(_) => {
-            return Err(DllError::Internal("Failed to acquire master key lock".to_string()));
-        }
+    
+    // Check old system
+    let old_system_unlocked = match MASTER_KEY.lock() {
+        Ok(g) => g.is_some(),
+        Err(_) => false,
     };
-    let status = if key_guard.is_some() { "unlocked" } else { "locked" };
+
+    // Check new system
+    let new_system_unlocked = is_key_system_unlocked();
+
+    let status = if old_system_unlocked || new_system_unlocked { "unlocked" } else { "locked" };
 
     Ok(status.to_string())
 });
 
 dll_function_identifier!(FiSH11_MasterKeyIsUnlocked, data, {
-    // Check if master key is unlocked
+    // Check if master key is unlocked (check both old and new systems)
     // Returns: "1" if unlocked, "0" if locked
-    let key_guard = match MASTER_KEY.lock() {
-        Ok(g) => g,
-        Err(_) => {
-            return Err(DllError::Internal("Failed to acquire master key lock".to_string()));
-        }
+    
+    // Check old system
+    let old_system_unlocked = match MASTER_KEY.lock() {
+        Ok(g) => g.is_some(),
+        Err(_) => false,
     };
 
-    // Return "1" if unlocked (key is Some), "0" if locked (key is None)
-    let result = if key_guard.is_some() { "1" } else { "0" };
+    // Check new system
+    let new_system_unlocked = is_key_system_unlocked();
+
+    // Return "1" if either system is unlocked
+    let result = if old_system_unlocked || new_system_unlocked { "1" } else { "0" };
 
     Ok(result.to_string())
 });
