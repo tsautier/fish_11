@@ -34,7 +34,7 @@ use lazy_static::lazy_static;
 use log::{error, info};
 use once_cell::sync::Lazy;
 use socket::info::SocketInfo;
-use std::ffi::{c_int, c_void};
+use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use windows::Win32::Foundation::HMODULE;

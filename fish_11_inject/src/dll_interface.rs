@@ -1,29 +1,28 @@
-use std::ffi::{CString, c_char};
+use std::ffi::{CString, c_int, c_char};
 use std::sync::atomic::Ordering;
 
-use fish_11_core::buffer_utils::write_cstring_to_buffer;
+// use fish_11_core::buffer_utils::write_cstring_to_buffer; // Removed as mIRC LoadDll doesn't support returned data
 use fish_11_core::globals::{
     BUILD_DATE, BUILD_NUMBER, BUILD_TIME, BUILD_VERSION, MIRC_RETURN_DATA_COMMAND,
 };
 use log::{debug, error, info, warn};
-use winapi::shared::minwindef::BOOL;
 use windows::Win32::Foundation::{HMODULE, HWND};
 use windows::Win32::UI::WindowsAndMessaging::{MB_ICONEXCLAMATION, MB_OK, MessageBoxW};
 
 use crate::helpers_inject::install_hooks;
 use crate::{
     ACTIVE_SOCKETS, DISCARDED_SOCKETS, DLL_HANDLE_PTR, ENGINES, LOADED, MAX_MIRC_RETURN_BYTES,
-    MIRC_COMMAND, MIRC_HALT, MIRC_IDENTIFIER, VERSION_SHOWN, c_int, cleanup_hooks,
+    MIRC_COMMAND, MIRC_HALT, MIRC_IDENTIFIER, VERSION_SHOWN, cleanup_hooks,
 };
 
 #[repr(C)]
 pub struct LOADINFO {
-    pub m_unicode: i32,
-    pub m_version: i32,
-    pub m_hwnd: HWND,
-    pub m_filename: *mut i8,
-    pub m_keep: i32,
-    pub m_bytes: u32,
+    pub m_version: u32,  // mVersion (DWORD)
+    pub m_hwnd: HWND,    // mHwnd (HWND)
+    pub m_keep: i32,     // mKeep (BOOL)
+    pub m_unicode: i32,  // mUnicode (BOOL)
+    pub m_beta: u32,     // mBeta (DWORD)
+    pub m_bytes: u32,    // mBytes (DWORD)
 }
 
 #[no_mangle]
@@ -143,12 +142,6 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
     info!("LoadDll() : install_hooks() completed successfully");
 
     #[cfg(debug_assertions)]
-    info!("LoadDll() : installing SSL inline patches...");
-
-    #[cfg(debug_assertions)]
-    info!("LoadDll() : SSL inline patches installation completed");
-
-    #[cfg(debug_assertions)]
     info!("LoadDll() : checking VERSION_SHOWN flag...");
 
     // Show version info once if not already shown
@@ -158,37 +151,11 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
 
         // Prepare version string as a command
         let version_cmd = format!("*** FiSH_11 inject v{} loaded successfully. ***", BUILD_VERSION);
+        
+        // Removed logic attempting to write to m_filename as mIRC LOADINFO does not have a filename/data buffer.
+        // We rely on scripts calling FiSH11_InjectVersion explicitly or debug info.
+        info!("Version info: {}", version_cmd);
 
-        if let Ok(c_cmd) = CString::new(version_cmd) {
-            let current_max_len = *MAX_MIRC_RETURN_BYTES.lock().unwrap();
-
-            if c_cmd.as_bytes_with_nul().len() <= current_max_len {
-                unsafe {
-                    if let Err(e) = write_cstring_to_buffer(li.m_filename, current_max_len, &c_cmd)
-                    {
-                        error!("Failed to write version message to mIRC buffer: {}", e);
-                    } else {
-                        info!(
-                            "Success message written to mIRC buffer: {}",
-                            c_cmd.to_str().unwrap()
-                        );
-                        li.m_keep = 1;
-                        return MIRC_COMMAND;
-                    }
-                }
-            } else {
-                warn!("Version info command too long for mIRC buffer.");
-                #[cfg(debug_assertions)]
-                warn!(
-                    "LoadDll() : version command too long (len: {} > max: {})",
-                    c_cmd.as_bytes_with_nul().len(),
-                    current_max_len
-                );
-            }
-        } else {
-            #[cfg(debug_assertions)]
-            error!("LoadDll() : failed to create CString for version command");
-        }
     } else {
         #[cfg(debug_assertions)]
         info!("LoadDll() : VERSION_SHOWN already true, skipping version message");
@@ -213,15 +180,6 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
 pub extern "system" fn UnloadDll(action: c_int) -> c_int {
     info!("UnloadDll() called with action: {}", action); // 0=Script unload, 1=Not being used for 10 mins, 2=mIRC exit
 
-    // CRITICAL: Handle the timeout scenario properly to prevent automatic DLL unloading
-    // The action value can be:
-    // 0: UnloadDll() is being called due to a DLL being unloaded with /dll -u
-    // 1: UnloadDll() is being called due to a DLL not being used for ten minutes.
-    //    The UnloadDll() routine can return 0 to keep the DLL loaded, or 1 to allow it to be unloaded.
-    // 2: UnloadDll() is being called due to a DLL being unloaded when mIRC exits.
-    //
-    // IMPORTANT: DO NOT change this logic, otherwise the DLL will unload automatically after 10 minutes
-    // of inactivity, which breaks the continuous hooking functionality for IRC connections.
     if action == 1 {
         // mIRC is asking if we should stay loaded when not used for 10 minutes
         // We return 0 to keep the DLL loaded (same behavior as FiSH-10)
@@ -339,8 +297,8 @@ pub extern "system" fn FiSH11_InjectVersion(
     _a_wnd: *mut HWND,
     data: *mut c_char,
     _parms: *mut c_char,
-    _show: *mut BOOL,
-    _nopause: *mut BOOL,
+    _show: *mut c_int,
+    _nopause: *mut c_int,
 ) -> c_int {
     // Return raw version info (script handles display formatting)
     let version_info = format!(
@@ -418,10 +376,10 @@ mod tests {
         let load_info = LOADINFO {
             m_unicode: 0,
             m_version: 700,
-            m_hwnd: unsafe { std::mem::zeroed() },
-            m_filename: std::ptr::null_mut(),
+            m_hwnd: HWND::default(),
             m_keep: 0,
             m_bytes: 4096,
+            m_beta: 0,
         };
 
         // Test that we can create a LOADINFO struct (compile-time check)

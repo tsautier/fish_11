@@ -488,7 +488,6 @@ dependencies = [
  "parking_lot",
  "retour",
  "sha2",
- "winapi",
  "windows 0.62.2",
 ]
 
