@@ -4,6 +4,7 @@
 //! different platform implementations : DLL and CLI.
 
 pub mod buffer_utils;
+pub mod config;
 pub mod globals;
 pub mod logging;
 pub mod master_key;

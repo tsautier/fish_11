@@ -18,6 +18,14 @@ pub struct SecureString {
     inner: Secret<String>,
 }
 
+impl std::fmt::Debug for SecureString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SecureString")
+            .field("inner", &"<redacted>")
+            .finish()
+    }
+}
+
 impl SecureString {
     /// Create a new secure string with size validation
     pub fn new(s: String) -> Result<Self, String> {
@@ -59,6 +67,14 @@ impl SecureString {
 /// A secure byte vector that automatically clears its contents when dropped
 pub struct SecureBytes {
     inner: Secret<Vec<u8>>,
+}
+
+impl std::fmt::Debug for SecureBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SecureBytes")
+            .field("inner", &"<redacted>")
+            .finish()
+    }
 }
 
 impl SecureBytes {

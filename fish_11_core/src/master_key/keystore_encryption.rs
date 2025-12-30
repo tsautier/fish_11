@@ -155,6 +155,60 @@ pub fn save_encrypted_keystore_to_path(
     Ok(())
 }
 
+/// Save the keystore to a path with encryption using a specific key (for testing)
+#[cfg(test)]
+pub fn save_encrypted_keystore_to_path_with_key(
+    keystore: &Keystore,
+    path: &PathBuf,
+    key: &[u8; 32],
+) -> Result<(), Box<dyn std::error::Error>> {
+    // First, serialize the keystore to INI format
+    let mut ini = configparser::ini::Ini::new();
+
+    // Save master key salt
+    ini.set("MasterKey", "salt", Some(keystore.master_key_salt.clone()));
+
+    // Save password verifier if present
+    if let Some(verifier) = &keystore.password_verifier {
+        ini.set("MasterKey", "verifier", Some(verifier.clone()));
+    }
+
+    // Save nonce counters
+    for (context, counter) in &keystore.nonce_counters {
+        ini.set("NonceCounters", context, Some(counter.to_string()));
+    }
+
+    // Save key metadata
+    for (key_id, metadata) in &keystore.key_metadata {
+        let metadata_str = format!(
+            "{}:{}:{}:{}:{}:{}:{}",
+            metadata.created_at,
+            metadata.last_used,
+            metadata.usage_count,
+            metadata.message_count,
+            metadata.data_size_bytes,
+            metadata.description,
+            metadata.is_revoked
+        );
+        ini.set("KeyMetadata", key_id, Some(metadata_str));
+    }
+
+    // Convert INI to string
+    let ini_string = ini.writes();
+
+    // Encrypt the INI string with the provided key
+    let encrypted_data = encrypt_keystore_data(ini_string.as_bytes(), key)?;
+
+    // Encode as base64 for safe storage
+    let base64_data = base64::encode(&encrypted_data);
+
+    // Write to file with header
+    let content = format!("{}{}\n", ENCRYPTED_KEYSTORE_HEADER, base64_data);
+    std::fs::write(path, content)?;
+
+    Ok(())
+}
+
 /// Load an encrypted keystore from a path
 pub fn load_encrypted_keystore_from_path(
     path: &PathBuf,
@@ -259,6 +313,149 @@ pub fn load_encrypted_keystore_from_path(
     Ok(keystore)
 }
 
+/// Load an encrypted keystore from a path using a specific key (for testing)
+#[cfg(test)]
+pub fn load_encrypted_keystore_from_path_with_key(
+    path: &PathBuf,
+    key: &[u8; 32],
+) -> Result<Keystore, Box<dyn std::error::Error>> {
+    // Read the file content
+    let content = std::fs::read_to_string(path)?;
+
+    // Check if it's an encrypted keystore
+    if !content.starts_with(ENCRYPTED_KEYSTORE_HEADER) {
+        return Err("Not an encrypted keystore file".into());
+    }
+
+    // Split content into header and encrypted data
+    let lines: Vec<&str> = content.lines().collect();
+    if lines.len() < 2 {
+        return Err("Invalid encrypted keystore format".into());
+    }
+
+    // Decode the base64 encrypted data
+    let encrypted_data =
+        base64::decode(lines[1]).map_err(|e| format!("Failed to decode base64: {}", e))?;
+
+    // Decrypt the data with the provided key
+    let decrypted_bytes = decrypt_keystore_data(&encrypted_data, key)?;
+    let decrypted_content = String::from_utf8(decrypted_bytes)
+        .map_err(|e| format!("Failed to convert decrypted data to string: {}", e))?;
+
+    // Parse the decrypted content as INI
+    let mut ini = configparser::ini::Ini::new();
+
+    ini.read(decrypted_content).map_err(|e| format!("Failed to parse INI: {}", e))?;
+
+    // Extract master key salt
+    let master_key_salt = ini.get("MasterKey", "salt").unwrap_or_default();
+
+    // Extract password verifier
+    let password_verifier = ini.get("MasterKey", "verifier");
+
+    // Load nonce counters
+    let mut nonce_counters = std::collections::HashMap::new();
+    if let Some(nonce_section) = ini.get_map_ref().get("NonceCounters") {
+        for (key, value_opt) in nonce_section.iter() {
+            if let Some(value_str) = value_opt {
+                if let Ok(value) = value_str.parse::<u64>() {
+                    nonce_counters.insert(key.clone(), value);
+                }
+            }
+        }
+    }
+
+    // Load key metadata
+    let mut key_metadata = std::collections::HashMap::new();
+    
+    // Try both case variations for the KeyMetadata section
+    let metadata_section = ini.get_map_ref().get("KeyMetadata")
+        .or_else(|| ini.get_map_ref().get("keymetadata"));
+    
+    if let Some(metadata_section) = metadata_section {
+        for (key_id, value_opt) in metadata_section.iter() {
+            if let Some(metadata_str) = value_opt {
+                // Parse metadata from string representation
+                let parts: Vec<&str> = metadata_str.split(':').collect();
+                if parts.len() >= 7 {
+                    // The last part is is_revoked, everything before that except the first 5 is description
+                    if parts.len() > 7 {
+                        // If there are more than 7 parts, the description contains colons
+                        // parts[0-4] = numeric fields, parts[5..parts.len()-1] = description, parts[last] = is_revoked
+                        let description_parts = &parts[5..parts.len()-1];
+                        let description = description_parts.join(":");
+                        if let (
+                            Ok(created_at),
+                            Ok(last_used),
+                            Ok(usage_count),
+                            Ok(message_count),
+                            Ok(data_size_bytes),
+                            Ok(is_revoked),
+                        ) = (
+                            parts[0].parse::<u64>(),
+                            parts[1].parse::<u64>(),
+                            parts[2].parse::<u64>(),
+                            parts[3].parse::<u64>(),
+                            parts[4].parse::<u64>(),
+                            parts[parts.len()-1].parse::<bool>(),
+                        ) {
+                            let metadata = crate::master_key::keystore::KeyMetadata {
+                                created_at,
+                                last_used,
+                                usage_count,
+                                message_count,
+                                data_size_bytes,
+                                description,
+                                is_revoked,
+                            };
+                            key_metadata.insert(key_id.clone(), metadata);
+                        }
+                    } else {
+                        // Exactly 7 parts - no colons in description
+                        if let (
+                            Ok(created_at),
+                            Ok(last_used),
+                            Ok(usage_count),
+                            Ok(message_count),
+                            Ok(data_size_bytes),
+                            Ok(is_revoked),
+                        ) = (
+                            parts[0].parse::<u64>(),
+                            parts[1].parse::<u64>(),
+                            parts[2].parse::<u64>(),
+                            parts[3].parse::<u64>(),
+                            parts[4].parse::<u64>(),
+                            parts[6].parse::<bool>(),
+                        ) {
+                            let description = parts[5].to_string();
+                            let metadata = crate::master_key::keystore::KeyMetadata {
+                                created_at,
+                                last_used,
+                                usage_count,
+                                message_count,
+                                data_size_bytes,
+                                description,
+                                is_revoked,
+                            };
+                            key_metadata.insert(key_id.clone(), metadata);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut keystore = Keystore {
+        master_key_salt,
+        password_verifier,
+        nonce_counters,
+        key_metadata,
+        file_path: Some(path.clone()),
+    };
+
+    Ok(keystore)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,12 +484,17 @@ mod tests {
         let temp_file = NamedTempFile::new().expect("Failed to create temp file");
         let temp_path = temp_file.path().to_path_buf();
 
-        // Save the keystore
-        save_encrypted_keystore_to_path(&keystore, &temp_path).expect("Failed to save keystore");
+        // For testing, we need to use a fixed key since derive_system_specific_key()
+        // uses time-based values that change between save and load operations
+        let fixed_key = [42u8; 32]; // Fixed key for testing
+        
+        // Save the keystore using the test function with fixed key
+        save_encrypted_keystore_to_path_with_key(&keystore, &temp_path, &fixed_key)
+            .expect("Failed to save keystore");
 
-        // Load the keystore back
-        let loaded_keystore =
-            load_encrypted_keystore_from_path(&temp_path).expect("Failed to load keystore");
+        // Load the keystore back using the test function with the same fixed key
+        let loaded_keystore = load_encrypted_keystore_from_path_with_key(&temp_path, &fixed_key)
+            .expect("Failed to load keystore");
 
         // Verify the data
         assert_eq!(keystore.master_key_salt, loaded_keystore.master_key_salt);

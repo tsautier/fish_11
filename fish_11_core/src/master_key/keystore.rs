@@ -14,6 +14,7 @@ use chacha20poly1305::{
 };
 use sha2::{Digest, Sha256};
 use rand::RngCore;
+use base64::{Engine as _, engine::general_purpose};
 
 /// Metadata associated with keys
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,7 +79,7 @@ impl Keystore {
         use rand::RngCore;
         let mut salt_bytes = [0u8; 32];
         rand::thread_rng().fill_bytes(&mut salt_bytes);
-        let salt = base64::encode(&salt_bytes);
+        let salt = general_purpose::STANDARD.encode(&salt_bytes);
 
         Self {
             master_key_salt: salt,
