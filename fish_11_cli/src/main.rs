@@ -6,7 +6,6 @@
 //! Written by [GuY], 2025. Licenced under GPL v3.
 
 mod platform_types;
-//use term_size;
 use std::env;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};

@@ -2,7 +2,7 @@
 //! Provides functions to encrypt and decrypt keystore data
 
 use crate::master_key::keystore::Keystore;
-use base64;
+use base64::{Engine as _, engine::general_purpose};
 use chacha20poly1305::{
     ChaCha20Poly1305, Key, Nonce,
     aead::{Aead, KeyInit},
@@ -146,7 +146,7 @@ pub fn save_encrypted_keystore_to_path(
     let encrypted_data = encrypt_keystore_data(ini_string.as_bytes(), &system_key)?;
 
     // Encode as base64 for safe storage
-    let base64_data = base64::encode(&encrypted_data);
+    let base64_data = general_purpose::STANDARD.encode(&encrypted_data);
 
     // Write to file with header
     let content = format!("{}{}\n", ENCRYPTED_KEYSTORE_HEADER, base64_data);
@@ -200,7 +200,7 @@ pub fn save_encrypted_keystore_to_path_with_key(
     let encrypted_data = encrypt_keystore_data(ini_string.as_bytes(), key)?;
 
     // Encode as base64 for safe storage
-    let base64_data = base64::encode(&encrypted_data);
+    let base64_data = general_purpose::STANDARD.encode(&encrypted_data);
 
     // Write to file with header
     let content = format!("{}{}\n", ENCRYPTED_KEYSTORE_HEADER, base64_data);
@@ -229,7 +229,7 @@ pub fn load_encrypted_keystore_from_path(
 
     // Decode the base64 encrypted data
     let encrypted_data =
-        base64::decode(lines[1]).map_err(|e| format!("Failed to decode base64: {}", e))?;
+        general_purpose::STANDARD.decode(lines[1]).map_err(|e| format!("Failed to decode base64: {}", e))?;
 
     // Derive system-specific key for decryption
     let system_key = derive_system_specific_key()?;
@@ -335,7 +335,7 @@ pub fn load_encrypted_keystore_from_path_with_key(
 
     // Decode the base64 encrypted data
     let encrypted_data =
-        base64::decode(lines[1]).map_err(|e| format!("Failed to decode base64: {}", e))?;
+        general_purpose::STANDARD.decode(lines[1]).map_err(|e| format!("Failed to decode base64: {}", e))?;
 
     // Decrypt the data with the provided key
     let decrypted_bytes = decrypt_keystore_data(&encrypted_data, key)?;
