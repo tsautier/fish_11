@@ -28,6 +28,7 @@ secrecy = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 configparser = "3.0"
 base64 = "0.21"
+tempfile = "3.24.0"
 
 [build-dependencies]
 vergen = { version = "9.0.6", features = ["build", "cargo", "rustc", "si"] }

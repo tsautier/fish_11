@@ -55,7 +55,7 @@ pub fn change_master_password(
 ) -> ChangePasswordResult<String> {
     use crate::master_key::derivation::derive_master_key_with_salt;
     use crate::master_key::password_validation::PasswordValidator;
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
 
     // Validate the new password strength
     PasswordValidator::validate_password_strength(new_password)
@@ -66,11 +66,11 @@ pub fn change_master_password(
         let derived_key = derive_master_key_with_salt(current_password, Some(current_salt))
             .map_err(|_| PasswordChangeError::CurrentPasswordIncorrect)?
             .0;
-        
+
         let mut hasher = Sha256::new();
         hasher.update(&derived_key);
         let key_hash = format!("{:x}", hasher.finalize());
-        
+
         if key_hash != verifier {
             return Err(PasswordChangeError::CurrentPasswordIncorrect);
         }
@@ -118,7 +118,7 @@ mod tests {
         let (_key, salt) = derive_master_key(current_pwd).expect("Should derive key");
 
         // Attempt to change the password with the correct salt
-        let result = change_master_password(current_pwd, &salt, new_pwd);
+        let result = change_master_password(current_pwd, &salt, new_pwd, None);
         assert!(
             result.is_ok(),
             "Password change should succeed with valid passwords: {:?}",
@@ -139,7 +139,7 @@ mod tests {
         let (_key, salt) = derive_master_key(correct_pwd).expect("Should derive key");
 
         // The change_master_password function will succeed because Argon2 doesn't validate passwords
-        let result = change_master_password(wrong_pwd, &salt, new_pwd);
+        let result = change_master_password(wrong_pwd, &salt, new_pwd, None);
         assert!(result.is_ok(), "Derivation should succeed, verification happens elsewhere");
     }
 
@@ -157,7 +157,7 @@ mod tests {
         assert!(PasswordValidator::validate_password_strength(weak_pwd).is_err());
 
         // Attempt to change to weak password
-        let result = change_master_password(current_pwd, &salt, weak_pwd);
+        let result = change_master_password(current_pwd, &salt, weak_pwd, None);
         assert!(matches!(result, Err(PasswordChangeError::NewPasswordTooWeak(_))));
     }
 }

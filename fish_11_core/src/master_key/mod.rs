@@ -23,3 +23,4 @@ pub use memory::{SecureBytes, SecureString};
 pub use rotation::{
     RotationReason, calculate_usage_percentages, rotation_warning_message, should_rotate_key,
 };
+pub mod keystore_encryption;
