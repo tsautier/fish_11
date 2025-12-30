@@ -16,23 +16,19 @@
 //!
 //! Written by [GuY], 2025. Licensed under the GPL v3.
 
+pub mod buffer_utils;
 pub mod config;
 pub mod crypto;
+pub mod dll_function_utils;
 pub mod dll_interface;
 pub mod error;
 pub mod logging;
 pub mod platform_types;
 pub mod utils;
-
-pub mod buffer_utils;
-pub mod dll_function_utils;
 #[macro_use]
 pub mod logging_macros;
-
-// Unified error handling system (standardized approach)
-pub mod unified_error;
-
 pub mod channel_encryption;
+pub mod unified_error;
 
 #[cfg(windows)]
 pub mod engine_registration;

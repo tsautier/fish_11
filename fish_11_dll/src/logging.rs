@@ -1,6 +1,6 @@
 //! Logging module for FiSH_11
 use crate::{log_debug, log_info};
-use base64;
+use base64::{Engine as _, engine::general_purpose};
 use chacha20poly1305::{
     ChaCha20Poly1305,
     aead::{Aead, KeyInit, OsRng},
@@ -107,7 +107,7 @@ impl FileLogger {
         let mut result = nonce.to_vec();
         result.extend_from_slice(&ciphertext);
 
-        Ok(base64::encode(&result))
+        Ok(general_purpose::STANDARD.encode(&result))
     }
 }
 

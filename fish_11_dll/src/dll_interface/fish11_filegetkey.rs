@@ -1,13 +1,11 @@
-use std::ffi::c_char;
-use std::os::raw::c_int;
-
-#[cfg(test)]
-use base64;
-
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::{base64_encode, normalize_nick};
 use crate::{buffer_utils, config, dll_function_identifier, log_debug};
+use std::ffi::c_char;
+use std::os::raw::c_int;
+
+//use base64::{Engine as _, engine::general_purpose};
 
 dll_function_identifier!(FiSH11_FileGetKey, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
@@ -83,6 +81,7 @@ mod tests {
 
     #[test]
     fn test_getkey_normal() {
+        use base64::{Engine as _, engine::general_purpose};
         // Create a test key for "alice"
         let test_key = [1u8; 32];
         config::set_key_default("alice", &test_key, true).unwrap();
@@ -92,7 +91,7 @@ mod tests {
         // Structured check: message should be a base64 encoded key
         assert!(msg.len() > 0);
         // Should be valid base64
-        assert!(base64::decode(&msg).is_ok());
+        assert!(general_purpose::STANDARD.decode(&msg).is_ok());
     }
 
     #[test]

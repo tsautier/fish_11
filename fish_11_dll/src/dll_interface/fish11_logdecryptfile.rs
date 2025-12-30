@@ -1,5 +1,6 @@
 use crate::buffer_utils;
 use crate::dll_interface::dll_error::DllError;
+use base64::{Engine as _, engine::general_purpose};
 use chacha20poly1305::{
     ChaCha20Poly1305, Nonce,
     aead::{Aead, KeyInit},
@@ -11,8 +12,9 @@ use std::io::{BufRead, BufReader};
 use std::os::raw::c_char;
 
 fn decrypt_log_line(key: &[u8], base64_ciphertext: &str) -> Result<String, DllError> {
-    let decoded =
-        base64::decode(base64_ciphertext).map_err(|_| DllError::new("Invalid base64 encoding"))?;
+    let decoded = general_purpose::STANDARD
+        .decode(base64_ciphertext)
+        .map_err(|_| DllError::new("Invalid base64 encoding"))?;
 
     if decoded.len() < 12 {
         return Err(DllError::new("Ciphertext too short"));

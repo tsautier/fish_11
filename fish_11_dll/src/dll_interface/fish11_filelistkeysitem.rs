@@ -1,9 +1,8 @@
-use std::ffi::c_char;
-use std::os::raw::c_int;
-
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::{buffer_utils, config, dll_function_identifier, log_debug};
+use std::ffi::c_char;
+use std::os::raw::c_int;
 
 dll_function_identifier!(FiSH11_FileListKeysItem, data, {
     // Parse input to get the index

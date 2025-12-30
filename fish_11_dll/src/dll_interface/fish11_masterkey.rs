@@ -5,11 +5,13 @@ use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::{buffer_utils, dll_function_identifier};
 use fish_11_core::globals::LOGGING_KEY;
+use fish_11_core::master_key::core::{
+    initialize_key_system, is_key_system_unlocked, lock_key_system,
+};
 use fish_11_core::master_key::derivation::{derive_master_key, derive_master_key_with_salt};
 use fish_11_core::master_key::keystore::Keystore;
 use fish_11_core::master_key::password_change::change_master_password;
 use fish_11_core::master_key::password_validation::PasswordValidator;
-use fish_11_core::master_key::core::{initialize_key_system, is_key_system_unlocked, lock_key_system};
 use once_cell::sync::Lazy;
 use sha2::{Digest, Sha256};
 use std::ffi::c_char;
@@ -203,7 +205,7 @@ dll_function_identifier!(FiSH11_MasterKeyUnlock, data, {
 dll_function_identifier!(FiSH11_MasterKeyLock, data, {
     // Lock master key (clear from memory)
     // Returns: "1" on success, error message on failure
-    
+
     // Lock the new key system
     lock_key_system();
 
@@ -317,7 +319,7 @@ dll_function_identifier!(FiSH11_MasterKeyChangePassword, data, {
 dll_function_identifier!(FiSH11_MasterKeyStatus, data, {
     // Get master key status
     // Returns: "locked" or "unlocked"
-    
+
     // Check new system
     let status = if is_key_system_unlocked() { "unlocked" } else { "locked" };
 
@@ -327,7 +329,7 @@ dll_function_identifier!(FiSH11_MasterKeyStatus, data, {
 dll_function_identifier!(FiSH11_MasterKeyIsUnlocked, data, {
     // Check if master key is unlocked
     // Returns: "1" if unlocked, "0" if locked
-    
+
     // Check new system
     let result = if is_key_system_unlocked() { "1" } else { "0" };
 

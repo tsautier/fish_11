@@ -10,7 +10,7 @@ use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
 
 use crate::config::settings::get_encryption_prefix;
 use crate::crypto::{decrypt_message, encrypt_message};
-use crate::{log_debug, log_error, log_info, log_warn};
+//use crate::{log_debug, log_error, log_info, log_warn};
 
 type GetNetworkNameFn = unsafe extern "C" fn(u32) -> *mut c_char;
 static GET_NETWORK_NAME_FN: OnceCell<GetNetworkNameFn> = OnceCell::new();

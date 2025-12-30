@@ -53,16 +53,14 @@ mod tests {
             );
         }
 
-        let result_code = unsafe {
-            func(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                buffer.as_mut_ptr(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-            )
-        };
+        let result_code = func(
+            ptr::null_mut(),
+            ptr::null_mut(),
+            buffer.as_mut_ptr(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+        );
 
         let result_str = if result_code != MIRC_HALT {
             unsafe { std::ffi::CStr::from_ptr(buffer.as_ptr()).to_string_lossy().into_owned() }

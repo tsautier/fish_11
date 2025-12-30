@@ -1,50 +1,46 @@
 use crate::dll_interface::dll_error::DllError;
 use crate::platform_types::PCSTR;
-use fish_11_core::globals::LOGGING_KEY;
-use fish_11_core::master_key::derivation::{derive_logs_kek, derive_master_key};
-use std::ffi::CStr;
+use fish_11_core::globals::{LOGGING_KEY, MASTER_KEY};
+use fish_11_core::master_key::derivation::derive_logs_kek;
 
 #[no_mangle]
-pub extern "C" fn FiSH11_LogSetKey(key: PCSTR) -> i32 {
-    if key.is_null() {
-        return DllError::new("key pointer is null").log_and_return_error_code();
-    }
+pub extern "C" fn FiSH11_LogSetKey(_key: PCSTR) -> i32 {
+    // Get the master key from memory
+    let master_key = {
+        let key_guard = match MASTER_KEY.lock() {
+            Ok(g) => g,
+            Err(_) => {
+                return DllError::new("Failed to acquire master key lock")
+                    .log_and_return_error_code();
+            }
+        };
 
-    let key_str = unsafe { CStr::from_ptr(key) };
-    let key_r = match key_str.to_str() {
-        Ok(s) => s,
-        Err(_) => {
-            return DllError::new("Failed to convert key to string").log_and_return_error_code();
+        match key_guard.as_ref() {
+            Some(key) => *key,
+            None => {
+                return DllError::new("Master key is not set. Please unlock master key first.")
+                    .log_and_return_error_code();
+            }
         }
     };
 
-    // Derive a secure logging key using proper KDF (Argon2id + HKDF)
-    // First, derive master key from password
-    let (master_key, _salt) = match derive_master_key(key_r) {
-        Ok(result) => result,
-        Err(e) => {
-            return DllError::new(&format!("Failed to derive master key: {}", e))
-                .log_and_return_error_code();
-        }
-    };
+    // Derive logging key from master key using HKDF
+    let logging_key = derive_logs_kek(&master_key);
 
-    // Then derive logging KEK from master key
-    let key_bytes = derive_logs_kek(&master_key);
-
-    // Store the key in the global variable
+    // Store the derived logging key in the global variable
     {
-        let mut key_guard = match LOGGING_KEY.lock() {
+        let mut logging_key_guard = match LOGGING_KEY.lock() {
             Ok(g) => g,
             Err(_) => {
                 return DllError::new("Failed to acquire logging key lock")
                     .log_and_return_error_code();
             }
         };
-        *key_guard = Some(key_bytes);
+        *logging_key_guard = Some(logging_key);
     }
 
     log::info!(
-        "FiSH11_LogSetKey: in-memory log encryption key has been set for the current session."
+        "FiSH11_LogSetKey: in-memory log encryption key has been derived from master key and set for the current session."
     );
     0 // Success
 }

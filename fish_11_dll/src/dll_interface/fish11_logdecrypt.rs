@@ -1,12 +1,12 @@
 use crate::dll_interface::dll_error::DllError;
 // use buffer_utils for writing results into caller buffer
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD;
 use chacha20poly1305::{
     ChaCha20Poly1305, Nonce,
     aead::{Aead, KeyInit},
 };
 use fish_11_core::globals::LOGGING_KEY;
-use base64::engine::general_purpose::STANDARD;
-use base64::Engine as _;
 use std::ffi::CStr;
 use std::os::raw::c_char;
 

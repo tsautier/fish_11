@@ -1,12 +1,10 @@
-use std::ffi::c_char;
-use std::os::raw::c_int;
-
-use base64::Engine;
-
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 use crate::{buffer_utils, config, dll_function_identifier, log_debug};
+use base64::Engine;
+use std::ffi::c_char;
+use std::os::raw::c_int;
 
 dll_function_identifier!(FiSH11_SetKey, data, {
     // 1. Parse input: <network> <target> <base64_key> where target is nickname or channel

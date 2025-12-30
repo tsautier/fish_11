@@ -303,7 +303,7 @@ pub fn load_encrypted_keystore_from_path(
         }
     }
 
-    let mut keystore = Keystore {
+    let keystore = Keystore {
         master_key_salt,
         password_verifier,
         nonce_counters,
@@ -447,7 +447,7 @@ pub fn load_encrypted_keystore_from_path_with_key(
         }
     }
 
-    let mut keystore = Keystore {
+    let keystore = Keystore {
         master_key_salt,
         password_verifier,
         nonce_counters,

@@ -1,8 +1,9 @@
 use crate::buffer_utils;
 use crate::dll_interface::dll_error::DllError;
+use base64::{Engine as _, engine::general_purpose};
 use chacha20poly1305::AeadCore;
 use chacha20poly1305::{
-    ChaCha20Poly1305, Nonce,
+    ChaCha20Poly1305,
     aead::{Aead, KeyInit, OsRng},
 };
 use fish_11_core::globals::LOGGING_KEY;
@@ -22,7 +23,7 @@ fn encrypt_log_message(key: &[u8], plaintext: &str) -> Result<String, DllError> 
     let mut result = nonce.to_vec();
     result.extend_from_slice(&ciphertext);
 
-    Ok(base64::encode(&result))
+    Ok(general_purpose::STANDARD.encode(&result))
 }
 
 #[no_mangle]

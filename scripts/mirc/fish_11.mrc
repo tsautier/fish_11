@@ -1653,9 +1653,9 @@ alias etopic {
   if (%channelKey == $null) {
     ; No key exists, but the engine may still try to encrypt if a channel key exists
     ; This will be handled by the engine registration code
-    echo $color(Mode text) -at *** FiSH_11: No encryption key found for $active, topic will be sent in plain text
+    echo $color(Mode text) -at *** FiSH_11: no encryption key found for $active, topic will be sent in plain text
   } else {
-    echo $color(Mode text) -at *** FiSH_11: Topic will be encrypted for $active
+    echo $color(Mode text) -at *** FiSH_11: topic will be encrypted for $active
   }
 
   ; Execute the topic command - encryption will be handled by the engine
@@ -1695,7 +1695,7 @@ alias fish11_encrypt_log_line {
   }
   else {
     ; If encryption fails, return original text but warn user
-    echo 4 -a *** FiSH_11: Warning - could not encrypt log line, logging in plaintext
+    echo 4 -a *** FiSH_11: warning - could not encrypt log line, logging in plaintext
     return $1-
   }
 }
@@ -1709,7 +1709,7 @@ alias fish11_decrypt_log_line {
   }
   else {
     ; If decryption fails, return original text but warn user
-    echo 4 -a *** FiSH_11: Warning - could not decrypt log line
+    echo 4 -a *** FiSH_11: warning - could not decrypt log line
     return $1-
   }
 }
@@ -1718,66 +1718,59 @@ alias fish11_decrypt_log_line {
 
 ; Set the logging key
 alias fish11_setlogkey {
-  if (!$1) {
-    echo 4 -a *** FiSH_11: Usage: /fish11_setlogkey <key>
-    echo 4 -a *** FiSH_11: Sets the encryption key for encrypted logging
-    return
-  }
-
-  ; For now, just pass the key directly - in a real implementation,
-  ; this would be processed with a KDF first
-  var %result = $dll(%Fish11DllFile, FiSH11_LogSetKey, $1)
+  ; Derive logging key from master key using HKDF
+  var %result = $dll(%Fish11DllFile, FiSH11_LogSetKey, $null)
   if (%result == 0) {
-    echo 4 -a *** FiSH_11: Logging encryption key has been set
+    echo 4 -a *** FiSH_11: logging encryption key has been derived from master key and set
   } else {
-    echo 4 -a *** FiSH_11: Failed to set logging encryption key (error code: %result)
+    echo 4 -a *** FiSH_11: failed to set logging encryption key (error code: %result)
   }
 }
 
 ; Encrypt a log line
 alias fish11_logencrypt {
   if (!$1) {
-    echo 4 -a *** FiSH_11: Usage: /fish11_logencrypt <text>
-    echo 4 -a *** FiSH_11: Encrypts a line of text for logging
+    echo 4 -a *** FiSH_11: usage: /fish11_logencrypt <text>
+    echo 4 -a *** FiSH_11: encrypts a line of text for logging
     return
   }
 
   var %result = $dll(%Fish11DllFile, FiSH11_LogEncrypt, $1, $chr(0), 8192)
   if (%result != $null) {
-    echo 4 -a *** FiSH_11: Encrypted log: %result
+    echo 4 -a *** FiSH_11: encrypted log: %result
   } else {
-    echo 4 -a *** FiSH_11: Failed to encrypt log line
+    echo 4 -a *** FiSH_11: failed to encrypt log line
   }
 }
 
 ; Decrypt a log line
 alias fish11_logdecrypt {
   if (!$1) {
-    echo 4 -a *** FiSH_11: Usage: /fish11_logdecrypt <encrypted_text>
-    echo 4 -a *** FiSH_11: Decrypts a line of text from encrypted log
+    echo 4 -a *** FiSH_11: usage: /fish11_logdecrypt <encrypted_text>
+    echo 4 -a *** FiSH_11: decrypts a line of text from encrypted log
     return
   }
 
   var %result = $dll(%Fish11DllFile, FiSH11_LogDecrypt, $1, $chr(0), 8192)
   if (%result != $null) {
-    echo 4 -a *** FiSH_11: Decrypted log: %result
+    echo 4 -a *** FiSH_11: decrypted log: %result
   } else {
-    echo 4 -a *** FiSH_11: Failed to decrypt log line
+    echo 4 -a *** FiSH_11: failed to decrypt log line
   }
 }
 
 ; Decrypt an entire log file
 alias fish11_logdecryptfile {
   if (!$1) {
-    echo 4 -a *** FiSH_11: Usage: /fish11_logdecryptfile <filepath>
-    echo 4 -a *** FiSH_11: Decrypts an entire encrypted log file and displays the content
+    echo 4 -a *** FiSH_11: usage: /fish11_logdecryptfile <filepath>
+    echo 4 -a *** FiSH_11: decrypts an entire encrypted log file and displays the content
     return
   }
 
   var %result = $dll(%Fish11DllFile, FiSH11_LogDecryptFile, $1, $chr(0), 8192)
   if (%result != $null) {
     ; Display the decrypted content
-    echo 4 -a *** FiSH_11: Decrypted content from $1:
+    echo 4 -a *** FiSH_11: decrypted content from $1:
     ; The Rust function returns all decrypted lines joined with actual newline characters
     ; We need to split and display each line
     var %i = 1
@@ -1789,7 +1782,7 @@ alias fish11_logdecryptfile {
       inc %i
     }
   } else {
-    echo 4 -a *** FiSH_11: Failed to decrypt log file
+    echo 4 -a *** FiSH_11: failed to decrypt log file
   }
 }
 

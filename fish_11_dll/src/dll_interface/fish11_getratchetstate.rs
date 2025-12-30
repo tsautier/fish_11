@@ -1,16 +1,15 @@
-use std::ffi::c_char;
-use std::os::raw::c_int;
-
 use crate::config::with_config;
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::{buffer_utils, dll_function_identifier, log_debug, log_info, log_warn};
+use std::ffi::c_char;
+use std::os::raw::c_int;
 
-/// Gets ratchet state information for a channel
-///
-/// Input: <channel>
-///
-/// Output: Returns a formatted string with ratchet state information or an error message
+// Gets ratchet state information for a channel
+//
+// Input: <channel>
+//
+// Output: Returns a formatted string with ratchet state information or an error message
 dll_function_identifier!(FiSH11_GetRatchetState, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
     let parts: Vec<&str> = input.split_whitespace().collect();

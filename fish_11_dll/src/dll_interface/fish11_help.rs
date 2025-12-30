@@ -6,9 +6,9 @@ use crate::dll_interface::{CRATE_VERSION, CURRENT_YEAR};
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 
-/// Displays help information about the DLL, including version and available commands.
-///
-/// The output is a plain help text with one line per entry.
+// Displays help information about the DLL, including version and available commands.
+//
+// The output is a plain help text with one line per entry.
 dll_function_identifier!(FiSH11_Help, _data, {
     let help_lines = [
         format!("=== FiSH_11 v{} - secure chat for IRC ===", CRATE_VERSION),

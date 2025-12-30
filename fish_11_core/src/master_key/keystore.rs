@@ -251,7 +251,7 @@ impl Keystore {
             }
         }
 
-        let mut keystore = Keystore {
+        let keystore = Keystore {
             master_key_salt,
             password_verifier,
             nonce_counters,

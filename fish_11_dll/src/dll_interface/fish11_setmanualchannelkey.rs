@@ -1,24 +1,22 @@
-use std::ffi::c_char;
-use std::os::raw::c_int;
-
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::base64_decode;
 use crate::{buffer_utils, config, dll_function_identifier, log_debug};
+use std::ffi::c_char;
+use std::os::raw::c_int;
 
-/// Sets a manual encryption key for a channel.
-///
-/// IMPORTANT SECURITY NOTE: The key must be a cryptographically strong 32-byte key,
-/// NOT a password or passphrase. This function does NOT perform key stretching.
-/// If you need to use a password, you must derive a proper 32-byte key using
-/// a key derivation function (PBKDF2, Argon2, etc.) before calling this function.
-///
-/// Input format: <#channel> <base64_encoded_32byte_key>
-///
-/// Example: #secret AGN2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0
-///
-/// Returns: Success message or error
-
+// Sets a manual encryption key for a channel.
+//
+// IMPORTANT SECURITY NOTE: The key must be a cryptographically strong 32-byte key,
+// NOT a password or passphrase. This function does NOT perform key stretching.
+// If you need to use a password, you must derive a proper 32-byte key using
+// a key derivation function (PBKDF2, Argon2, etc.) before calling this function.
+//
+// Input format: <#channel> <base64_encoded_32byte_key>
+//
+// Example: #secret AGN2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0
+//
+// Returns: Success message or error
 dll_function_identifier!(FiSH11_SetManualChannelKey, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
     let parts: Vec<&str> = input.splitn(2, ' ').collect();
@@ -69,12 +67,10 @@ dll_function_identifier!(FiSH11_SetManualChannelKey, data, {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::dll_interface::MIRC_COMMAND;
     use std::ffi::CStr;
     use std::ptr;
-
-    use super::*;
-    use crate::config;
-    use crate::dll_interface::MIRC_COMMAND;
 
     fn call_set_manual_channel_key(input: &str, buffer_size: usize) -> (c_int, String) {
         let mut buffer = vec![0i8; buffer_size];

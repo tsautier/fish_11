@@ -40,8 +40,8 @@ impl LogKey {
 
     /// Encrypt a log entry
     pub fn encrypt_log_entry(&self, log_entry: &str) -> Result<String, String> {
-        use chacha20poly1305::Nonce;
         use base64::{Engine as _, engine::general_purpose};
+        use chacha20poly1305::Nonce;
         let cipher = ChaCha20Poly1305::new(Key::from_slice(&self.key_material));
         let nonce = self.generate_nonce();
         let nonce = Nonce::from_slice(&nonce);
@@ -59,10 +59,11 @@ impl LogKey {
 
     /// Decrypt a log entry
     pub fn decrypt_log_entry(&self, encrypted_log: &str) -> Result<String, String> {
-        use chacha20poly1305::Nonce;
         use base64::{Engine as _, engine::general_purpose};
-        let encrypted_bytes =
-            general_purpose::STANDARD.decode(encrypted_log).map_err(|e| format!("Base64 decode failed: {}", e))?;
+        use chacha20poly1305::Nonce;
+        let encrypted_bytes = general_purpose::STANDARD
+            .decode(encrypted_log)
+            .map_err(|e| format!("Base64 decode failed: {}", e))?;
 
         if encrypted_bytes.len() < 12 {
             return Err("Encrypted log data too short".to_string());

@@ -45,7 +45,7 @@ impl MasterKey {
         let nonce = Nonce::from_slice(&nonce);
 
         cipher.encrypt(nonce, data).map_err(|e| format!("Encryption failed: {}", e)).map(
-            |mut ciphertext| {
+            |ciphertext| {
                 let mut result = Vec::with_capacity(nonce.len() + ciphertext.len());
                 result.extend_from_slice(&nonce);
                 result.extend_from_slice(&ciphertext);
