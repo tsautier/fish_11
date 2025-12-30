@@ -1,22 +1,20 @@
 //! This module contains the hooks for Winsock functions
 //! It includes the hooks for recv, send, connect, and closesocket
 
-use std::ffi::c_int;
-use std::sync::{Arc, Mutex as StdMutex};
-
+use crate::socket::handlers::protocol_detection;
+use crate::socket::info::SocketInfo;
+use crate::socket::state::SocketState;
+use crate::{ACTIVE_SOCKETS, DISCARDED_SOCKETS, ENGINES, InjectEngines};
 use fish_11_core::globals::{
     CMD_JOIN, CMD_NOTICE, CMD_PRIVMSG, KEY_EXCHANGE_INIT, KEY_EXCHANGE_PUBKEY,
 };
 use log::{debug, error, info, trace, warn};
 use retour::GenericDetour;
 use sha2::{Digest, Sha256};
+use std::ffi::c_int;
+use std::sync::{Arc, Mutex as StdMutex};
 use winapi::shared::ws2def::SOCKADDR;
 use winapi::um::winsock2::{SOCKET, SOCKET_ERROR, WSAEINTR};
-
-use crate::socket::handlers::protocol_detection;
-use crate::socket::info::SocketInfo;
-use crate::socket::state::SocketState;
-use crate::{ACTIVE_SOCKETS, DISCARDED_SOCKETS, ENGINES, InjectEngines};
 
 // Type definitions for Winsock functions and ensure "system" ABI (stdcall) for function types
 pub type RecvFn = unsafe extern "system" fn(SOCKET, *mut i8, c_int, c_int) -> c_int;
@@ -140,7 +138,10 @@ pub unsafe extern "system" fn hooked_recv(
         // Read processed data back into mIRC's buffer.
         // This is the critical step where decrypted data replaces the original encrypted data.
         let processed_buffer = socket_info.get_processed_buffer();
-        let bytes_to_copy = std::cmp::min(len as usize, processed_buffer.len());
+
+        // Safety: ensure len is non-negative before casting
+        let safe_len = if len > 0 { len as usize } else { 0 };
+        let bytes_to_copy = std::cmp::min(safe_len, processed_buffer.len());
 
         if bytes_to_copy > 0 {
             let target_buf = std::slice::from_raw_parts_mut(buf as *mut u8, bytes_to_copy);
@@ -227,6 +228,28 @@ pub unsafe extern "system" fn hooked_send(
         return original.call(s, buf, len, flags);
     }
 
+    if len < 0 || buf.is_null() {
+        let hook_guard = match crate::lock_utils::try_lock_timeout(
+            &SEND_HOOK,
+            crate::lock_utils::DEFAULT_LOCK_TIMEOUT,
+        ) {
+            Ok(guard) => guard,
+            Err(e) => {
+                error!("Failed to acquire SEND_HOOK lock: {}", e);
+                return -1;
+            }
+        };
+        let original = match hook_guard.as_ref() {
+            Some(hook) => hook,
+            None => {
+                error!("Original send function not available!");
+                return -1;
+            }
+        };
+        return original.call(s, buf, len, flags);
+    }
+
+    // Safety: checked len > 0 above
     let data_slice = std::slice::from_raw_parts(buf as *const u8, len as usize);
 
     #[cfg(debug_assertions)]

@@ -463,63 +463,63 @@ unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int)
 
     trace!("SSL_write: socket {}, {} bytes", socket_id, num);
 
-    // Prepare data slice safely
-    let data_slice = std::slice::from_raw_parts(buf, num as usize);
+    // Prepare data slice safely (only if buffer is valid)
+    if num > 0 && !buf.is_null() {
+        let data_slice = std::slice::from_raw_parts(buf, num as usize);
 
-    #[cfg(debug_assertions)]
-    {
-        // Detailed debug logging for outgoing SSL plaintext
-        debug!(
-            "[SSL_WRITE DEBUG] Socket {}: sending {} bytes to SSL_write (before encryption)",
-            socket_id, num
-        );
-
-        // Log hex preview of first 64 bytes
-        let preview_len = std::cmp::min(64, data_slice.len());
-        debug!(
-            "[SSL_WRITE DEBUG] Socket {}: hex preview (first {} bytes): {:02X?}",
-            socket_id,
-            preview_len,
-            &data_slice[..preview_len]
-        );
-
-        // Try to parse as UTF-8 and log sanitized version
-        if let Ok(text) = std::str::from_utf8(data_slice) {
-            let sanitized: String = text
-                .chars()
-                .map(
-                    |c| if c.is_control() && c != '\r' && c != '\n' && c != '\t' { '.' } else { c },
-                )
-                .collect();
+        #[cfg(debug_assertions)]
+        {
+            // Detailed debug logging for outgoing SSL plaintext
             debug!(
-                "[SSL_WRITE DEBUG] Socket {}: UTF-8 content (sanitized): {:?}",
-                socket_id, sanitized
+                "[SSL_WRITE DEBUG] Socket {}: sending {} bytes to SSL_write (before encryption)",
+                socket_id, num
             );
 
-            // Check for IRC protocol markers
-            if text.contains(CMD_PRIVMSG) || text.contains(CMD_NOTICE) || text.contains(CMD_JOIN) {
-                debug!("[SSL_WRITE DEBUG] Socket {}: detected IRC protocol command", socket_id);
-            }
+            // Log hex preview of first 64 bytes
+            let preview_len = std::cmp::min(64, data_slice.len());
+            debug!(
+                "[SSL_WRITE DEBUG] Socket {}: hex preview (first {} bytes): {:02X?}",
+                socket_id,
+                preview_len,
+                &data_slice[..preview_len]
+            );
 
-            // Check for FiSH key exchange markers
-            if text.contains(KEY_EXCHANGE_INIT) || text.contains(KEY_EXCHANGE_PUBKEY) {
-                debug!("[SSL_WRITE DEBUG] Socket {}: detected FiSH key exchange data", socket_id);
-            }
+            // Try to parse as UTF-8 and log sanitized version
+            if let Ok(text) = std::str::from_utf8(data_slice) {
+                let sanitized: String = text
+                    .chars()
+                    .map(
+                        |c| if c.is_control() && c != '\r' && c != '\n' && c != '\t' { '.' } else { c },
+                    )
+                    .collect();
+                debug!(
+                    "[SSL_WRITE DEBUG] Socket {}: UTF-8 content (sanitized): {:?}",
+                    socket_id, sanitized
+                );
 
-            // Check for encrypted message markers
-            if text.contains(ENCRYPTION_PREFIX_OK)
-                || text.contains(ENCRYPTION_PREFIX_FISH)
-                || text.contains(ENCRYPTION_PREFIX_MCPS)
-            {
-                debug!("[SSL_WRITE DEBUG] Socket {}: detected FiSH encrypted message", socket_id);
+                // Check for IRC protocol markers
+                if text.contains(CMD_PRIVMSG) || text.contains(CMD_NOTICE) || text.contains(CMD_JOIN) {
+                    debug!("[SSL_WRITE DEBUG] Socket {}: detected IRC protocol command", socket_id);
+                }
+
+                // Check for FiSH key exchange markers
+                if text.contains(KEY_EXCHANGE_INIT) || text.contains(KEY_EXCHANGE_PUBKEY) {
+                    debug!("[SSL_WRITE DEBUG] Socket {}: detected FiSH key exchange data", socket_id);
+                }
+
+                // Check for encrypted message markers
+                if text.contains(ENCRYPTION_PREFIX_OK)
+                    || text.contains(ENCRYPTION_PREFIX_FISH)
+                    || text.contains(ENCRYPTION_PREFIX_MCPS)
+                {
+                    debug!("[SSL_WRITE DEBUG] Socket {}: detected FiSH encrypted message", socket_id);
+                }
+            } else {
+                debug!("[SSL_WRITE DEBUG] Socket {}: non-UTF8 binary data", socket_id);
             }
-        } else {
-            debug!("[SSL_WRITE DEBUG] Socket {}: non-UTF8 binary data", socket_id);
         }
-    }
 
-    // Human-readable log for outgoing TLS
-    if num > 0 && !buf.is_null() {
+        // Human-readable log for outgoing TLS
         if let Ok(text) = std::str::from_utf8(data_slice) {
             info!(
                 "[TLS OUT] {}: {} bytes: {}",
@@ -535,25 +535,25 @@ unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int)
                 &data_slice[..std::cmp::min(32, data_slice.len())]
             );
         }
-    }
 
-    // Pre-process: log and allow for modification/event-op
-    let socket_info = get_or_create_socket(socket_id, true);
+        // Pre-process: log and allow for modification/event-op
+        let socket_info = get_or_create_socket(socket_id, true);
 
-    trace!(
-        "Socket {}: [SSL PLAINTEXT] Outgoing data ({} bytes): {}",
-        socket_id,
-        num,
-        String::from_utf8_lossy(data_slice).trim_end()
-    );
+        trace!(
+            "Socket {}: [SSL PLAINTEXT] Outgoing data ({} bytes): {}",
+            socket_id,
+            num,
+            String::from_utf8_lossy(data_slice).trim_end()
+        );
 
-    if let Err(e) = socket_info.on_sending(data_slice) {
-        // [Pre-encryption]
-        error!("Error processing outgoing SSL data: {:?}", e);
-    }
+        if let Err(e) = socket_info.on_sending(data_slice) {
+            // [Pre-encryption]
+            error!("Error processing outgoing SSL data: {:?}", e);
+        }
 
-    if log::log_enabled!(log::Level::Trace) {
-        trace!("SSL_write() data: {:?}", data_slice);
+        if log::log_enabled!(log::Level::Trace) {
+            trace!("SSL_write() data: {:?}", data_slice);
+        }
     }
 
     // Always call the original SSL_write implementation
