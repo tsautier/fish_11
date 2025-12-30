@@ -2,17 +2,17 @@
 //!
 //! Handles persistent storage of sensitive data like salts, nonce counters, etc.
 
+use base64::{Engine as _, engine::general_purpose};
+use chacha20poly1305::{
+    ChaCha20Poly1305, Key, Nonce,
+    aead::{Aead, KeyInit},
+};
 use configparser::ini::Ini;
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use chacha20poly1305::{
-    aead::{Aead, KeyInit},
-    ChaCha20Poly1305, Key, Nonce,
-};
-use sha2::{Digest, Sha256};
-use rand::RngCore;
-use base64::{Engine as _, engine::general_purpose};
 
 /// Metadata associated with keys
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -170,7 +170,7 @@ impl Keystore {
     pub fn load_from_file(path: &PathBuf) -> Result<Self, Box<dyn std::error::Error>> {
         // Read the file content
         let file_content = std::fs::read(path)?;
-        
+
         // Check if the data is encrypted
         let ini_string = if Self::is_encrypted_data(&file_content) {
             // Try to decrypt the data
@@ -188,7 +188,7 @@ impl Keystore {
             String::from_utf8(file_content)
                 .map_err(|e| format!("Failed to read keystore as plaintext: {}", e))?
         };
-        
+
         // Parse the INI content
         let mut ini = Ini::new();
         ini.read(ini_string)?;
@@ -305,13 +305,13 @@ impl Keystore {
 
         // Convert INI to string
         let ini_string = ini.writes();
-        
+
         // Encrypt the keystore data
         let encrypted_data = Self::encrypt_keystore_data(&ini_string)?;
-        
+
         // Write encrypted data to file
         std::fs::write(path, encrypted_data)?;
-        
+
         Ok(())
     }
 
@@ -339,29 +339,33 @@ impl Keystore {
     /// This key is derived from system-specific information and is not stored
     fn derive_keystore_encryption_key() -> Result<[u8; 32], Box<dyn std::error::Error>> {
         use std::env;
-        
+
         // Get system-specific information
         let hostname = env::var("COMPUTERNAME").or_else(|_| env::var("HOSTNAME"));
         let username = env::var("USERNAME").or_else(|_| env::var("USER"));
         let current_dir = env::current_dir()?;
-        
+
         // Create a seed from system information
         let mut seed = String::new();
-        if let Ok(h) = hostname { seed.push_str(&h); }
-        if let Ok(u) = username { seed.push_str(&u); }
+        if let Ok(h) = hostname {
+            seed.push_str(&h);
+        }
+        if let Ok(u) = username {
+            seed.push_str(&u);
+        }
         seed.push_str(&current_dir.to_string_lossy());
-        
+
         // Add some fixed salt for consistency
         seed.push_str("fish_11_keystore_encryption_salt");
-        
+
         // Derive a 32-byte key using SHA-256
         let mut hasher = Sha256::new();
         hasher.update(seed.as_bytes());
         let hash = hasher.finalize();
-        
+
         let mut key = [0u8; 32];
         key.copy_from_slice(&hash);
-        
+
         Ok(key)
     }
 
@@ -369,21 +373,22 @@ impl Keystore {
     fn encrypt_keystore_data(data: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let key = Self::derive_keystore_encryption_key()?;
         let cipher = ChaCha20Poly1305::new(Key::from_slice(&key));
-        
+
         // Generate a random nonce
         let mut nonce_bytes = [0u8; 12];
         rand::thread_rng().fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
-        
+
         // Encrypt the data
-        let ciphertext = cipher.encrypt(nonce, data.as_bytes())
+        let ciphertext = cipher
+            .encrypt(nonce, data.as_bytes())
             .map_err(|e| format!("Encryption failed: {}", e))?;
-        
+
         // Combine nonce and ciphertext for storage
         let mut result = Vec::with_capacity(12 + ciphertext.len());
         result.extend_from_slice(nonce.as_slice());
         result.extend_from_slice(&ciphertext);
-        
+
         Ok(result)
     }
 
@@ -392,22 +397,22 @@ impl Keystore {
         if encrypted_data.len() < 12 {
             return Err("Encrypted data too short".into());
         }
-        
+
         let key = Self::derive_keystore_encryption_key()?;
         let cipher = ChaCha20Poly1305::new(Key::from_slice(&key));
-        
+
         // Split nonce and ciphertext
         let (nonce_bytes, ciphertext) = encrypted_data.split_at(12);
         let nonce = Nonce::from_slice(nonce_bytes);
-        
+
         // Decrypt the data
-        let plaintext = cipher.decrypt(nonce, ciphertext)
-            .map_err(|e| format!("Decryption failed: {}", e))?;
-        
+        let plaintext =
+            cipher.decrypt(nonce, ciphertext).map_err(|e| format!("Decryption failed: {}", e))?;
+
         // Convert to string
         let result = String::from_utf8(plaintext)
             .map_err(|e| format!("Invalid UTF-8 in decrypted data: {}", e))?;
-        
+
         Ok(result)
     }
 
@@ -417,7 +422,7 @@ impl Keystore {
         if data.len() < 12 {
             return false;
         }
-        
+
         // Check if the first 12 bytes (nonce) are not all zeros
         let nonce = &data[0..12];
         !nonce.iter().all(|&b| b == 0)

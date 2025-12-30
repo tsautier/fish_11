@@ -121,13 +121,15 @@ fn load_encrypted_config_from_file(config_path: &PathBuf) -> Result<FishConfig> 
         .map_err(|e| FishError::ConfigError(format!("Failed to decrypt config: {}", e)))?;
 
     // Convert decrypted bytes to string
-    let decrypted_content = String::from_utf8(decrypted_bytes)
-        .map_err(|e| FishError::ConfigError(format!("Failed to convert decrypted data to string: {}", e)))?;
+    let decrypted_content = String::from_utf8(decrypted_bytes).map_err(|e| {
+        FishError::ConfigError(format!("Failed to convert decrypted data to string: {}", e))
+    })?;
 
     // Parse the decrypted content as INI
     let mut ini = Ini::new();
-    ini.read(decrypted_content)
-        .map_err(|e| FishError::ConfigError(format!("Failed to parse decrypted INI content: {}", e)))?;
+    ini.read(decrypted_content).map_err(|e| {
+        FishError::ConfigError(format!("Failed to parse decrypted INI content: {}", e))
+    })?;
 
     // Create a new config object and populate it from the INI data
     let mut config = FishConfig::new();
@@ -152,19 +154,23 @@ fn load_encrypted_config_from_file(config_path: &PathBuf) -> Result<FishConfig> 
 
     // Load [FiSH11] section
     if let Some(process_incoming) = ini.get("FiSH11", "process_incoming") {
-        config.fish11.process_incoming = process_incoming.eq_ignore_ascii_case("true") || process_incoming == "1";
+        config.fish11.process_incoming =
+            process_incoming.eq_ignore_ascii_case("true") || process_incoming == "1";
     }
     if let Some(process_outgoing) = ini.get("FiSH11", "process_outgoing") {
-        config.fish11.process_outgoing = process_outgoing.eq_ignore_ascii_case("true") || process_outgoing == "1";
+        config.fish11.process_outgoing =
+            process_outgoing.eq_ignore_ascii_case("true") || process_outgoing == "1";
     }
     if let Some(plain_prefix) = ini.get("FiSH11", "plain_prefix") {
         config.fish11.plain_prefix = plain_prefix.to_string();
     }
     if let Some(encrypt_notice) = ini.get("FiSH11", "encrypt_notice") {
-        config.fish11.encrypt_notice = encrypt_notice.eq_ignore_ascii_case("true") || encrypt_notice == "1";
+        config.fish11.encrypt_notice =
+            encrypt_notice.eq_ignore_ascii_case("true") || encrypt_notice == "1";
     }
     if let Some(encrypt_action) = ini.get("FiSH11", "encrypt_action") {
-        config.fish11.encrypt_action = encrypt_action.eq_ignore_ascii_case("true") || encrypt_action == "1";
+        config.fish11.encrypt_action =
+            encrypt_action.eq_ignore_ascii_case("true") || encrypt_action == "1";
     }
     if let Some(mark_position) = ini.get("FiSH11", "mark_position") {
         if let Ok(pos) = mark_position.parse() {
@@ -175,7 +181,8 @@ fn load_encrypted_config_from_file(config_path: &PathBuf) -> Result<FishConfig> 
         config.fish11.mark_encrypted = mark_encrypted.to_string();
     }
     if let Some(no_fish10_legacy) = ini.get("FiSH11", "no_fish10_legacy") {
-        config.fish11.no_fish10_legacy = no_fish10_legacy.eq_ignore_ascii_case("true") || no_fish10_legacy == "1";
+        config.fish11.no_fish10_legacy =
+            no_fish10_legacy.eq_ignore_ascii_case("true") || no_fish10_legacy == "1";
     }
     if let Some(key_ttl) = ini.get("FiSH11", "key_ttl") {
         if let Ok(ttl) = key_ttl.parse() {

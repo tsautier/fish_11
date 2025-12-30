@@ -20,9 +20,7 @@ pub struct SecureString {
 
 impl std::fmt::Debug for SecureString {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SecureString")
-            .field("inner", &"<redacted>")
-            .finish()
+        f.debug_struct("SecureString").field("inner", &"<redacted>").finish()
     }
 }
 
@@ -37,7 +35,7 @@ impl SecureString {
                 MAX_SECURE_ALLOCATION_SIZE
             ));
         }
-        
+
         Ok(Self { inner: Secret::new(s) })
     }
 
@@ -71,9 +69,7 @@ pub struct SecureBytes {
 
 impl std::fmt::Debug for SecureBytes {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SecureBytes")
-            .field("inner", &"<redacted>")
-            .finish()
+        f.debug_struct("SecureBytes").field("inner", &"<redacted>").finish()
     }
 }
 
@@ -88,7 +84,7 @@ impl SecureBytes {
                 MAX_SECURE_ALLOCATION_SIZE
             ));
         }
-        
+
         Ok(Self { inner: Secret::new(bytes) })
     }
 

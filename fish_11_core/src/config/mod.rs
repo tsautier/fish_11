@@ -7,8 +7,5 @@ pub mod encrypted_config;
 
 /// Re-export the encrypted config functions for easy access
 pub use encrypted_config::{
-    decrypt_config_data,
-    encrypt_config_data,
-    get_config_path,
-    is_encrypted_config,
+    decrypt_config_data, encrypt_config_data, get_config_path, is_encrypted_config,
 };

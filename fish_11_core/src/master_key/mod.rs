@@ -1,7 +1,7 @@
 //! Master Key module for FiSH_11
 //!
 //! This module provides secure master key management for encrypting config files and logs.
-//! 
+//!
 //! The new core system provides a clearer separation between different key types:
 //! - MasterKey: Primary key that protects all other keys
 //! - ConfigKey: Specialized key for configuration encryption
@@ -23,9 +23,9 @@ pub mod password_validation;
 pub mod rotation;
 // New core system exports
 pub use core::{
-    MasterKey, MasterKeyGuard, ConfigKey, ConfigKeyGuard, LogKey, LogKeyGuard,
-    LogRotationPolicy, initialize_key_system, lock_key_system, is_key_system_unlocked,
-    rotate_all_keys, get_config_key, get_log_key,
+    ConfigKey, ConfigKeyGuard, LogKey, LogKeyGuard, LogRotationPolicy, MasterKey, MasterKeyGuard,
+    get_config_key, get_log_key, initialize_key_system, is_key_system_unlocked, lock_key_system,
+    rotate_all_keys,
 };
 
 // Legacy system exports (to be deprecated)

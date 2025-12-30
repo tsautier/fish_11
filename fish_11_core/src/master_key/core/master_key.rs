@@ -1,7 +1,7 @@
 // Master Key Core - Primary key that protects all other keys
 
-use chacha20poly1305::{ChaCha20Poly1305, Key};
 use chacha20poly1305::aead::{Aead, KeyInit};
+use chacha20poly1305::{ChaCha20Poly1305, Key};
 use sha2::{Digest, Sha256};
 use std::sync::{Arc, Mutex};
 
@@ -23,11 +23,7 @@ impl MasterKey {
         let hash = hasher.finalize();
         key_material.copy_from_slice(&hash[..32]);
 
-        Self {
-            key_material,
-            salt: salt.to_vec(),
-            is_unlocked: true,
-        }
+        Self { key_material, salt: salt.to_vec(), is_unlocked: true }
     }
 
     /// Derive a subkey for specific purpose (config, logs, etc.)
@@ -47,15 +43,15 @@ impl MasterKey {
         let cipher = ChaCha20Poly1305::new(Key::from_slice(&self.key_material));
         let nonce = self.generate_nonce();
         let nonce = Nonce::from_slice(&nonce);
-        
-        cipher.encrypt(nonce, data)
-            .map_err(|e| format!("Encryption failed: {}", e))
-            .map(|mut ciphertext| {
+
+        cipher.encrypt(nonce, data).map_err(|e| format!("Encryption failed: {}", e)).map(
+            |mut ciphertext| {
                 let mut result = Vec::with_capacity(nonce.len() + ciphertext.len());
                 result.extend_from_slice(&nonce);
                 result.extend_from_slice(&ciphertext);
                 result
-            })
+            },
+        )
     }
 
     /// Decrypt data using this master key
@@ -64,14 +60,13 @@ impl MasterKey {
         if encrypted_data.len() < 12 {
             return Err("Encrypted data too short".to_string());
         }
-        
+
         let nonce_bytes = &encrypted_data[..12];
         let nonce = Nonce::from_slice(nonce_bytes);
         let ciphertext = &encrypted_data[12..];
         let cipher = ChaCha20Poly1305::new(Key::from_slice(&self.key_material));
-        
-        cipher.decrypt(nonce, ciphertext)
-            .map_err(|e| format!("Decryption failed: {}", e))
+
+        cipher.decrypt(nonce, ciphertext).map_err(|e| format!("Decryption failed: {}", e))
     }
 
     /// Generate a random nonce for encryption
@@ -107,9 +102,7 @@ pub struct MasterKeyGuard {
 
 impl MasterKeyGuard {
     pub fn new(password: &str, salt: &[u8]) -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(MasterKey::new(password, salt))),
-        }
+        Self { inner: Arc::new(Mutex::new(MasterKey::new(password, salt))) }
     }
 
     pub fn lock(&self) {
@@ -119,11 +112,7 @@ impl MasterKeyGuard {
     }
 
     pub fn is_unlocked(&self) -> bool {
-        if let Ok(guard) = self.inner.lock() {
-            guard.is_unlocked()
-        } else {
-            false
-        }
+        if let Ok(guard) = self.inner.lock() { guard.is_unlocked() } else { false }
     }
 
     pub fn derive_subkey(&self, purpose: &str) -> Result<[u8; 32], String> {
@@ -134,4 +123,3 @@ impl MasterKeyGuard {
         }
     }
 }
-

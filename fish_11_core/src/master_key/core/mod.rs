@@ -1,13 +1,13 @@
 // Core key management module
 // Provides MasterKey, ConfigKey, and LogKey functionality
 
-pub mod master_key;
 pub mod config_key;
 pub mod log_key;
+pub mod master_key;
 
-pub use master_key::*;
 pub use config_key::*;
 pub use log_key::*;
+pub use master_key::*;
 
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
@@ -19,13 +19,8 @@ struct KeySystemState {
     log_key: Option<LogKey>,
 }
 
-static KEY_SYSTEM: Lazy<Mutex<KeySystemState>> = Lazy::new(|| {
-    Mutex::new(KeySystemState {
-        master_key: None,
-        config_key: None,
-        log_key: None,
-    })
-});
+static KEY_SYSTEM: Lazy<Mutex<KeySystemState>> =
+    Lazy::new(|| Mutex::new(KeySystemState { master_key: None, config_key: None, log_key: None }));
 
 /// Initialize the key system with a master password
 pub fn initialize_key_system(password: &str, salt: &[u8]) {
@@ -75,7 +70,7 @@ pub fn rotate_all_keys() {
         let state = KEY_SYSTEM.lock().unwrap();
         state.master_key.as_ref().cloned()
     };
-    
+
     if let Some(master_key) = master_key {
         let mut state = KEY_SYSTEM.lock().unwrap();
         state.config_key = Some(ConfigKey::new_from_master(&master_key));
@@ -84,10 +79,10 @@ pub fn rotate_all_keys() {
 }
 
 // Public exports for the core key system
-pub use master_key::MasterKey;
 pub use config_key::ConfigKey;
 pub use log_key::{LogKey, LogRotationPolicy};
+pub use master_key::MasterKey;
 
-pub use master_key::MasterKeyGuard;
 pub use config_key::ConfigKeyGuard;
 pub use log_key::LogKeyGuard;
+pub use master_key::MasterKeyGuard;

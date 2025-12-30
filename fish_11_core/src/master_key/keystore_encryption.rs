@@ -228,8 +228,9 @@ pub fn load_encrypted_keystore_from_path(
     }
 
     // Decode the base64 encrypted data
-    let encrypted_data =
-        general_purpose::STANDARD.decode(lines[1]).map_err(|e| format!("Failed to decode base64: {}", e))?;
+    let encrypted_data = general_purpose::STANDARD
+        .decode(lines[1])
+        .map_err(|e| format!("Failed to decode base64: {}", e))?;
 
     // Derive system-specific key for decryption
     let system_key = derive_system_specific_key()?;
@@ -334,8 +335,9 @@ pub fn load_encrypted_keystore_from_path_with_key(
     }
 
     // Decode the base64 encrypted data
-    let encrypted_data =
-        general_purpose::STANDARD.decode(lines[1]).map_err(|e| format!("Failed to decode base64: {}", e))?;
+    let encrypted_data = general_purpose::STANDARD
+        .decode(lines[1])
+        .map_err(|e| format!("Failed to decode base64: {}", e))?;
 
     // Decrypt the data with the provided key
     let decrypted_bytes = decrypt_keystore_data(&encrypted_data, key)?;
@@ -367,11 +369,11 @@ pub fn load_encrypted_keystore_from_path_with_key(
 
     // Load key metadata
     let mut key_metadata = std::collections::HashMap::new();
-    
+
     // Try both case variations for the KeyMetadata section
-    let metadata_section = ini.get_map_ref().get("KeyMetadata")
-        .or_else(|| ini.get_map_ref().get("keymetadata"));
-    
+    let metadata_section =
+        ini.get_map_ref().get("KeyMetadata").or_else(|| ini.get_map_ref().get("keymetadata"));
+
     if let Some(metadata_section) = metadata_section {
         for (key_id, value_opt) in metadata_section.iter() {
             if let Some(metadata_str) = value_opt {
@@ -382,7 +384,7 @@ pub fn load_encrypted_keystore_from_path_with_key(
                     if parts.len() > 7 {
                         // If there are more than 7 parts, the description contains colons
                         // parts[0-4] = numeric fields, parts[5..parts.len()-1] = description, parts[last] = is_revoked
-                        let description_parts = &parts[5..parts.len()-1];
+                        let description_parts = &parts[5..parts.len() - 1];
                         let description = description_parts.join(":");
                         if let (
                             Ok(created_at),
@@ -397,7 +399,7 @@ pub fn load_encrypted_keystore_from_path_with_key(
                             parts[2].parse::<u64>(),
                             parts[3].parse::<u64>(),
                             parts[4].parse::<u64>(),
-                            parts[parts.len()-1].parse::<bool>(),
+                            parts[parts.len() - 1].parse::<bool>(),
                         ) {
                             let metadata = crate::master_key::keystore::KeyMetadata {
                                 created_at,
@@ -487,7 +489,7 @@ mod tests {
         // For testing, we need to use a fixed key since derive_system_specific_key()
         // uses time-based values that change between save and load operations
         let fixed_key = [42u8; 32]; // Fixed key for testing
-        
+
         // Save the keystore using the test function with fixed key
         save_encrypted_keystore_to_path_with_key(&keystore, &temp_path, &fixed_key)
             .expect("Failed to save keystore");
