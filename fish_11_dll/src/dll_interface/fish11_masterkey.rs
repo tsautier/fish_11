@@ -1,29 +1,25 @@
 // Master Key Management Functions for FiSH_11
 // These functions provide secure master key initialization, unlocking, and management
 
-use std::ffi::c_char;
-use std::os::raw::c_int;
-
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::{buffer_utils, dll_function_identifier};
-
 use fish_11_core::master_key::derivation::derive_master_key_with_salt;
 use fish_11_core::master_key::derive_master_key;
 use fish_11_core::master_key::keystore::Keystore;
 use fish_11_core::master_key::password_change::change_master_password;
 use fish_11_core::master_key::password_validation::PasswordValidator;
-
-// Global storage for the master key in memory
 use once_cell::sync::Lazy;
+use std::ffi::c_char;
+use std::os::raw::c_int;
 use std::sync::Mutex;
 
 static MASTER_KEY: Lazy<Mutex<Option<[u8; 32]>>> = Lazy::new(|| Mutex::new(None));
 
 dll_function_identifier!(FiSH11_MasterKeyInit, data, {
     // Initialize master key with password
-    // Expected input format: <password>
-    // Returns: "1" on success, error message on failure
+    // Expected input format : <password>
+    // Returns : "1" on success, error message on failure
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
 
     if input.is_empty() {
@@ -253,7 +249,9 @@ dll_function_identifier!(FiSH11_MasterKeyChangePassword, data, {
 
                     // Save the new salt to keystore
                     let mut new_keystore = Keystore::new();
+
                     new_keystore.set_master_salt(&new_salt);
+
                     if let Err(e) = new_keystore.save() {
                         log::warn!("Failed to save updated keystore: {}", e);
                     }
@@ -310,5 +308,15 @@ pub fn is_master_key_unlocked() -> bool {
     } else {
         // If we can't acquire the lock, assume it's not unlocked
         false
+    }
+}
+
+/// Get the master key from memory if available
+pub fn get_master_key_from_memory() -> Option<[u8; 32]> {
+    if let Ok(key_guard) = MASTER_KEY.lock() {
+        key_guard.as_ref().copied()
+    } else {
+        // If we can't acquire the lock, return None
+        None
     }
 }

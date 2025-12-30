@@ -1,17 +1,13 @@
 //! Encrypted file storage operations for configuration
-use std::fs;
-use std::path::PathBuf;
-
-use configparser::ini::Ini;
-//use secrecy::ExposeSecret;
-use base64;
-
 use crate::config::models::{EntryData, FishConfig};
 use crate::error::{FishError, Result};
-//use crate::utils::base64_encode;
+use base64::{Engine as _, engine::general_purpose};
+use configparser::ini::Ini;
 use fish_11_core::master_key::{
     EncryptedBlob, decrypt_data, derive_config_kek, derive_master_key, encrypt_data,
 };
+use std::fs;
+use std::path::PathBuf;
 
 /// Configuration header for encrypted files
 const ENCRYPTED_CONFIG_HEADER: &str = "# FiSH_11_ENCRYPTED_CONFIG_V1";
@@ -24,6 +20,7 @@ pub fn init_encrypted_config_file() -> Result<()> {
     }
 
     let mut ini = Ini::new();
+
     ini.set("FiSH11", "process_incoming", Some("true".to_string()));
     ini.set("FiSH11", "plain_prefix", Some("+p ".to_string()));
     ini.set("FiSH11", "encryption_prefix", Some("+FiSH".to_string()));
@@ -32,7 +29,9 @@ pub fn init_encrypted_config_file() -> Result<()> {
     if let Some(parent) = config_path.parent() {
         fs::create_dir_all(parent)?;
     }
+
     ini.write(&config_path)?;
+
     Ok(())
 }
 
@@ -67,9 +66,11 @@ pub fn load_encrypted_config(path_override: Option<PathBuf>) -> Result<FishConfi
     // Check if the file is encrypted
     if is_encrypted_config(&config_path)? {
         crate::log_debug!("load_encrypted_config: detected encrypted config file");
+
         load_encrypted_config_from_file(&config_path)
     } else {
         crate::log_debug!("load_encrypted_config: detected regular config file");
+
         // Fall back to regular loading
         crate::config::file_storage::load_config(path_override)
     }
@@ -93,13 +94,15 @@ fn load_encrypted_config_from_file(config_path: &PathBuf) -> Result<FishConfig> 
     }
 
     let encrypted_data = lines[1];
-    let encrypted_bytes = base64::decode(encrypted_data)
+
+    let encrypted_bytes = general_purpose::STANDARD
+        .decode(encrypted_data)
         .map_err(|e| FishError::ConfigError(format!("Failed to decode encrypted data: {}", e)))?;
     let encrypted_blob = EncryptedBlob::from_bytes(&encrypted_bytes)
         .ok_or_else(|| FishError::ConfigError("Failed to parse encrypted blob".to_string()))?;
 
     // Get the master key from memory (this assumes the user has unlocked it)
-    // For now, we'll return an error indicating that the config is encrypted but not unlocked
+    // TODO : for now, we'll return an error indicating that the config is encrypted but not unlocked
     return Err(FishError::ConfigError(
         "Encrypted config detected but master key not unlocked. Use FiSH11_MasterKeyUnlock first."
             .to_string(),
@@ -147,9 +150,11 @@ pub fn save_encrypted_config(config: &FishConfig, path_override: Option<PathBuf>
     ini.set("FiSH11", "mark_position", Some(config.fish11.mark_position.to_string()));
     ini.set("FiSH11", "mark_encrypted", Some(config.fish11.mark_encrypted.clone()));
     ini.set("FiSH11", "no_fish10_legacy", Some(config.fish11.no_fish10_legacy.to_string()));
+
     if let Some(ttl) = config.fish11.key_ttl {
         ini.set("FiSH11", "key_ttl", Some(ttl.to_string()));
     }
+
     ini.set("FiSH11", "encryption_prefix", Some(config.fish11.encryption_prefix.clone()));
     ini.set("FiSH11", "fish_prefix", Some(config.fish11.fish_prefix.to_string()));
 
@@ -179,12 +184,37 @@ pub fn save_encrypted_config(config: &FishConfig, path_override: Option<PathBuf>
         return Err(FishError::ConfigError("Cannot save encrypted config: master key not unlocked. Use FiSH11_MasterKeyUnlock first.".to_string()));
     }
 
-    // For now, we'll return an error indicating that encryption is not yet fully implemented
-    // since we need to actually implement the encryption functionality
-    Err(FishError::ConfigError(
-        "Encryption of config not yet fully implemented - requires master key in memory"
-            .to_string(),
-    ))
+    // Get the master key from memory
+    let master_key = crate::dll_interface::fish11_masterkey::get_master_key_from_memory()
+        .ok_or_else(|| FishError::ConfigError("Master key not available in memory".to_string()))?;
+
+    // Create the config KEK (Key Encryption Key) using the master key
+    let config_kek = derive_config_kek(&master_key);
+
+    // Encrypt the INI string using the config KEK
+    // Using a fixed key_id for config encryption and generation 0 for now
+    let encrypted_blob = encrypt_data(ini_string.as_bytes(), &config_kek, "config", 0)
+        .map_err(|e| FishError::ConfigError(format!("Encryption failed: {}", e)))?;
+
+    // Convert the encrypted blob to bytes and encode as base64
+    let encrypted_bytes = encrypted_blob.to_bytes();
+    let encrypted_b64 = general_purpose::STANDARD.encode(&encrypted_bytes);
+
+    // Prepare the content to write: header + encrypted data
+    let content = format!("{}\n{}\n", ENCRYPTED_CONFIG_HEADER, encrypted_b64);
+
+    // Create parent directories if they don't exist
+    if let Some(parent) = config_path.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+
+    // Write the encrypted content to the file
+    std::fs::write(&config_path, content)
+        .map_err(|e| FishError::ConfigError(format!("Failed to write encrypted config: {}", e)))?;
+
+    Ok(())
 }
 
 /// Get the path to the config file
