@@ -15,7 +15,6 @@
 
 // This DLL is only for Windows
 #![cfg(windows)]
-
 // Here we define all the necessary imports and modules (files)
 mod dll_interface;
 mod engines;
@@ -23,14 +22,11 @@ mod helpers_inject;
 mod hook_socket;
 mod hook_ssl;
 pub mod lock_utils;
+mod pointer_validation;
 pub mod socket;
 mod ssl_detection;
 pub mod ssl_mapping;
-
-use std::ffi::{c_int, c_void};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
-
+use crate::helpers_inject::{cleanup_hooks, init_logger};
 use dashmap::DashMap;
 use engines::InjectEngines;
 use fish_11_core::globals::{MIRC_COMMAND, MIRC_HALT, MIRC_IDENTIFIER};
@@ -38,10 +34,11 @@ use lazy_static::lazy_static;
 use log::{error, info};
 use once_cell::sync::Lazy;
 use socket::info::SocketInfo;
+use std::ffi::{c_int, c_void};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use windows::Win32::Foundation::HMODULE;
 use windows::Win32::System::Threading::GetCurrentThreadId;
-
-use crate::helpers_inject::{cleanup_hooks, init_logger};
 
 // Wrapper to make HMODULE Send + Sync
 #[derive(Clone, Copy)]

@@ -1,12 +1,3 @@
-use std::fs::OpenOptions;
-use std::io;
-use std::sync::PoisonError;
-
-use log::{LevelFilter, error, info, warn};
-use retour::GenericDetour;
-use winapi::shared::minwindef::FARPROC;
-use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
-
 use crate::hook_socket::{
     CLOSESOCKET_HOOK, CONNECT_HOOK, ClosesocketFn, ConnectFn, RECV_HOOK, RecvFn, SEND_HOOK, SendFn,
     hooked_closesocket, hooked_connect, hooked_recv, hooked_send, uninstall_socket_hooks,
@@ -15,7 +6,15 @@ use crate::hook_ssl::{
     SslGetFdFn, SslIsInitFinishedProc, SslReadFn, SslWriteFn, find_ssl_function, install_ssl_hooks,
     uninstall_ssl_hooks,
 };
+use crate::pointer_validation::{unsafe_transmute_validated, validate_function_pointer};
 use crate::{LOGGER_INITIALIZED, Ordering};
+use log::{LevelFilter, error, info, warn};
+use retour::GenericDetour;
+use std::fs::OpenOptions;
+use std::io;
+use std::sync::PoisonError;
+use winapi::shared::minwindef::FARPROC;
+use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
 
 /// Custom logger that writes with timestamps
 struct TimestampLogger {
@@ -332,6 +331,12 @@ unsafe fn get_winsock_function(func_name: &str) -> FARPROC {
 
     #[cfg(debug_assertions)]
     info!("get_winsock_function: {} address = {:?}", func_name, func_addr);
+
+    // Validate the pointer before returning
+    if let Err(e) = validate_function_pointer(func_addr, Some(ws2_32)) {
+        error!("get_winsock_function: security validation failed for {}: {}", func_name, e);
+        return std::ptr::null_mut();
+    }
 
     func_addr
 }

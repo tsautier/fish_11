@@ -1,6 +1,8 @@
-use std::ffi::{CString, c_int, c_void};
-use std::sync::Mutex as StdMutex;
-
+use crate::helpers_inject::handle_poison;
+use crate::hook_socket::get_or_create_socket;
+use crate::pointer_validation::validate_function_pointer;
+use crate::socket::state::SocketState;
+use crate::ssl_mapping::SslSocketMapping;
 use fish_11_core::globals::{
     CMD_JOIN, CMD_NOTICE, CMD_PRIVMSG, ENCRYPTION_PREFIX_FISH, ENCRYPTION_PREFIX_MCPS,
     ENCRYPTION_PREFIX_OK, KEY_EXCHANGE_INIT, KEY_EXCHANGE_PUBKEY,
@@ -8,14 +10,11 @@ use fish_11_core::globals::{
 use lazy_static::lazy_static;
 use log::{debug, error, info, trace, warn};
 use retour::GenericDetour;
+use std::ffi::{CString, c_int, c_void};
+use std::sync::Mutex as StdMutex;
 use winapi::shared::minwindef::FARPROC;
 use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
 use winapi::um::winsock2::SOCKET;
-
-use crate::helpers_inject::handle_poison;
-use crate::hook_socket::get_or_create_socket;
-use crate::socket::state::SocketState;
-use crate::ssl_mapping::SslSocketMapping;
 // SSL structure (opaque)
 #[repr(C)]
 pub struct SSL {
@@ -69,7 +68,6 @@ lazy_static! {
 }
 
 static SSL_SET_FD_HOOK: StdMutex<Option<GenericDetour<SslSetFdFn>>> = StdMutex::new(None);
-static ORIGINAL_SSL_SET_FD: StdMutex<Option<SslSetFdFn>> = StdMutex::new(None);
 
 /// Hook for SSL_set_fd to track which SSL context (SSL*) is associated with which socket (fd).
 /// Also marks the socket as SSL-enabled for later checks in send/recv hooks.
@@ -77,6 +75,7 @@ static ORIGINAL_SSL_SET_FD: StdMutex<Option<SslSetFdFn>> = StdMutex::new(None);
 /// # Safety
 /// - Calls FFI pointers (Rust/WinAPI interop)
 unsafe extern "C" fn hooked_ssl_set_fd(ssl: *mut SSL, fd: c_int) -> c_int {
+    static ORIGINAL_SSL_SET_FD: StdMutex<Option<SslSetFdFn>> = StdMutex::new(None);
     trace!("SSL_set_fd() called with ssl: {:p}, fd: {}", ssl, fd);
 
     // 1. Call the original function pointer
@@ -112,11 +111,6 @@ unsafe extern "C" fn hooked_ssl_set_fd(ssl: *mut SSL, fd: c_int) -> c_int {
     }
 
     result
-}
-
-/// Convert SSL pointer to a unique identifier for mapping
-fn ssl_to_id(ssl: *mut SSL) -> usize {
-    ssl as usize
 }
 
 /// Attempts to locate a function pointer by name within a set of well-known SSL-related libraries.
@@ -184,6 +178,11 @@ pub fn find_ssl_function(function_name: &str) -> FARPROC {
                 for variant in &function_variants {
                     let func_ptr = GetProcAddress(handle, func_name_cstr(variant).as_ptr());
                     if !func_ptr.is_null() {
+                        if let Err(e) = validate_function_pointer(func_ptr, Some(handle)) {
+                            warn!("validation failed for found ssl function: {}", e);
+                            continue;
+                        }
+
                         info!(
                             "Found {} ({}) in {}",
                             function_name,
@@ -207,6 +206,11 @@ pub fn find_ssl_function(function_name: &str) -> FARPROC {
                 for variant in &function_variants {
                     let func_ptr = GetProcAddress(handle, func_name_cstr(variant).as_ptr());
                     if !func_ptr.is_null() {
+                        if let Err(e) = validate_function_pointer(func_ptr, Some(handle)) {
+                            warn!("validation failed for loaded ssl function: {}", e);
+                            continue;
+                        }
+
                         info!(
                             "Loaded {} and found {} ({}) in {}",
                             String::from_utf8_lossy(
@@ -865,7 +869,7 @@ unsafe fn install_critical_ssl_hook<F: Copy + retour::Function>(
 }
 
 /// Install an optional SSL hook - failure is not critical
-unsafe fn install_optional_ssl_hook<F: Copy + retour::Function>(
+unsafe fn _install_optional_ssl_hook<F: Copy + retour::Function>(
     original_fn: F,
     hook_fn: F,
     hook_storage: &StdMutex<Option<GenericDetour<F>>>,
@@ -1061,14 +1065,6 @@ unsafe fn get_socket_from_ssl_context(ssl: *mut SSL) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_ssl_to_id() {
-        let fake_ssl_ptr = 0x12345678 as *mut SSL;
-        let id = ssl_to_id(fake_ssl_ptr);
-
-        assert_eq!(id, 0x12345678);
-    }
 
     #[test]
     fn test_find_ssl_function_recv() {

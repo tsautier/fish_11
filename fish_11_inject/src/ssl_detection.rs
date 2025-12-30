@@ -7,6 +7,7 @@ use winapi::shared::minwindef::{DWORD, HMODULE};
 use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
 use winapi::um::processthreadsapi::GetCurrentProcess;
 use winapi::um::psapi::{EnumProcessModules, GetModuleFileNameExA};
+use crate::pointer_validation::unsafe_transmute_validated;
 
 #[derive(Debug, Clone)]
 pub struct OpenSslInfo {
@@ -64,14 +65,19 @@ unsafe fn get_openssl_version(module: HMODULE) -> Option<String> {
             } else {
                 // This is a function
                 type VersionFn = unsafe extern "C" fn(i32) -> *const c_char;
-                let version_fn: VersionFn = std::mem::transmute(version_fn);
-                let version_ptr = version_fn(0); // OPENSSL_VERSION
+                
+                // Validate and transmute safely
+                if let Ok(version_fn_validated) = unsafe_transmute_validated::<VersionFn>(version_fn, Some(module)) {
+                    let version_ptr = version_fn_validated(0); // OPENSSL_VERSION
 
-                if !version_ptr.is_null() {
-                    let version_cstr = std::ffi::CStr::from_ptr(version_ptr);
-                    if let Ok(version_str) = version_cstr.to_str() {
-                        return Some(version_str.to_string());
+                    if !version_ptr.is_null() {
+                        let version_cstr = std::ffi::CStr::from_ptr(version_ptr);
+                        if let Ok(version_str) = version_cstr.to_str() {
+                            return Some(version_str.to_string());
+                        }
                     }
+                } else {
+                    error!("Failed to validate OpenSSL version function pointer");
                 }
             }
         }
