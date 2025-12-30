@@ -4,7 +4,7 @@
 //! exposed in memory dumps or swap files.
 
 use secrecy::{ExposeSecret, Secret};
-//use zeroize::Zeroize;
+use zeroize::Zeroize;
 
 /// A secure string that automatically clears its contents when dropped
 pub struct SecureString {
@@ -24,8 +24,9 @@ impl SecureString {
 
     /// Clear the contents
     pub fn clear(&mut self) {
-        // Replace the inner Secret with an empty String
-        // The old Secret will be dropped and its Drop impl will handle zeroization
+        // Zeroize the secret content before clearing
+        let mut secret = self.inner.expose_secret().clone();
+        secret.zeroize();
         self.inner = Secret::new(String::new());
     }
 }
@@ -48,21 +49,34 @@ impl SecureBytes {
 
     /// Clear the contents
     pub fn clear(&mut self) {
-        // Replace the inner Secret with an empty Vec
-        // The old Secret will be dropped and its Drop impl will handle zeroization
+        // Zeroize the secret content before clearing
+        let mut secret = self.inner.expose_secret().clone();
+
+        secret.zeroize();
+
         self.inner = Secret::new(Vec::new());
     }
 }
 
 impl Drop for SecureString {
     fn drop(&mut self) {
-        self.clear();
+        // Zeroize the secret content before dropping
+        let mut secret = self.inner.expose_secret().clone();
+
+        secret.zeroize();
+
+        self.inner = Secret::new(String::new());
     }
 }
 
 impl Drop for SecureBytes {
     fn drop(&mut self) {
-        self.clear();
+        // Zeroize the secret content before dropping
+        let mut secret = self.inner.expose_secret().clone();
+
+        secret.zeroize();
+
+        self.inner = Secret::new(Vec::new());
     }
 }
 

@@ -472,6 +472,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "vergen",
+ "zeroize",
 ]
 
 [[package]]

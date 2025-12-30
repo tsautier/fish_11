@@ -26,6 +26,7 @@ hkdf = "0.12"
 sha2 = "0.10"
 secrecy = "0.8"
 serde = { version = "1.0", features = ["derive"] }
+zeroize = "1.8"
 configparser = "3.0"
 base64 = "0.21"
 tempfile = "3.24.0"
