@@ -745,23 +745,6 @@ fn find_socket_for_ssl(ssl: *mut SSL) -> Option<u32> {
     SslSocketMapping::get_socket(ssl)
 }
 
-/// Register the association between a socket and an SSL object
-fn register_ssl_for_socket(socket_id: u32, ssl: *mut SSL) {
-    if ssl.is_null() {
-        debug!("Attempted to register null SSL pointer for socket {}", socket_id);
-        return;
-    }
-
-    // Use the thread-safe SslSocketMapping
-    SslSocketMapping::associate(ssl, socket_id);
-
-    debug!("Registered SSL {:p} for socket {}", ssl, socket_id);
-
-    // Update socket state
-    let socket_info = get_or_create_socket(socket_id, true);
-    socket_info.set_ssl(true);
-}
-
 /// Function to install all SSL hooks
 pub unsafe fn install_ssl_hooks(
     ssl_read: SslReadFn,
@@ -842,54 +825,6 @@ pub unsafe fn install_ssl_hooks(
     info!("install_ssl_hooks: SSL hooks installation completed successfully");
 
     Ok(())
-}
-
-/// Install a critical SSL hook - must succeed for SSL functionality to work
-unsafe fn install_critical_ssl_hook<F: Copy + retour::Function>(
-    original_fn: F,
-    hook_fn: F,
-    hook_storage: &StdMutex<Option<GenericDetour<F>>>,
-    hook_name: &str,
-) -> bool {
-    match GenericDetour::<F>::new(original_fn, hook_fn) {
-        Ok(hook) => {
-            if let Err(e) = hook.enable() {
-                error!("Failed to enable {hook_name}() hook: {:?}", e);
-                return false;
-            }
-            *hook_storage.lock().unwrap() = Some(hook);
-            info!("  - {hook_name}() hook installed");
-            true
-        }
-        Err(e) => {
-            error!("Failed to create {hook_name}() hook: {:?}", e);
-            false
-        }
-    }
-}
-
-/// Install an optional SSL hook - failure is not critical
-unsafe fn _install_optional_ssl_hook<F: Copy + retour::Function>(
-    original_fn: F,
-    hook_fn: F,
-    hook_storage: &StdMutex<Option<GenericDetour<F>>>,
-    hook_name: &str,
-) {
-    match GenericDetour::<F>::new(original_fn, hook_fn) {
-        Ok(hook) => {
-            if let Err(e) = hook.enable() {
-                error!("Failed to enable {hook_name}() hook: {:?}", e);
-                // Not critical, continue anyway
-            } else {
-                *hook_storage.lock().unwrap() = Some(hook);
-                info!("  - {hook_name}() hook installed");
-            }
-        }
-        Err(e) => {
-            error!("Failed to create {hook_name}() hook: {:?}", e);
-            // Not critical, continue anyway
-        }
-    }
 }
 
 /// Function to uninstall all SSL hooks

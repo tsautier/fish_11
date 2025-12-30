@@ -6,7 +6,7 @@ use crate::hook_ssl::{
     SslGetFdFn, SslIsInitFinishedProc, SslReadFn, SslWriteFn, find_ssl_function, install_ssl_hooks,
     uninstall_ssl_hooks,
 };
-use crate::pointer_validation::{unsafe_transmute_validated, validate_function_pointer};
+use crate::pointer_validation::validate_function_pointer;
 use crate::{LOGGER_INITIALIZED, Ordering};
 use log::{LevelFilter, error, info, warn};
 use retour::GenericDetour;
