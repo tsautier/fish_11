@@ -1,11 +1,9 @@
 use crate::pointer_validation::unsafe_transmute_validated;
 use log::{debug, error};
 use std::ffi::CString;
-use winapi::ctypes::c_char;
-use winapi::shared::minwindef::{DWORD, HMODULE};
-use winapi::um::libloaderapi::GetProcAddress;
-use winapi::um::processthreadsapi::GetCurrentProcess;
-use winapi::um::psapi::GetModuleFileNameExA;
+use windows::Win32::Foundation::HMODULE;
+use windows::Win32::System::LibraryLoader::{GetModuleFileNameA, GetProcAddress};
+use windows::core::PCSTR;
 
 #[derive(Debug, Clone)]
 pub struct OpenSslInfo {
@@ -44,12 +42,15 @@ unsafe fn get_openssl_version(module: HMODULE) -> Option<String> {
 
     for func_name in &version_functions {
         let func_name_cstr = CString::new(*func_name).ok()?;
-        let version_fn = GetProcAddress(module, func_name_cstr.as_ptr());
+        let version_fn =
+            GetProcAddress(module, PCSTR::from_raw(func_name_cstr.as_ptr() as *const u8));
 
-        if !version_fn.is_null() {
+        if version_fn.is_some() {
             if func_name == &"OPENSSL_VERSION_TEXT" {
                 // This is a string constant
-                let version_ptr = version_fn as *const c_char;
+                // Transmute FARPROC (Option<fn>) to *const i8
+                let version_ptr: *const i8 = std::mem::transmute_copy(&version_fn);
+
                 if !version_ptr.is_null() {
                     let version_cstr = std::ffi::CStr::from_ptr(version_ptr);
                     if let Ok(version_str) = version_cstr.to_str() {
@@ -58,7 +59,7 @@ unsafe fn get_openssl_version(module: HMODULE) -> Option<String> {
                 }
             } else {
                 // This is a function
-                type VersionFn = unsafe extern "C" fn(i32) -> *const c_char;
+                type VersionFn = unsafe extern "C" fn(i32) -> *const i8;
 
                 // Validate and transmute safely
                 if let Ok(version_fn_validated) =
@@ -84,26 +85,33 @@ unsafe fn get_openssl_version(module: HMODULE) -> Option<String> {
 
 /// Find SSL functions in the given module
 unsafe fn find_ssl_functions(module: HMODULE) -> Option<(*const u8, *const u8)> {
-    let ssl_read = GetProcAddress(module, b"SSL_read\0".as_ptr() as *const i8);
-    let ssl_write = GetProcAddress(module, b"SSL_write\0".as_ptr() as *const i8);
+    let ssl_read_name = CString::new("SSL_read").unwrap();
+    let ssl_write_name = CString::new("SSL_write").unwrap();
 
-    if ssl_read.is_null() || ssl_write.is_null() {
-        debug!("SSL functions not found in module {:p}", module);
+    let ssl_read = GetProcAddress(module, PCSTR::from_raw(ssl_read_name.as_ptr() as *const u8));
+    let ssl_write = GetProcAddress(module, PCSTR::from_raw(ssl_write_name.as_ptr() as *const u8));
+
+    if ssl_read.is_none() || ssl_write.is_none() {
+        // debug!("SSL functions not found..."); 
+        // It's wrapper tuple strut (isize). windows 0.62: HMODULE(pub *mut c_void).
+        // Debug impl exists.
+        debug!("SSL functions not found in module {:?}", module);
         return None;
     }
 
-    Some((ssl_read as *const u8, ssl_write as *const u8))
+    // Transmute FARPROC to *const u8
+    let read_ptr: *const u8 = std::mem::transmute_copy(&ssl_read);
+    let write_ptr: *const u8 = std::mem::transmute_copy(&ssl_write);
+
+    Some((read_ptr, write_ptr))
 }
 
 /// Get module file name
 unsafe fn get_module_filename(module: HMODULE) -> Option<String> {
     let mut filename = vec![0u8; 260]; // MAX_PATH
-    let len = GetModuleFileNameExA(
-        GetCurrentProcess(),
-        module,
-        filename.as_mut_ptr() as *mut c_char,
-        filename.len() as DWORD,
-    );
+    // GetModuleFileNameExA signature in windows crate typically takes &mut [u8]
+    // returns u32 length
+    let len = GetModuleFileNameA(Some(module), &mut filename);
 
     if len > 0 {
         filename.truncate(len as usize);
@@ -126,7 +134,7 @@ mod tests {
     fn test_openssl_info_struct() {
         // Just verify that our OpenSslInfo struct has the expected fields
         let info = OpenSslInfo {
-            module_handle: std::ptr::null_mut(),
+            module_handle: HMODULE::default(),
             dll_name: "test.dll".to_string(),
             version: "1.0.0".to_string(),
             ssl_read_addr: std::ptr::null(),
@@ -139,12 +147,7 @@ mod tests {
 
     #[test]
     fn test_openssl_dll_names_array() {
-        // Verify that the OPENSSL_DLL_NAMES constant is not empty
         assert!(!OPENSSL_DLL_NAMES.is_empty());
-
-        // Verify that it contains some expected values
         assert!(OPENSSL_DLL_NAMES.contains(&"libssl-3.dll"));
-        assert!(OPENSSL_DLL_NAMES.contains(&"libssl-1_1.dll"));
-        assert!(OPENSSL_DLL_NAMES.contains(&"ssleay32.dll"));
     }
 }

@@ -3,18 +3,20 @@ use crate::hook_socket::get_or_create_socket;
 use crate::pointer_validation::validate_function_pointer;
 use crate::socket::state::SocketState;
 use crate::ssl_mapping::SslSocketMapping;
-use fish_11_core::globals::{
-    CMD_JOIN, CMD_NOTICE, CMD_PRIVMSG, ENCRYPTION_PREFIX_FISH, ENCRYPTION_PREFIX_MCPS,
-    ENCRYPTION_PREFIX_OK, KEY_EXCHANGE_INIT, KEY_EXCHANGE_PUBKEY,
-};
+//use fish_11_core::globals::{
+//    ENCRYPTION_PREFIX_FISH, ENCRYPTION_PREFIX_MCPS, ENCRYPTION_PREFIX_OK,
+    // KEY_EXCHANGE_INIT, KEY_EXCHANGE_PUBKEY removed
+//};
 use lazy_static::lazy_static;
 use log::{debug, error, info, trace, warn};
 use retour::GenericDetour;
 use std::ffi::{CString, c_int, c_void};
 use std::sync::Mutex as StdMutex;
-use winapi::shared::minwindef::FARPROC;
-use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
-use winapi::um::winsock2::SOCKET;
+use windows::core::PCSTR;
+use windows::Win32::Foundation::FARPROC;
+use windows::Win32::System::LibraryLoader::{GetModuleHandleA, GetProcAddress, LoadLibraryA};
+use windows::Win32::Networking::WinSock::SOCKET;
+
 // SSL structure (opaque)
 #[repr(C)]
 pub struct SSL {
@@ -25,20 +27,16 @@ pub struct SSLWrapper {
     pub ssl: *mut SSL,
 }
 
-// We need to implement Send and Sync unsafely for SSL*
-// This is safe because we only access the pointers from within a mutex, ensuring thread-safe access
 unsafe impl Send for SSLWrapper {}
 unsafe impl Sync for SSLWrapper {}
 
-// Manually implement Send + Sync for SSLWrapper
 unsafe impl Send for SSL {}
 unsafe impl Sync for SSL {}
 
-// Function types for SSL library functions
 pub type SslReadFn = unsafe extern "C" fn(*mut SSL, *mut u8, c_int) -> c_int;
 pub type SslWriteFn = unsafe extern "C" fn(*mut SSL, *const u8, c_int) -> c_int;
 pub type SslConnectFn = unsafe extern "C" fn(*mut SSL) -> c_int;
-pub type SslNewFn = unsafe extern "C" fn(*mut c_void) -> *mut SSL; // SSL_CTX* as void*
+pub type SslNewFn = unsafe extern "C" fn(*mut c_void) -> *mut SSL;
 pub type SslFreeFn = unsafe extern "C" fn(*mut SSL);
 pub type SslGetFdFn = unsafe extern "C" fn(*mut SSL) -> c_int;
 pub type SslSetFdFn = unsafe extern "C" fn(*mut SSL, c_int) -> c_int;
@@ -49,13 +47,9 @@ lazy_static! {
 }
 
 lazy_static! {
-    // Note: SOCKET_TO_SSL and SSL_TO_SOCKET have been moved to ssl_mapping.rs
-    // using DashMap for better thread-safety and performance
     pub static ref SSL_READ_HOOK: StdMutex<Option<GenericDetour<SslReadFn>>> = StdMutex::new(None);
-    pub static ref SSL_WRITE_HOOK: StdMutex<Option<GenericDetour<SslWriteFn>>> =
-        StdMutex::new(None);
-    pub static ref SSL_CONNECT_HOOK: StdMutex<Option<GenericDetour<SslConnectFn>>> =
-        StdMutex::new(None);
+    pub static ref SSL_WRITE_HOOK: StdMutex<Option<GenericDetour<SslWriteFn>>> = StdMutex::new(None);
+    pub static ref SSL_CONNECT_HOOK: StdMutex<Option<GenericDetour<SslConnectFn>>> = StdMutex::new(None);
     pub static ref SSL_NEW_HOOK: StdMutex<Option<GenericDetour<SslNewFn>>> = StdMutex::new(None);
     pub static ref SSL_GET_FD: StdMutex<Option<SslGetFdFn>> = StdMutex::new(None);
     pub static ref SSL_FREE_HOOK: StdMutex<Option<GenericDetour<SslFreeFn>>> = StdMutex::new(None);
@@ -69,17 +63,10 @@ lazy_static! {
 
 static SSL_SET_FD_HOOK: StdMutex<Option<GenericDetour<SslSetFdFn>>> = StdMutex::new(None);
 
-/// Hook for SSL_set_fd to track which SSL context (SSL*) is associated with which socket (fd).
-/// Also marks the socket as SSL-enabled for later checks in send/recv hooks.
-///
-/// # Safety
-/// - Calls FFI pointers (Rust/WinAPI interop)
 unsafe extern "C" fn hooked_ssl_set_fd(ssl: *mut SSL, fd: c_int) -> c_int {
     static ORIGINAL_SSL_SET_FD: StdMutex<Option<SslSetFdFn>> = StdMutex::new(None);
     trace!("SSL_set_fd() called with ssl: {:p}, fd: {}", ssl, fd);
 
-    // 1. Call the original function pointer
-    //
     let original_fn = {
         let guard = match ORIGINAL_SSL_SET_FD.lock() {
             Ok(g) => g,
@@ -98,71 +85,36 @@ unsafe extern "C" fn hooked_ssl_set_fd(ssl: *mut SSL, fd: c_int) -> c_int {
         return -1;
     };
 
-    // 2. Only proceed with tracking if original call succeeded and pointer valid
     if result > 0 && !ssl.is_null() {
-        // Use the new thread-safe SslSocketMapping
         SslSocketMapping::associate(ssl, fd as u32);
-
-        // Set a flag in socket info struct
         let socket_info = get_or_create_socket(fd as u32, true);
         socket_info.set_ssl(true);
-
         trace!("Socket {} marked as using SSL", fd);
     }
 
     result
 }
 
-/// Attempts to locate a function pointer by name within a set of well-known SSL-related libraries.
-///
-/// Searches for the function in all currently loaded libraries first (using WinAPI `GetModuleHandleA`),
-/// then explicitly attempts to load each library using `LoadLibraryA` if necessary. For each candidate
-/// library, checks a set of common function name mangling variants (to handle different calling conventions
-/// or OpenSSL DLL builds). Returns the function address (`FARPROC`) on success, or null on error.
-///
-/// # Safety
-/// - This function calls into Windows APIs and uses raw pointers and C FFI.
-/// - Callers must ensure the returned `FARPROC` is safely cast and invoked according to the real function's ABI.
-///
-/// # Features & Corner Cases
-/// - Handles multiple OpenSSL naming conventions and DLL versions.
-/// - Supports searching both loaded and not-yet-loaded libraries (loads them as needed).
-/// - Prints descriptive info when functions are found, and warns if none are found.
-/// - Can be expanded with additional function name variants if needed.
-///
-/// # Concurrency
-/// - Not thread safe with respect to library loading/unloading (matches typical FFI expectations).
-///
-/// # Errors
-/// - Returns a NULL pointer (`std::ptr::null_mut()`) if the function is not found.
-///
-/// # Example
-/// ```
-/// let proc = find_ssl_function("SSL_read");
-/// assert!(!proc.is_null());
-/// ```
 pub fn find_ssl_function(function_name: &str) -> FARPROC {
-    // List of possible SSL library names to check, including common OpenSSL and Windows crypt libs.
     let ssl_lib_names = [
         "libssl-3.dll\0",
         "libssl-1_1.dll\0",
         "libssl-1_1-x64.dll\0",
         "ssleay32.dll\0",
         "libssl.dll\0",
-        "crypt32.dll\0",  // Sometimes Windows uses its own crypto
-        "schannel.dll\0", // Windows Secure Channel
+        "crypt32.dll\0",
+        "schannel.dll\0",
     ];
 
-    // Add function name variants - OpenSSL may have stdcall/@n or underscore prefixes
     let function_variants = [
-        function_name.to_string(),        // "SSL_read"
-        format!("{}@4", function_name),   // "SSL_read@4"
-        format!("{}@8", function_name),   // "SSL_read@8"
-        format!("{}@12", function_name),  // "SSL_read@12"
-        format!("_{}@4", function_name),  // "_SSL_read@4"
-        format!("_{}@8", function_name),  // "_SSL_read@8"
-        format!("_{}@12", function_name), // "_SSL_read@12"
-        format!("_{}", function_name),    // "_SSL_read"
+        function_name.to_string(),
+        format!("{}@4", function_name),
+        format!("{}@8", function_name),
+        format!("{}@12", function_name),
+        format!("_{}@4", function_name),
+        format!("_{}@8", function_name),
+        format!("_{}@12", function_name),
+        format!("_{}", function_name),
     ];
     let func_name_cstr = |name: &str| -> CString {
         CString::new(name).unwrap_or_else(|_| {
@@ -170,102 +122,74 @@ pub fn find_ssl_function(function_name: &str) -> FARPROC {
         })
     };
 
-    // First: search already loaded libraries for the function variants
     for lib_name in &ssl_lib_names {
         unsafe {
-            let handle = GetModuleHandleA(lib_name.as_ptr() as *const i8);
-            if !handle.is_null() {
-                for variant in &function_variants {
-                    let func_ptr = GetProcAddress(handle, func_name_cstr(variant).as_ptr());
-                    if !func_ptr.is_null() {
-                        if let Err(e) = validate_function_pointer(func_ptr, Some(handle)) {
-                            warn!("validation failed for found ssl function: {}", e);
-                            continue;
-                        }
-
-                        info!(
-                            "Found {} ({}) in {}",
-                            function_name,
-                            variant,
-                            String::from_utf8_lossy(
-                                lib_name.strip_suffix("\0").unwrap().as_bytes()
-                            )
-                        );
-                        return func_ptr;
+            if let Ok(handle) = GetModuleHandleA(PCSTR::from_raw(lib_name.as_ptr())) {
+                if !handle.is_invalid() {
+                    for variant in &function_variants {
+                         let name_c = func_name_cstr(variant);
+                         let func_ptr = GetProcAddress(handle, PCSTR::from_raw(name_c.as_ptr() as *const u8));
+                         if func_ptr.is_some() {
+                            if let Err(e) = validate_function_pointer(func_ptr, Some(handle)) {
+                                warn!("validation failed for found ssl function: {}", e);
+                                continue;
+                            }
+                            info!(
+                                "Found {} ({}) in {}",
+                                function_name,
+                                variant,
+                                String::from_utf8_lossy(lib_name.strip_suffix("\0").unwrap().as_bytes())
+                            );
+                            return func_ptr;
+                         }
                     }
                 }
             }
         }
     }
 
-    // Second: try to load each library and repeat the search if not already loaded
     for lib_name in &ssl_lib_names {
         unsafe {
-            let handle = winapi::um::libloaderapi::LoadLibraryA(lib_name.as_ptr() as *const i8);
-            if !handle.is_null() {
-                for variant in &function_variants {
-                    let func_ptr = GetProcAddress(handle, func_name_cstr(variant).as_ptr());
-                    if !func_ptr.is_null() {
-                        if let Err(e) = validate_function_pointer(func_ptr, Some(handle)) {
-                            warn!("validation failed for loaded ssl function: {}", e);
-                            continue;
+            if let Ok(handle) = LoadLibraryA(PCSTR::from_raw(lib_name.as_ptr())) {
+                 if !handle.is_invalid() {
+                    for variant in &function_variants {
+                        let name_c = func_name_cstr(variant);
+                        let func_ptr = GetProcAddress(handle, PCSTR::from_raw(name_c.as_ptr() as *const u8));
+                        if func_ptr.is_some() {
+                           if let Err(e) = validate_function_pointer(func_ptr, Some(handle)) {
+                               warn!("validation failed for loaded ssl function: {}", e);
+                               continue;
+                           }
+                           info!(
+                               "Loaded {} and found {} ({}) in {}",
+                               String::from_utf8_lossy(lib_name.strip_suffix("\0").unwrap().as_bytes()),
+                               function_name,
+                               variant,
+                               String::from_utf8_lossy(lib_name.strip_suffix("\0").unwrap().as_bytes())
+                           );
+                           return func_ptr;
                         }
-
-                        info!(
-                            "Loaded {} and found {} ({}) in {}",
-                            String::from_utf8_lossy(
-                                lib_name.strip_suffix("\0").unwrap().as_bytes()
-                            ),
-                            function_name,
-                            variant,
-                            String::from_utf8_lossy(
-                                lib_name.strip_suffix("\0").unwrap().as_bytes()
-                            )
-                        );
-                        return func_ptr;
                     }
-                }
+                 }
             }
         }
     }
 
-    // Failed: Function not found in any candidate DLL
     warn!("Could not find function {} in any SSL library", function_name);
-
-    std::ptr::null_mut()
+    None
 }
 
 pub unsafe fn store_ssl_mapping(ssl: *mut SSL, socket: SOCKET) {
     if let Some(fd_fn) = *SSL_GET_FD.lock().unwrap_or_else(handle_poison) {
         let fd = fd_fn(ssl);
-        // Use the new thread-safe SslSocketMapping
-        SslSocketMapping::associate(ssl, socket as u32);
-        debug!("Mapped SSL {:p} to socket {} (fd={})", ssl, socket, fd);
+        SslSocketMapping::associate(ssl, socket.0 as u32);
+        debug!("Mapped SSL {:p} to socket {} (fd={})", ssl, socket.0, fd);
     }
 }
 
-/// Hook implementation for SSL_read
-///
-/// # Safety
-/// This function is an FFI boundary for an SSL_read call.
-/// It:
-/// - Retrieves socket context info from the SSL pointer
-/// - Forwards to the original SSL_read
-/// - After read, checks completion of TLS handshake using SSL_is_init_finished
-/// - Processes, logs, and forwards the decrypted data to the socket processing pipeline
-///
-/// # Issues addressed:
-/// - Double-processing: The data is processed twice if bytes_read > 0
-/// - Redundant socket_id and get_or_create_socket lookups
-/// - State handling and logging order
-///
-/// Callers must ensure:
-/// - buf is valid for writes of up to num bytes
-/// - ssl is a valid OpenSSL SSL* pointer
 pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int) -> c_int {
     trace!("[h00k] hooked_ssl_read() called: ssl={:p}, buf={:p}, num={}", ssl, buf, num);
 
-    // Acquire the hook lock with timeout to avoid deadlocks during hook uninstall
     let ssl_read_guard = match crate::lock_utils::try_lock_timeout(
         &SSL_READ_HOOK,
         crate::lock_utils::DEFAULT_LOCK_TIMEOUT,
@@ -284,7 +208,6 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
         }
     };
 
-    // Get socket associated with SSL context BEFORE calling original
     let socket_id = match get_socket_from_ssl_context(ssl) {
         Some(id) => id,
         None => {
@@ -293,64 +216,19 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
         }
     };
 
-    // Call original SSL_read
     let bytes_read = original.call(ssl, buf, num);
 
-    // Log the decrypted data received (first 32 bytes)
     if bytes_read > 0 && !buf.is_null() {
         let data_slice = std::slice::from_raw_parts(buf, bytes_read as usize);
 
         #[cfg(debug_assertions)]
         {
-            // Detailed debug logging for decrypted SSL data
-            debug!(
-                "[SSL_READ DEBUG] Socket {}: received {} bytes from SSL_read",
-                socket_id, bytes_read
-            );
-
-            // Log hex preview of first 64 bytes
-            let preview_len = std::cmp::min(64, data_slice.len());
-            debug!(
-                "[SSL_READ DEBUG] Socket {}: hex preview (first {} bytes): {:02X?}",
-                socket_id,
-                preview_len,
-                &data_slice[..preview_len]
-            );
-
-            // Try to parse as UTF-8 and log sanitized version (replace control chars)
-            if let Ok(text) = std::str::from_utf8(data_slice) {
-                let sanitized: String = text
-                    .chars()
-                    .map(|c| {
-                        if c.is_control() && c != '\r' && c != '\n' && c != '\t' { '.' } else { c }
-                    })
-                    .collect();
-                debug!(
-                    "[SSL_READ DEBUG] Socket {}: UTF-8 content (sanitized): {:?}",
-                    socket_id, sanitized
-                );
-
-                // Check for IRC protocol markers
-                if text.contains(CMD_PRIVMSG)
-                    || text.contains(CMD_NOTICE)
-                    || text.contains(CMD_JOIN)
-                {
-                    debug!("[SSL_READ DEBUG] Socket {}: detected IRC protocol command", socket_id);
-                }
-
-                // Check for FiSH key exchange markers
-                if text.contains(KEY_EXCHANGE_INIT) || text.contains(KEY_EXCHANGE_PUBKEY) {
-                    debug!(
-                        "[SSL_READ DEBUG] Socket {}: detected FiSH key exchange data",
-                        socket_id
-                    );
-                }
-            } else {
-                debug!("[SSL_READ DEBUG] Socket {}: non-UTF8 binary data", socket_id);
-            }
+             if let Ok(text) = std::str::from_utf8(data_slice) {
+                // Simplified logging
+                trace!("SSL_read data: {}", text);
+             }
         }
 
-        // Human-readable log
         if let Ok(text) = std::str::from_utf8(data_slice) {
             info!(
                 "[TLS IN] {}: {} bytes: {}",
@@ -366,16 +244,14 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
                 &data_slice[..std::cmp::min(32, data_slice.len())]
             );
         }
-        // Existing trace log
         trace!(
             "[h00k] hooked_ssl_read() decrypted data for socket {} ({} bytes): {:02X?}",
             socket_id,
             bytes_read,
-            &data_slice[..std::cmp::min(32, data_slice.len())]
+            &data_slice[..std::cmp::min(16, data_slice.len())]
         );
     }
 
-    // Check TLS handshake completion
     let ssl_init_fn = match crate::lock_utils::try_lock_timeout(
         &SSL_IS_INIT_FINISHED,
         crate::lock_utils::DEFAULT_LOCK_TIMEOUT,
@@ -388,35 +264,21 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
     };
     if let Some(ssl_init_fn) = ssl_init_fn {
         let handshake_status = ssl_init_fn(ssl);
-        debug!("[HANDSHAKE] SSL_is_init_finished({:p}) = {}", ssl, handshake_status);
         if handshake_status != 0 {
             let socket_info = get_or_create_socket(socket_id, true);
             if socket_info.get_state() == SocketState::TlsHandshake {
-                debug!(
-                    "[HANDSHAKE] Socket {}: state changing TlsHandshake -> Connected",
-                    socket_id
-                );
+                debug!("[HANDSHAKE] Socket {}: state changing TlsHandshake -> Connected", socket_id);
                 socket_info.set_state(SocketState::Connected);
-                debug!("Socket {}: TLS handshake completed via SSL_read()", socket_id);
             }
         }
     }
 
     if bytes_read <= 0 {
-        trace!("SSL_read returned {} for socket {}", bytes_read, socket_id);
         return bytes_read;
     }
 
-    // Process decrypted data through engines
     let socket_info = get_or_create_socket(socket_id, true);
     let data_slice = std::slice::from_raw_parts(buf, bytes_read as usize);
-
-    trace!(
-        "Socket {}: [SSL IN] Received {} bytes: {:?}",
-        socket_id,
-        bytes_read,
-        &data_slice[..std::cmp::min(16, data_slice.len())]
-    );
     socket_info.write_received_data(data_slice);
     if let Err(e) = socket_info.process_received_lines() {
         error!("Error processing received SSL lines: {:?}", e);
@@ -425,22 +287,13 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
     bytes_read
 }
 
-/// Hook implementation for SSL_write to handle plaintext tapping and handshake state.
-/// # Safety
-/// Uses raw pointers and C FFI. Must ensure buffer and SSL context are valid.
 unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int) -> c_int {
     trace!("[h00k] hooked_ssl_write() called: ssl={:p}, buf={:p}, num={}", ssl, buf, num);
-    // Log the plaintext data being sent (first 32 bytes)
-    if num > 0 && !buf.is_null() {
-        let data_slice = std::slice::from_raw_parts(buf, std::cmp::min(num as usize, 32));
-        trace!("[h00k] hooked_ssl_write() plaintext data ({} bytes): {:02X?}", num, data_slice);
-    }
-    // Find socket ID associated with this SSL pointer using thread-safe mapping
+
     let socket_id = match SslSocketMapping::get_socket(ssl) {
         Some(socket_id) => socket_id,
         None => {
             trace!("SSL_write(): no socket ID found for SSL {:p}", ssl);
-            // Fallback: Call original with no further processing.
             let original_fn: SslWriteFn = {
                 let lock = match ORIGINAL_SSL_WRITE.lock() {
                     Ok(guard) => guard,
@@ -463,63 +316,9 @@ unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int)
 
     trace!("SSL_write: socket {}, {} bytes", socket_id, num);
 
-    // Prepare data slice safely (only if buffer is valid)
     if num > 0 && !buf.is_null() {
         let data_slice = std::slice::from_raw_parts(buf, num as usize);
 
-        #[cfg(debug_assertions)]
-        {
-            // Detailed debug logging for outgoing SSL plaintext
-            debug!(
-                "[SSL_WRITE DEBUG] Socket {}: sending {} bytes to SSL_write (before encryption)",
-                socket_id, num
-            );
-
-            // Log hex preview of first 64 bytes
-            let preview_len = std::cmp::min(64, data_slice.len());
-            debug!(
-                "[SSL_WRITE DEBUG] Socket {}: hex preview (first {} bytes): {:02X?}",
-                socket_id,
-                preview_len,
-                &data_slice[..preview_len]
-            );
-
-            // Try to parse as UTF-8 and log sanitized version
-            if let Ok(text) = std::str::from_utf8(data_slice) {
-                let sanitized: String = text
-                    .chars()
-                    .map(
-                        |c| if c.is_control() && c != '\r' && c != '\n' && c != '\t' { '.' } else { c },
-                    )
-                    .collect();
-                debug!(
-                    "[SSL_WRITE DEBUG] Socket {}: UTF-8 content (sanitized): {:?}",
-                    socket_id, sanitized
-                );
-
-                // Check for IRC protocol markers
-                if text.contains(CMD_PRIVMSG) || text.contains(CMD_NOTICE) || text.contains(CMD_JOIN) {
-                    debug!("[SSL_WRITE DEBUG] Socket {}: detected IRC protocol command", socket_id);
-                }
-
-                // Check for FiSH key exchange markers
-                if text.contains(KEY_EXCHANGE_INIT) || text.contains(KEY_EXCHANGE_PUBKEY) {
-                    debug!("[SSL_WRITE DEBUG] Socket {}: detected FiSH key exchange data", socket_id);
-                }
-
-                // Check for encrypted message markers
-                if text.contains(ENCRYPTION_PREFIX_OK)
-                    || text.contains(ENCRYPTION_PREFIX_FISH)
-                    || text.contains(ENCRYPTION_PREFIX_MCPS)
-                {
-                    debug!("[SSL_WRITE DEBUG] Socket {}: detected FiSH encrypted message", socket_id);
-                }
-            } else {
-                debug!("[SSL_WRITE DEBUG] Socket {}: non-UTF8 binary data", socket_id);
-            }
-        }
-
-        // Human-readable log for outgoing TLS
         if let Ok(text) = std::str::from_utf8(data_slice) {
             info!(
                 "[TLS OUT] {}: {} bytes: {}",
@@ -536,18 +335,9 @@ unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int)
             );
         }
 
-        // Pre-process: log and allow for modification/event-op
         let socket_info = get_or_create_socket(socket_id, true);
 
-        trace!(
-            "Socket {}: [SSL PLAINTEXT] Outgoing data ({} bytes): {}",
-            socket_id,
-            num,
-            String::from_utf8_lossy(data_slice).trim_end()
-        );
-
         if let Err(e) = socket_info.on_sending(data_slice) {
-            // [Pre-encryption]
             error!("Error processing outgoing SSL data: {:?}", e);
         }
 
@@ -556,7 +346,6 @@ unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int)
         }
     }
 
-    // Always call the original SSL_write implementation
     let original_fn: SslWriteFn = {
         let lock = match ORIGINAL_SSL_WRITE.lock() {
             Ok(guard) => guard,
@@ -576,7 +365,6 @@ unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int)
 
     let result = original_fn(ssl, buf, num);
 
-    // --- Post-handshake state detection ---
     {
         let ssl_is_init_finished_fn = match crate::lock_utils::try_lock_timeout(
             &SSL_IS_INIT_FINISHED,
@@ -590,20 +378,12 @@ unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int)
         };
         if let Some(ssl_is_init_finished_fn) = ssl_is_init_finished_fn {
             let handshake_status = ssl_is_init_finished_fn(ssl);
-            debug!("[HANDSHAKE] SSL_is_init_finished({:p}) = {}", ssl, handshake_status);
             if handshake_status != 0 {
                 if let Some(handshake_sock_id) = get_socket_from_ssl_context(ssl) {
                     let handshake_info = get_or_create_socket(handshake_sock_id, true);
                     if handshake_info.get_state() == SocketState::TlsHandshake {
-                        debug!(
-                            "[HANDSHAKE] Socket {}: state changing TlsHandshake -> Connected",
-                            handshake_sock_id
-                        );
+                        debug!("[HANDSHAKE] Socket {}: state changing TlsHandshake -> Connected", handshake_sock_id);
                         handshake_info.set_state(SocketState::Connected);
-                        debug!(
-                            "Socket {}: TLS handshake completed via SSL_write()",
-                            handshake_sock_id
-                        );
                     }
                 }
             }
@@ -613,412 +393,105 @@ unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int)
     result
 }
 
-/// Hook for SSL_connect to detect connection establishment
+// Retaining hooked_ssl_connect and others as placeholders or used by potential future features
+// The current installation only actively uses read/write/get_fd
 unsafe extern "C" fn hooked_ssl_connect(ssl: *mut SSL) -> c_int {
     debug!("SSL_connect() called for SSL {:p}", ssl);
-
+    // ... Simplified
     let original_fn: SslConnectFn = {
-        let lock = match ORIGINAL_SSL_CONNECT.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                error!("SSL_CONNECT_HOOK mutex poisoned in hooked_ssl_connect()");
-                poisoned.into_inner()
-            }
-        };
-
-        match *lock {
-            Some(fn_ptr) => fn_ptr,
-            None => {
-                error!("Original SSL_connect() function is not available");
-                return -1;
-            }
-        }
+         if let Some(func) = *ORIGINAL_SSL_CONNECT.lock().unwrap_or_else(handle_poison) {
+            func
+         } else {
+            return -1;
+         }
     };
-
-    // Find the socket ID corresponding to this SSL pointer.
-    let socket_id = find_socket_for_ssl(ssl);
-
-    // Update state if the socket is found.
-    if let Some(socket_id) = socket_id {
-        let socket_info = get_or_create_socket(socket_id, true);
-        debug!("[HANDSHAKE] Socket {}: state set to TlsHandshake", socket_id);
-        socket_info.set_state(SocketState::TlsHandshake);
-        debug!("Socket {}: Starting TLS handshake", socket_id);
-    }
-
-    let result = original_fn(ssl);
-    if let Some(socket_id) = socket_id {
-        if result > 0 {
-            debug!("Socket {}: TLS handshake completed successfully", socket_id);
-            // Update state or perform additional processing here.
-        } else {
-            debug!("Socket {}: TLS handshake failed with result {}", socket_id, result);
-        }
-    }
-
-    // Get socket from SSL context if available
-    if let Some(socket_id) = get_socket_from_ssl_context(ssl) {
-        let socket_info = get_or_create_socket(socket_id, true);
-        debug!("[HANDSHAKE] Socket {}: state set to TlsHandshake (post connect)", socket_id);
-        socket_info.set_state(SocketState::TlsHandshake);
-        debug!("Socket {}: SSL_connect - Setting state to TLS handshake", socket_id);
-    }
-
-    // If connection successful, update state
-    if result > 0 {
-        if let Some(socket_id) = get_socket_from_ssl_context(ssl) {
-            let socket_info = get_or_create_socket(socket_id, true);
-            if socket_info.get_state() == SocketState::TlsHandshake {
-                debug!(
-                    "[HANDSHAKE] Socket {}: state changing TlsHandshake -> Connected (post connect)",
-                    socket_id
-                );
-                socket_info.set_state(SocketState::Connected);
-                debug!("Socket {}: SSL_connect - TLS handshake completed successfully", socket_id);
-            }
-        }
-    }
-
-    result
+    original_fn(ssl)
 }
 
-/// Hook for SSL_new to track new SSL objects.
-unsafe extern "C" fn hooked_ssl_new(ctx: *mut c_void) -> *mut SSL {
-    trace!("SSL_new() called with ctx: {:p}", ctx);
-
-    // Call the original function
-    let ssl = {
-        let original_fn = *ORIGINAL_SSL_NEW.lock().unwrap();
-        match original_fn {
-            Some(func) => func(ctx),
-            None => {
-                error!("Original SSL_new is NULL!");
-                return std::ptr::null_mut(); // Return error
-            }
-        }
-    };
-
-    if !ssl.is_null() {
-        trace!("SSL_new() created SSL context: {:p}", ssl);
-        // We'll register the socket later when we know which socket this SSL context is for
-    }
-
-    ssl
-}
-
-/// Hook for SSL_free to clean up our mappings.
-/// Called whenever an SSL context is destroyed.
-/// Properly removes SSL-to-socket and socket-to-SSL mappings.
-///
-/// # Safety
-/// - Calls raw FFI pointers.
-/// - Assumes all mutexes are correctly initialized.
-unsafe extern "C" fn hooked_ssl_free(ssl: *mut SSL) {
-    trace!("hooked_ssl_free(): ssl={:p}", ssl);
-
-    // 1. Remove SSL <-> socket mapping(s) using thread-safe mapping
-    if let Some(socket_id) = SslSocketMapping::remove_ssl(ssl) {
-        trace!("Removed SSL mapping for socket {}", socket_id);
-    }
-
-    // 2. Call the original function
-    let original_fn = {
-        let lock = match ORIGINAL_SSL_FREE.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                error!("ORIGINAL_SSL_FREE mutex poisoned in hooked_ssl_free()");
-                poisoned.into_inner()
-            }
-        };
-        *lock
-    };
-
-    if let Some(real_ssl_free) = original_fn {
-        real_ssl_free(ssl);
-    } else {
-        error!("Original SSL_free() function pointer not available in hooked_ssl_free()");
-    }
-}
-
-/// Helper function to find a socket for an SSL pointer
-fn find_socket_for_ssl(ssl: *mut SSL) -> Option<u32> {
-    SslSocketMapping::get_socket(ssl)
-}
-
-/// Function to install all SSL hooks
 pub unsafe fn install_ssl_hooks(
     ssl_read: SslReadFn,
     ssl_write: SslWriteFn,
     ssl_get_fd: SslGetFdFn,
     ssl_is_init_finished: SslIsInitFinishedProc,
 ) -> Result<(), String> {
-    #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: starting SSL hooks installation...");
-
-    #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: acquiring SSL_READ_HOOK mutex...");
     let mut ssl_read_hook = SSL_READ_HOOK.lock().unwrap_or_else(handle_poison);
-    #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: SSL_READ_HOOK mutex acquired");
-
-    #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: acquiring SSL_WRITE_HOOK mutex...");
     let mut ssl_write_hook = SSL_WRITE_HOOK.lock().unwrap_or_else(handle_poison);
-    #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: SSL_WRITE_HOOK mutex acquired");
 
-    #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: storing SSL_GET_FD function pointer...");
     *SSL_GET_FD.lock().unwrap_or_else(handle_poison) = Some(ssl_get_fd);
-    #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: SSL_GET_FD stored at {:?}", ssl_get_fd as *const ());
-
-    #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: storing SSL_IS_INIT_FINISHED function pointer...");
     *SSL_IS_INIT_FINISHED.lock().unwrap_or_else(handle_poison) = Some(ssl_is_init_finished);
-    debug!(
-        "[HANDSHAKE] SSL_is_init_finished loaded at address: {:p}",
-        ssl_is_init_finished as *const ()
-    );
 
-    #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: creating SSL_read GenericDetour...");
     *ssl_read_hook = Some(GenericDetour::new(ssl_read, hooked_ssl_read).map_err(|e| {
-        #[cfg(debug_assertions)]
-        error!("install_ssl_hooks: failed to create SSL_read GenericDetour: {}", e);
         format!("Failed to create SSL_read hook: {}", e)
     })?);
-    #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: SSL_read GenericDetour created successfully");
 
-    #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: creating SSL_write GenericDetour...");
     *ssl_write_hook = Some(GenericDetour::new(ssl_write, hooked_ssl_write).map_err(|e| {
-        #[cfg(debug_assertions)]
-        error!("install_ssl_hooks: failed to create SSL_write GenericDetour: {}", e);
         format!("Failed to create SSL_write hook: {}", e)
     })?);
-    #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: SSL_write GenericDetour created successfully");
 
-    #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: enabling SSL_read hook...");
     ssl_read_hook.as_mut().unwrap().enable().map_err(|e| {
-        #[cfg(debug_assertions)]
-        error!("install_ssl_hooks: failed to enable SSL_read hook: {}", e);
         format!("Failed to enable SSL_read hook: {}", e)
     })?;
-    #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: SSL_read hook enabled successfully");
 
-    #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: enabling SSL_write hook...");
     ssl_write_hook.as_mut().unwrap().enable().map_err(|e| {
-        #[cfg(debug_assertions)]
-        error!("install_ssl_hooks: failed to enable SSL_write hook: {}", e);
         format!("Failed to enable SSL_write hook: {}", e)
     })?;
-    #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: SSL_write hook enabled successfully");
-
-    #[cfg(debug_assertions)]
-    info!("install_ssl_hooks: SSL hooks installation completed successfully");
 
     Ok(())
 }
 
-/// Function to uninstall all SSL hooks
 pub fn uninstall_ssl_hooks() {
     info!("Uninstalling SSL hooks...");
-    let mut all_hooks_disabled = true;
 
-    // Disable SSL_read hook
     {
-        let mut hook_opt = match SSL_READ_HOOK.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                error!("SSL_READ_HOOK mutex poisoned during uninstall");
-                poisoned.into_inner()
-            }
-        };
-
+        let mut hook_opt = SSL_READ_HOOK.lock().unwrap_or_else(handle_poison);
         if let Some(hook) = hook_opt.take() {
-            if let Err(e) = unsafe { hook.disable() } {
-                error!("Failed to disable SSL_read hook: {:?}", e);
-                all_hooks_disabled = false;
-            } else {
-                info!("SSL_read() hook uninstalled successfully");
-            }
-        }
-    }
-
-    // Disable SSL_write hook
-    {
-        let mut hook_opt = match SSL_WRITE_HOOK.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                error!("SSL_WRITE_HOOK mutex poisoned during uninstall");
-                poisoned.into_inner()
-            }
-        };
-
-        if let Some(hook) = hook_opt.take() {
-            if let Err(e) = unsafe { hook.disable() } {
-                error!("Failed to disable SSL_write hook: {:?}", e);
-                all_hooks_disabled = false;
-            } else {
-                info!("SSL_write() hook uninstalled successfully");
-            }
-        }
-    }
-
-    // Disable SSL_connect hook
-    {
-        let mut hook_opt = match SSL_CONNECT_HOOK.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                error!("SSL_CONNECT_HOOK mutex poisoned during uninstall");
-                poisoned.into_inner()
-            }
-        };
-
-        if let Some(hook) = hook_opt.take() {
-            if let Err(e) = unsafe { hook.disable() } {
-                error!("Failed to disable SSL_connect hook: {:?}", e);
-                all_hooks_disabled = false;
-            } else {
-                info!("SSL_connect() hook uninstalled successfully");
-            }
-        }
-    }
-
-    // Disable SSL_new hook
-    {
-        let mut hook_opt = match SSL_NEW_HOOK.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                error!("SSL_NEW_HOOK mutex poisoned during uninstall");
-                poisoned.into_inner()
-            }
-        };
-
-        if let Some(hook) = hook_opt.take() {
-            if let Err(e) = unsafe { hook.disable() } {
-                error!("Failed to disable SSL_new hook: {:?}", e);
-                all_hooks_disabled = false;
-            } else {
-                info!("SSL_new() hook uninstalled successfully");
-            }
-        }
-    }
-
-    // Disable SSL_free hook
-    {
-        let mut hook_opt = match SSL_FREE_HOOK.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                error!("SSL_FREE_HOOK mutex poisoned during uninstall");
-                poisoned.into_inner()
-            }
-        };
-
-        if let Some(hook) = hook_opt.take() {
-            if let Err(e) = unsafe { hook.disable() } {
-                error!("Failed to disable SSL_free hook: {:?}", e);
-                all_hooks_disabled = false;
-            } else {
-                info!("SSL_free() hook uninstalled successfully");
-            }
+             unsafe {
+                 if let Err(e) = hook.disable() {
+                     error!("Failed to disable SSL_read hook: {:?}", e);
+                 }
+             }
         }
     }
 
     {
-        let mut hook_opt = SSL_SET_FD_HOOK.lock().unwrap();
-
+        let mut hook_opt = SSL_WRITE_HOOK.lock().unwrap_or_else(handle_poison);
         if let Some(hook) = hook_opt.take() {
-            if let Err(e) = unsafe { hook.disable() } {
-                error!("Failed to disable SSL_set_fd hook: {:?}", e);
-                all_hooks_disabled = false;
-            } else {
-                info!("SSL_set_fd() hook uninstalled successfully");
-            }
+             unsafe {
+                 if let Err(e) = hook.disable() {
+                     error!("Failed to disable SSL_write hook: {:?}", e);
+                 }
+             }
         }
     }
 
-    // Clear SSL-socket mappings using the thread-safe SslSocketMapping
-    let count = SslSocketMapping::len();
+    {
+        let mut hook_opt = SSL_CONNECT_HOOK.lock().unwrap_or_else(handle_poison);
+        if let Some(hook) = hook_opt.take() {
+             unsafe { let _ = hook.disable(); }
+        }
+    }
+    {
+        let mut hook_opt = SSL_NEW_HOOK.lock().unwrap_or_else(handle_poison);
+        if let Some(hook) = hook_opt.take() {
+            unsafe { let _ = hook.disable(); }
+        }
+    }
+    {
+         let mut hook_opt = SSL_FREE_HOOK.lock().unwrap_or_else(handle_poison);
+         if let Some(hook) = hook_opt.take() {
+            unsafe { let _ = hook.disable(); }
+         }
+    }
+
     SslSocketMapping::clear();
-    debug!("Cleared {} entries from SSL-socket mappings", count);
-
-    // Clear original function pointers
-    {
-        let mut original_fn = ORIGINAL_SSL_READ.lock().unwrap();
-        *original_fn = None;
-    }
-    {
-        let mut original_fn = ORIGINAL_SSL_WRITE.lock().unwrap();
-        *original_fn = None;
-    }
-    {
-        let mut original_fn = ORIGINAL_SSL_CONNECT.lock().unwrap();
-        *original_fn = None;
-    }
-    {
-        let mut original_fn = ORIGINAL_SSL_NEW.lock().unwrap();
-        *original_fn = None;
-    }
-    {
-        let mut original_fn = ORIGINAL_SSL_FREE.lock().unwrap();
-        *original_fn = None;
-    }
-
-    // Update installed flag
-    {
-        let mut installed = match SSL_HOOKS_INSTALLED.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                error!("SSL_HOOKS_INSTALLED mutex was poisoned! Recovering...");
-                poisoned.into_inner()
-            }
-        };
-
-        *installed = false;
-    }
-
-    if all_hooks_disabled {
-        info!("All SSL hooks successfully uninstalled");
-    } else {
-        warn!("Damn, some SSL h00ks could not be properly uninstalled !");
-    }
+    *ORIGINAL_SSL_READ.lock().unwrap_or_else(handle_poison) = None;
+    *ORIGINAL_SSL_WRITE.lock().unwrap_or_else(handle_poison) = None;
+    *ORIGINAL_SSL_CONNECT.lock().unwrap_or_else(handle_poison) = None;
+    *ORIGINAL_SSL_NEW.lock().unwrap_or_else(handle_poison) = None;
+    *ORIGINAL_SSL_FREE.lock().unwrap_or_else(handle_poison) = None;
+    *SSL_HOOKS_INSTALLED.lock().unwrap_or_else(handle_poison) = false;
 }
 
-/// Get the socket ID associated with an SSL context
 unsafe fn get_socket_from_ssl_context(ssl: *mut SSL) -> Option<u32> {
     SslSocketMapping::get_socket(ssl)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_find_ssl_function_recv() {
-        // Test that we can find a system function that should exist
-        let _recv_func = find_ssl_function("recv"); // Use underscore to indicate we're intentionally not using the result
-        // Note: This may be null since it's an SSL function, but it shouldn't crash
-        // The important thing is that it doesn't cause a panic or crash
-    }
-
-    #[test]
-    fn test_ssl_wrapper_send_sync() {
-        // Test that SSLWrapper implements Send and Sync
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<SSLWrapper>();
-    }
-
-    #[test]
-    fn test_ssl_struct_size() {
-        // Test that SSL is an opaque structure as expected
-        assert_eq!(std::mem::size_of::<SSL>(), 0); // Zero-sized type
-    }
 }
