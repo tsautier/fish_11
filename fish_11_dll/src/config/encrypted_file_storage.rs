@@ -108,9 +108,8 @@ fn load_encrypted_config_from_file(config_path: &PathBuf) -> Result<FishConfig> 
 
 /// Check if master key is available in memory
 pub fn is_master_key_available() -> bool {
-    // This will check if the master key is currently held in memory
-    // For now we'll return false - we'll implement this when we add the global key handle
-    false
+    // Check if the master key is currently held in memory
+    crate::dll_interface::fish11_masterkey::is_master_key_unlocked()
 }
 
 /// Save configuration to an encrypted file

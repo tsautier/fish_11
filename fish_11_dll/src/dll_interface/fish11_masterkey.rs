@@ -302,3 +302,13 @@ dll_function_identifier!(FiSH11_MasterKeyIsUnlocked, data, {
 
     Ok(result.to_string())
 });
+
+/// Check if master key is unlocked in memory
+pub fn is_master_key_unlocked() -> bool {
+    if let Ok(key_guard) = MASTER_KEY.lock() {
+        key_guard.is_some()
+    } else {
+        // If we can't acquire the lock, assume it's not unlocked
+        false
+    }
+}
