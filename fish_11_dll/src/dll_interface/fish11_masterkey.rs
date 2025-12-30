@@ -16,6 +16,23 @@ use std::ffi::c_char;
 use std::os::raw::c_int;
 use std::sync::Mutex;
 
+/// Synchronize the LOGGING_KEY with the MASTER_KEY
+/// This ensures both keys are always in sync
+fn synchronize_logging_key() {
+    if let Ok(master_key_guard) = MASTER_KEY.lock() {
+        if let Some(key) = master_key_guard.as_ref() {
+            if let Ok(mut logging_key_guard) = LOGGING_KEY.lock() {
+                *logging_key_guard = Some(*key);
+            }
+        } else {
+            // If master key is None, clear logging key too
+            if let Ok(mut logging_key_guard) = LOGGING_KEY.lock() {
+                *logging_key_guard = None;
+            }
+        }
+    }
+}
+
 static MASTER_KEY: Lazy<Mutex<Option<[u8; 32]>>> = Lazy::new(|| Mutex::new(None));
 
 dll_function_identifier!(FiSH11_MasterKeyInit, data, {
@@ -53,14 +70,8 @@ dll_function_identifier!(FiSH11_MasterKeyInit, data, {
                 *key_guard = Some(key);
             }
 
-            // Also update the LOGGING_KEY to use the same key
-            if let Ok(mut logging_key_guard) = LOGGING_KEY.lock() {
-                *logging_key_guard = Some(key);
-            } else {
-                log::warn!(
-                    "Warning : failed to acquire logging key lock, continuing with master key unlock"
-                );
-            }
+            // Synchronize the logging key
+            synchronize_logging_key();
 
             // Save the salt and password verifier to keystore for future use
             let mut keystore = Keystore::new();
@@ -191,14 +202,8 @@ dll_function_identifier!(FiSH11_MasterKeyUnlock, data, {
                 *key_guard = Some(key);
             }
 
-            // Also update the LOGGING_KEY to use the same key
-            if let Ok(mut logging_key_guard) = LOGGING_KEY.lock() {
-                *logging_key_guard = Some(key);
-            } else {
-                log::warn!(
-                    "Warning : failed to acquire logging key lock, continuing with master key unlock"
-                );
-            }
+            // Synchronize the logging key
+            synchronize_logging_key();
 
             Ok("1".to_string())
         }
@@ -223,12 +228,8 @@ dll_function_identifier!(FiSH11_MasterKeyLock, data, {
         *key_guard = None;
     }
 
-    // Also clear the LOGGING_KEY
-    if let Ok(mut logging_key_guard) = LOGGING_KEY.lock() {
-        *logging_key_guard = None;
-    } else {
-        log::warn!("Warning: Failed to acquire logging key lock, continuing with master key lock");
-    }
+    // Synchronize the logging key (which will clear it since master key is now None)
+    synchronize_logging_key();
 
     Ok("1".to_string())
 });
@@ -304,14 +305,8 @@ dll_function_identifier!(FiSH11_MasterKeyChangePassword, data, {
                         *key_guard = Some(new_key);
                     }
 
-                    // Also update the LOGGING_KEY to use the new key
-                    if let Ok(mut logging_key_guard) = LOGGING_KEY.lock() {
-                        *logging_key_guard = Some(new_key);
-                    } else {
-                        log::warn!(
-                            "Warning : failed to acquire logging key lock, continuing with master key change"
-                        );
-                    }
+                    // Synchronize the logging key
+                    synchronize_logging_key();
 
                     // Save the new salt and password verifier to keystore
                     let mut new_keystore = Keystore::new();
