@@ -1,6 +1,8 @@
-use std::ffi::{CString, c_int, c_void};
-use std::sync::Mutex as StdMutex;
-
+use crate::helpers_inject::handle_poison;
+use crate::hook_socket::get_or_create_socket;
+use crate::pointer_validation::validate_function_pointer;
+use crate::socket::state::SocketState;
+use crate::ssl_mapping::SslSocketMapping;
 use fish_11_core::globals::{
     CMD_JOIN, CMD_NOTICE, CMD_PRIVMSG, ENCRYPTION_PREFIX_FISH, ENCRYPTION_PREFIX_MCPS,
     ENCRYPTION_PREFIX_OK, KEY_EXCHANGE_INIT, KEY_EXCHANGE_PUBKEY,
@@ -8,14 +10,11 @@ use fish_11_core::globals::{
 use lazy_static::lazy_static;
 use log::{debug, error, info, trace, warn};
 use retour::GenericDetour;
+use std::ffi::{CString, c_int, c_void};
+use std::sync::Mutex as StdMutex;
 use winapi::shared::minwindef::FARPROC;
 use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
 use winapi::um::winsock2::SOCKET;
-
-use crate::helpers_inject::handle_poison;
-use crate::hook_socket::get_or_create_socket;
-use crate::socket::state::SocketState;
-use crate::ssl_mapping::SslSocketMapping;
 // SSL structure (opaque)
 #[repr(C)]
 pub struct SSL {
@@ -69,7 +68,6 @@ lazy_static! {
 }
 
 static SSL_SET_FD_HOOK: StdMutex<Option<GenericDetour<SslSetFdFn>>> = StdMutex::new(None);
-static ORIGINAL_SSL_SET_FD: StdMutex<Option<SslSetFdFn>> = StdMutex::new(None);
 
 /// Hook for SSL_set_fd to track which SSL context (SSL*) is associated with which socket (fd).
 /// Also marks the socket as SSL-enabled for later checks in send/recv hooks.
@@ -77,6 +75,7 @@ static ORIGINAL_SSL_SET_FD: StdMutex<Option<SslSetFdFn>> = StdMutex::new(None);
 /// # Safety
 /// - Calls FFI pointers (Rust/WinAPI interop)
 unsafe extern "C" fn hooked_ssl_set_fd(ssl: *mut SSL, fd: c_int) -> c_int {
+    static ORIGINAL_SSL_SET_FD: StdMutex<Option<SslSetFdFn>> = StdMutex::new(None);
     trace!("SSL_set_fd() called with ssl: {:p}, fd: {}", ssl, fd);
 
     // 1. Call the original function pointer
@@ -112,11 +111,6 @@ unsafe extern "C" fn hooked_ssl_set_fd(ssl: *mut SSL, fd: c_int) -> c_int {
     }
 
     result
-}
-
-/// Convert SSL pointer to a unique identifier for mapping
-fn ssl_to_id(ssl: *mut SSL) -> usize {
-    ssl as usize
 }
 
 /// Attempts to locate a function pointer by name within a set of well-known SSL-related libraries.
@@ -184,6 +178,11 @@ pub fn find_ssl_function(function_name: &str) -> FARPROC {
                 for variant in &function_variants {
                     let func_ptr = GetProcAddress(handle, func_name_cstr(variant).as_ptr());
                     if !func_ptr.is_null() {
+                        if let Err(e) = validate_function_pointer(func_ptr, Some(handle)) {
+                            warn!("validation failed for found ssl function: {}", e);
+                            continue;
+                        }
+
                         info!(
                             "Found {} ({}) in {}",
                             function_name,
@@ -207,6 +206,11 @@ pub fn find_ssl_function(function_name: &str) -> FARPROC {
                 for variant in &function_variants {
                     let func_ptr = GetProcAddress(handle, func_name_cstr(variant).as_ptr());
                     if !func_ptr.is_null() {
+                        if let Err(e) = validate_function_pointer(func_ptr, Some(handle)) {
+                            warn!("validation failed for loaded ssl function: {}", e);
+                            continue;
+                        }
+
                         info!(
                             "Loaded {} and found {} ({}) in {}",
                             String::from_utf8_lossy(
@@ -459,63 +463,63 @@ unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int)
 
     trace!("SSL_write: socket {}, {} bytes", socket_id, num);
 
-    // Prepare data slice safely
-    let data_slice = std::slice::from_raw_parts(buf, num as usize);
+    // Prepare data slice safely (only if buffer is valid)
+    if num > 0 && !buf.is_null() {
+        let data_slice = std::slice::from_raw_parts(buf, num as usize);
 
-    #[cfg(debug_assertions)]
-    {
-        // Detailed debug logging for outgoing SSL plaintext
-        debug!(
-            "[SSL_WRITE DEBUG] Socket {}: sending {} bytes to SSL_write (before encryption)",
-            socket_id, num
-        );
-
-        // Log hex preview of first 64 bytes
-        let preview_len = std::cmp::min(64, data_slice.len());
-        debug!(
-            "[SSL_WRITE DEBUG] Socket {}: hex preview (first {} bytes): {:02X?}",
-            socket_id,
-            preview_len,
-            &data_slice[..preview_len]
-        );
-
-        // Try to parse as UTF-8 and log sanitized version
-        if let Ok(text) = std::str::from_utf8(data_slice) {
-            let sanitized: String = text
-                .chars()
-                .map(
-                    |c| if c.is_control() && c != '\r' && c != '\n' && c != '\t' { '.' } else { c },
-                )
-                .collect();
+        #[cfg(debug_assertions)]
+        {
+            // Detailed debug logging for outgoing SSL plaintext
             debug!(
-                "[SSL_WRITE DEBUG] Socket {}: UTF-8 content (sanitized): {:?}",
-                socket_id, sanitized
+                "[SSL_WRITE DEBUG] Socket {}: sending {} bytes to SSL_write (before encryption)",
+                socket_id, num
             );
 
-            // Check for IRC protocol markers
-            if text.contains(CMD_PRIVMSG) || text.contains(CMD_NOTICE) || text.contains(CMD_JOIN) {
-                debug!("[SSL_WRITE DEBUG] Socket {}: detected IRC protocol command", socket_id);
-            }
+            // Log hex preview of first 64 bytes
+            let preview_len = std::cmp::min(64, data_slice.len());
+            debug!(
+                "[SSL_WRITE DEBUG] Socket {}: hex preview (first {} bytes): {:02X?}",
+                socket_id,
+                preview_len,
+                &data_slice[..preview_len]
+            );
 
-            // Check for FiSH key exchange markers
-            if text.contains(KEY_EXCHANGE_INIT) || text.contains(KEY_EXCHANGE_PUBKEY) {
-                debug!("[SSL_WRITE DEBUG] Socket {}: detected FiSH key exchange data", socket_id);
-            }
+            // Try to parse as UTF-8 and log sanitized version
+            if let Ok(text) = std::str::from_utf8(data_slice) {
+                let sanitized: String = text
+                    .chars()
+                    .map(
+                        |c| if c.is_control() && c != '\r' && c != '\n' && c != '\t' { '.' } else { c },
+                    )
+                    .collect();
+                debug!(
+                    "[SSL_WRITE DEBUG] Socket {}: UTF-8 content (sanitized): {:?}",
+                    socket_id, sanitized
+                );
 
-            // Check for encrypted message markers
-            if text.contains(ENCRYPTION_PREFIX_OK)
-                || text.contains(ENCRYPTION_PREFIX_FISH)
-                || text.contains(ENCRYPTION_PREFIX_MCPS)
-            {
-                debug!("[SSL_WRITE DEBUG] Socket {}: detected FiSH encrypted message", socket_id);
+                // Check for IRC protocol markers
+                if text.contains(CMD_PRIVMSG) || text.contains(CMD_NOTICE) || text.contains(CMD_JOIN) {
+                    debug!("[SSL_WRITE DEBUG] Socket {}: detected IRC protocol command", socket_id);
+                }
+
+                // Check for FiSH key exchange markers
+                if text.contains(KEY_EXCHANGE_INIT) || text.contains(KEY_EXCHANGE_PUBKEY) {
+                    debug!("[SSL_WRITE DEBUG] Socket {}: detected FiSH key exchange data", socket_id);
+                }
+
+                // Check for encrypted message markers
+                if text.contains(ENCRYPTION_PREFIX_OK)
+                    || text.contains(ENCRYPTION_PREFIX_FISH)
+                    || text.contains(ENCRYPTION_PREFIX_MCPS)
+                {
+                    debug!("[SSL_WRITE DEBUG] Socket {}: detected FiSH encrypted message", socket_id);
+                }
+            } else {
+                debug!("[SSL_WRITE DEBUG] Socket {}: non-UTF8 binary data", socket_id);
             }
-        } else {
-            debug!("[SSL_WRITE DEBUG] Socket {}: non-UTF8 binary data", socket_id);
         }
-    }
 
-    // Human-readable log for outgoing TLS
-    if num > 0 && !buf.is_null() {
+        // Human-readable log for outgoing TLS
         if let Ok(text) = std::str::from_utf8(data_slice) {
             info!(
                 "[TLS OUT] {}: {} bytes: {}",
@@ -531,25 +535,25 @@ unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int)
                 &data_slice[..std::cmp::min(32, data_slice.len())]
             );
         }
-    }
 
-    // Pre-process: log and allow for modification/event-op
-    let socket_info = get_or_create_socket(socket_id, true);
+        // Pre-process: log and allow for modification/event-op
+        let socket_info = get_or_create_socket(socket_id, true);
 
-    trace!(
-        "Socket {}: [SSL PLAINTEXT] Outgoing data ({} bytes): {}",
-        socket_id,
-        num,
-        String::from_utf8_lossy(data_slice).trim_end()
-    );
+        trace!(
+            "Socket {}: [SSL PLAINTEXT] Outgoing data ({} bytes): {}",
+            socket_id,
+            num,
+            String::from_utf8_lossy(data_slice).trim_end()
+        );
 
-    if let Err(e) = socket_info.on_sending(data_slice) {
-        // [Pre-encryption]
-        error!("Error processing outgoing SSL data: {:?}", e);
-    }
+        if let Err(e) = socket_info.on_sending(data_slice) {
+            // [Pre-encryption]
+            error!("Error processing outgoing SSL data: {:?}", e);
+        }
 
-    if log::log_enabled!(log::Level::Trace) {
-        trace!("SSL_write() data: {:?}", data_slice);
+        if log::log_enabled!(log::Level::Trace) {
+            trace!("SSL_write() data: {:?}", data_slice);
+        }
     }
 
     // Always call the original SSL_write implementation
@@ -741,23 +745,6 @@ fn find_socket_for_ssl(ssl: *mut SSL) -> Option<u32> {
     SslSocketMapping::get_socket(ssl)
 }
 
-/// Register the association between a socket and an SSL object
-fn register_ssl_for_socket(socket_id: u32, ssl: *mut SSL) {
-    if ssl.is_null() {
-        debug!("Attempted to register null SSL pointer for socket {}", socket_id);
-        return;
-    }
-
-    // Use the thread-safe SslSocketMapping
-    SslSocketMapping::associate(ssl, socket_id);
-
-    debug!("Registered SSL {:p} for socket {}", ssl, socket_id);
-
-    // Update socket state
-    let socket_info = get_or_create_socket(socket_id, true);
-    socket_info.set_ssl(true);
-}
-
 /// Function to install all SSL hooks
 pub unsafe fn install_ssl_hooks(
     ssl_read: SslReadFn,
@@ -838,54 +825,6 @@ pub unsafe fn install_ssl_hooks(
     info!("install_ssl_hooks: SSL hooks installation completed successfully");
 
     Ok(())
-}
-
-/// Install a critical SSL hook - must succeed for SSL functionality to work
-unsafe fn install_critical_ssl_hook<F: Copy + retour::Function>(
-    original_fn: F,
-    hook_fn: F,
-    hook_storage: &StdMutex<Option<GenericDetour<F>>>,
-    hook_name: &str,
-) -> bool {
-    match GenericDetour::<F>::new(original_fn, hook_fn) {
-        Ok(hook) => {
-            if let Err(e) = hook.enable() {
-                error!("Failed to enable {hook_name}() hook: {:?}", e);
-                return false;
-            }
-            *hook_storage.lock().unwrap() = Some(hook);
-            info!("  - {hook_name}() hook installed");
-            true
-        }
-        Err(e) => {
-            error!("Failed to create {hook_name}() hook: {:?}", e);
-            false
-        }
-    }
-}
-
-/// Install an optional SSL hook - failure is not critical
-unsafe fn install_optional_ssl_hook<F: Copy + retour::Function>(
-    original_fn: F,
-    hook_fn: F,
-    hook_storage: &StdMutex<Option<GenericDetour<F>>>,
-    hook_name: &str,
-) {
-    match GenericDetour::<F>::new(original_fn, hook_fn) {
-        Ok(hook) => {
-            if let Err(e) = hook.enable() {
-                error!("Failed to enable {hook_name}() hook: {:?}", e);
-                // Not critical, continue anyway
-            } else {
-                *hook_storage.lock().unwrap() = Some(hook);
-                info!("  - {hook_name}() hook installed");
-            }
-        }
-        Err(e) => {
-            error!("Failed to create {hook_name}() hook: {:?}", e);
-            // Not critical, continue anyway
-        }
-    }
 }
 
 /// Function to uninstall all SSL hooks
@@ -1061,14 +1000,6 @@ unsafe fn get_socket_from_ssl_context(ssl: *mut SSL) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_ssl_to_id() {
-        let fake_ssl_ptr = 0x12345678 as *mut SSL;
-        let id = ssl_to_id(fake_ssl_ptr);
-
-        assert_eq!(id, 0x12345678);
-    }
 
     #[test]
     fn test_find_ssl_function_recv() {
