@@ -44,5 +44,5 @@ path = "../fish_11_core"
 # NO dependencies on non-Windows platforms
 [target.'cfg(not(windows))'.dependencies]
 
-[dependencies]
+# NO [dependencies] !
 # Intentionally empty to prevent building on non-Windows platforms !
