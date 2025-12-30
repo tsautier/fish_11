@@ -127,6 +127,11 @@ dll_function_identifier!(FiSH11_MasterKeyUnlock, data, {
                         *key_guard = Some(key);
                     }
 
+                    // Also update the LOGGING_KEY for encrypted logging
+                    if let Ok(mut logging_key_guard) = LOGGING_KEY.lock() {
+                        *logging_key_guard = Some(key);
+                    }
+
                     // Save the salt to keystore for future use
                     let mut keystore = Keystore::new();
                     keystore.set_master_salt(&salt);
