@@ -4,12 +4,14 @@
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::{buffer_utils, dll_function_identifier};
+use fish_11_core::globals::LOGGING_KEY;
 use fish_11_core::master_key::derivation::derive_master_key_with_salt;
 use fish_11_core::master_key::derive_master_key;
 use fish_11_core::master_key::keystore::Keystore;
 use fish_11_core::master_key::password_change::change_master_password;
 use fish_11_core::master_key::password_validation::PasswordValidator;
 use once_cell::sync::Lazy;
+use sha2::{Digest, Sha256};
 use std::ffi::c_char;
 use std::os::raw::c_int;
 use std::sync::Mutex;
@@ -51,9 +53,26 @@ dll_function_identifier!(FiSH11_MasterKeyInit, data, {
                 *key_guard = Some(key);
             }
 
-            // Save the salt to keystore for future use
+            // Also update the LOGGING_KEY to use the same key
+            if let Ok(mut logging_key_guard) = LOGGING_KEY.lock() {
+                *logging_key_guard = Some(key);
+            } else {
+                log::warn!(
+                    "Warning : failed to acquire logging key lock, continuing with master key unlock"
+                );
+            }
+
+            // Save the salt and password verifier to keystore for future use
             let mut keystore = Keystore::new();
             keystore.set_master_salt(&salt);
+
+            // Create password verifier : SHA-256 hash of the derived key
+            use sha2::{Digest, Sha256};
+            let mut hasher = Sha256::new();
+            hasher.update(&key);
+            let verifier = format!("{:x}", hasher.finalize());
+            keystore.set_password_verifier(&verifier);
+
             if let Err(e) = keystore.save() {
                 log::warn!("Failed to save keystore: {}", e);
             }
@@ -140,6 +159,20 @@ dll_function_identifier!(FiSH11_MasterKeyUnlock, data, {
     // Derive the master key using the stored salt
     match derive_master_key_with_salt(&input, Some(salt)) {
         Ok((key, _)) => {
+            // If there's a password verifier, check if the derived key matches
+            if let Some(verifier) = keystore.get_password_verifier() {
+                let mut hasher = Sha256::new();
+                hasher.update(&key);
+                let key_hash = format!("{:x}", hasher.finalize());
+
+                if key_hash != verifier {
+                    return Err(DllError::InvalidInput {
+                        param: "password".to_string(),
+                        reason: "Incorrect password".to_string(),
+                    });
+                }
+            }
+
             // Store the key in memory
             {
                 let mut key_guard = match MASTER_KEY.lock() {
@@ -151,6 +184,15 @@ dll_function_identifier!(FiSH11_MasterKeyUnlock, data, {
                     }
                 };
                 *key_guard = Some(key);
+            }
+
+            // Also update the LOGGING_KEY to use the same key
+            if let Ok(mut logging_key_guard) = LOGGING_KEY.lock() {
+                *logging_key_guard = Some(key);
+            } else {
+                log::warn!(
+                    "Warning : failed to acquire logging key lock, continuing with master key unlock"
+                );
             }
 
             Ok("1".to_string())
@@ -174,6 +216,13 @@ dll_function_identifier!(FiSH11_MasterKeyLock, data, {
             }
         };
         *key_guard = None;
+    }
+
+    // Also clear the LOGGING_KEY
+    if let Ok(mut logging_key_guard) = LOGGING_KEY.lock() {
+        *logging_key_guard = None;
+    } else {
+        log::warn!("Warning: Failed to acquire logging key lock, continuing with master key lock");
     }
 
     Ok("1".to_string())
@@ -228,8 +277,11 @@ dll_function_identifier!(FiSH11_MasterKeyChangePassword, data, {
         }
     };
 
+    // Get the password verifier from the keystore
+    let password_verifier = keystore.get_password_verifier();
+
     // Use the password change function to properly validate and change password
-    match change_master_password(old_password, current_salt, new_password) {
+    match change_master_password(old_password, current_salt, new_password, password_verifier) {
         Ok(new_salt) => {
             // Derive the new key for storage in memory
             match derive_master_key_with_salt(new_password, Some(&new_salt)) {
@@ -247,10 +299,25 @@ dll_function_identifier!(FiSH11_MasterKeyChangePassword, data, {
                         *key_guard = Some(new_key);
                     }
 
-                    // Save the new salt to keystore
-                    let mut new_keystore = Keystore::new();
+                    // Also update the LOGGING_KEY to use the new key
+                    if let Ok(mut logging_key_guard) = LOGGING_KEY.lock() {
+                        *logging_key_guard = Some(new_key);
+                    } else {
+                        log::warn!(
+                            "Warning : failed to acquire logging key lock, continuing with master key change"
+                        );
+                    }
 
+                    // Save the new salt and password verifier to keystore
+                    let mut new_keystore = Keystore::new();
                     new_keystore.set_master_salt(&new_salt);
+
+                    // Create new password verifier for the new key
+                    use sha2::{Digest, Sha256};
+                    let mut hasher = Sha256::new();
+                    hasher.update(&new_key);
+                    let new_verifier = format!("{:x}", hasher.finalize());
+                    new_keystore.set_password_verifier(&new_verifier);
 
                     if let Err(e) = new_keystore.save() {
                         log::warn!("Failed to save updated keystore: {}", e);

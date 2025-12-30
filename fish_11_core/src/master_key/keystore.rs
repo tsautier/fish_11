@@ -3,11 +3,9 @@
 //! Handles persistent storage of sensitive data like salts, nonce counters, etc.
 
 use configparser::ini::Ini;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-//use secrecy::{Secret, SecretString};
-use serde::{Deserialize, Serialize};
-//use zeroize::Zeroize;
 
 /// Metadata associated with keys
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,6 +51,9 @@ pub struct Keystore {
     /// Salt used for deriving the master key
     pub master_key_salt: String,
 
+    /// Password verifier (hash of the derived master key) for password verification
+    pub password_verifier: Option<String>,
+
     /// Nonce counters for different contexts
     pub nonce_counters: HashMap<String, u64>,
 
@@ -73,6 +74,7 @@ impl Keystore {
 
         Self {
             master_key_salt: salt,
+            password_verifier: None,
             nonce_counters: HashMap::new(),
             key_metadata: HashMap::new(),
             file_path: None,
@@ -83,6 +85,7 @@ impl Keystore {
     pub fn with_salt(salt: &str) -> Self {
         Self {
             master_key_salt: salt.to_string(),
+            password_verifier: None,
             nonce_counters: HashMap::new(),
             key_metadata: HashMap::new(),
             file_path: None,
@@ -129,6 +132,21 @@ impl Keystore {
         self.master_key_salt = salt.to_string();
     }
 
+    /// Set the password verifier (hash of the derived master key)
+    pub fn set_password_verifier(&mut self, verifier: &str) {
+        self.password_verifier = Some(verifier.to_string());
+    }
+
+    /// Get the password verifier
+    pub fn get_password_verifier(&self) -> Option<&str> {
+        self.password_verifier.as_deref()
+    }
+
+    /// Clear the password verifier
+    pub fn clear_password_verifier(&mut self) {
+        self.password_verifier = None;
+    }
+
     /// Load keystore from default path
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
         let path = Self::default_path()?;
@@ -159,6 +177,9 @@ impl Keystore {
                 }
             }
         }
+
+        // Load password verifier
+        let password_verifier = ini.get("MasterKey", "verifier");
 
         // Load key metadata
         let mut key_metadata = HashMap::new();
@@ -203,6 +224,7 @@ impl Keystore {
 
         let mut keystore = Keystore {
             master_key_salt,
+            password_verifier,
             nonce_counters,
             key_metadata,
             file_path: Some(path.clone()),
@@ -226,6 +248,11 @@ impl Keystore {
 
         // Save master key salt
         ini.set("MasterKey", "salt", Some(self.master_key_salt.clone()));
+
+        // Save password verifier if present
+        if let Some(verifier) = &self.password_verifier {
+            ini.set("MasterKey", "verifier", Some(verifier.clone()));
+        }
 
         // Save nonce counters
         for (context, counter) in &self.nonce_counters {

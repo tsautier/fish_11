@@ -101,12 +101,127 @@ fn load_encrypted_config_from_file(config_path: &PathBuf) -> Result<FishConfig> 
     let encrypted_blob = EncryptedBlob::from_bytes(&encrypted_bytes)
         .ok_or_else(|| FishError::ConfigError("Failed to parse encrypted blob".to_string()))?;
 
-    // Get the master key from memory (this assumes the user has unlocked it)
-    // TODO : for now, we'll return an error indicating that the config is encrypted but not unlocked
-    return Err(FishError::ConfigError(
-        "Encrypted config detected but master key not unlocked. Use FiSH11_MasterKeyUnlock first."
-            .to_string(),
-    ));
+    // Check if master key is available for decryption
+    if !is_master_key_available() {
+        return Err(FishError::ConfigError(
+            "Encrypted config detected but master key not unlocked. Use FiSH11_MasterKeyUnlock first."
+                .to_string(),
+        ));
+    }
+
+    // Get the master key from memory
+    let master_key = crate::dll_interface::fish11_masterkey::get_master_key_from_memory()
+        .ok_or_else(|| FishError::ConfigError("Master key not available in memory".to_string()))?;
+
+    // Create the config KEK (Key Encryption Key) using the master key
+    let config_kek = derive_config_kek(&master_key);
+
+    // Decrypt the encrypted blob using the config KEK
+    let decrypted_bytes = decrypt_data(&encrypted_blob, &config_kek)
+        .map_err(|e| FishError::ConfigError(format!("Failed to decrypt config: {}", e)))?;
+
+    // Convert decrypted bytes to string
+    let decrypted_content = String::from_utf8(decrypted_bytes)
+        .map_err(|e| FishError::ConfigError(format!("Failed to convert decrypted data to string: {}", e)))?;
+
+    // Parse the decrypted content as INI
+    let mut ini = Ini::new();
+    ini.read(decrypted_content)
+        .map_err(|e| FishError::ConfigError(format!("Failed to parse decrypted INI content: {}", e)))?;
+
+    // Create a new config object and populate it from the INI data
+    let mut config = FishConfig::new();
+
+    // Load [KeyPair] section
+    if let Some(private) = ini.get("KeyPair", "private") {
+        config.our_private_key = Some(private.to_string());
+    }
+    if let Some(public) = ini.get("KeyPair", "public") {
+        config.our_public_key = Some(public.to_string());
+    }
+
+    // Load [NickNetworks] section
+    let nick_section = "NickNetworks";
+    if let Some(section_map) = ini.get_map_ref().get(nick_section) {
+        for (k, v_opt) in section_map.iter() {
+            if let Some(v) = v_opt {
+                config.nick_networks.insert(k.clone(), v.clone());
+            }
+        }
+    }
+
+    // Load [FiSH11] section
+    if let Some(process_incoming) = ini.get("FiSH11", "process_incoming") {
+        config.fish11.process_incoming = process_incoming.eq_ignore_ascii_case("true") || process_incoming == "1";
+    }
+    if let Some(process_outgoing) = ini.get("FiSH11", "process_outgoing") {
+        config.fish11.process_outgoing = process_outgoing.eq_ignore_ascii_case("true") || process_outgoing == "1";
+    }
+    if let Some(plain_prefix) = ini.get("FiSH11", "plain_prefix") {
+        config.fish11.plain_prefix = plain_prefix.to_string();
+    }
+    if let Some(encrypt_notice) = ini.get("FiSH11", "encrypt_notice") {
+        config.fish11.encrypt_notice = encrypt_notice.eq_ignore_ascii_case("true") || encrypt_notice == "1";
+    }
+    if let Some(encrypt_action) = ini.get("FiSH11", "encrypt_action") {
+        config.fish11.encrypt_action = encrypt_action.eq_ignore_ascii_case("true") || encrypt_action == "1";
+    }
+    if let Some(mark_position) = ini.get("FiSH11", "mark_position") {
+        if let Ok(pos) = mark_position.parse() {
+            config.fish11.mark_position = pos;
+        }
+    }
+    if let Some(mark_encrypted) = ini.get("FiSH11", "mark_encrypted") {
+        config.fish11.mark_encrypted = mark_encrypted.to_string();
+    }
+    if let Some(no_fish10_legacy) = ini.get("FiSH11", "no_fish10_legacy") {
+        config.fish11.no_fish10_legacy = no_fish10_legacy.eq_ignore_ascii_case("true") || no_fish10_legacy == "1";
+    }
+    if let Some(key_ttl) = ini.get("FiSH11", "key_ttl") {
+        if let Ok(ttl) = key_ttl.parse() {
+            config.fish11.key_ttl = Some(ttl);
+        }
+    }
+    if let Some(encryption_prefix) = ini.get("FiSH11", "encryption_prefix") {
+        config.fish11.encryption_prefix = encryption_prefix.to_string();
+    }
+    if let Some(fish_prefix) = ini.get("FiSH11", "fish_prefix") {
+        config.fish11.fish_prefix = fish_prefix.eq_ignore_ascii_case("true") || fish_prefix == "1";
+    }
+
+    // Load [Startup] section
+    if let Some(date) = ini.get("Startup", "date") {
+        if let Ok(d) = date.parse() {
+            config.startup_data.date = Some(d);
+        }
+    }
+
+    // Load entries from [Keys] and [Dates] sections
+    let keys_section = "Keys";
+    let dates_section = "Dates";
+
+    // Get the keys map if it exists
+    if let Some(keys_map) = ini.get_map_ref().get(keys_section) {
+        for (entry_key, key_val_opt) in keys_map.iter() {
+            if let Some(key_val) = key_val_opt {
+                // Look for corresponding date in dates section
+                let date_val = if let Some(dates_map) = ini.get_map_ref().get(dates_section) {
+                    dates_map.get(entry_key).and_then(|v| v.clone())
+                } else {
+                    None
+                };
+
+                let entry_data = EntryData {
+                    key: Some(key_val.clone()),
+                    date: date_val,
+                    is_exchange: Some(false), // Default to false for loaded keys
+                };
+                config.entries.insert(entry_key.clone(), entry_data);
+            }
+        }
+    }
+
+    Ok(config)
 }
 
 /// Check if master key is available in memory

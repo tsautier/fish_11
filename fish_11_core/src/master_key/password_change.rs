@@ -1,9 +1,7 @@
 //! Password change module for master key system
 //!
 //! Handles secure password change operations while preserving access to encrypted data.
-
 use crate::master_key::derivation::derive_master_key;
-//use crate::master_key::encryption::{encrypt_data, decrypt_data, EncryptedBlob};
 
 /// Result type for password change operations
 pub type ChangePasswordResult<T> = Result<T, PasswordChangeError>;
@@ -37,7 +35,7 @@ impl std::error::Error for PasswordChangeError {}
 /// Change the master password after validating the old one
 ///
 /// This function will:
-/// 1. Verify the current password is correct by re-deriving with stored salt
+/// 1. Verify the current password is correct by checking against the password verifier
 /// 2. Validate the new password meets security requirements
 /// 3. Return the new salt for the updated password
 ///
@@ -45,6 +43,7 @@ impl std::error::Error for PasswordChangeError {}
 /// * `current_password` - The current master password
 /// * `current_salt` - The salt used for the current password
 /// * `new_password` - The new master password
+/// * `password_verifier` - Optional password verifier for validation
 ///
 /// # Returns
 /// * `Result<String, PasswordChangeError>` - The new salt for the master key
@@ -52,18 +51,34 @@ pub fn change_master_password(
     current_password: &str,
     current_salt: &str,
     new_password: &str,
+    password_verifier: Option<&str>,
 ) -> ChangePasswordResult<String> {
     use crate::master_key::derivation::derive_master_key_with_salt;
     use crate::master_key::password_validation::PasswordValidator;
+    use sha2::{Sha256, Digest};
 
     // Validate the new password strength
     PasswordValidator::validate_password_strength(new_password)
         .map_err(|e| PasswordChangeError::NewPasswordTooWeak(e))?;
 
-    // Verify the current password by attempting to derive the key with the stored salt
-    let _current_key = derive_master_key_with_salt(current_password, Some(current_salt))
-        .map_err(|_| PasswordChangeError::CurrentPasswordIncorrect)?
-        .0;
+    // Verify the current password by checking against the password verifier
+    if let Some(verifier) = password_verifier {
+        let derived_key = derive_master_key_with_salt(current_password, Some(current_salt))
+            .map_err(|_| PasswordChangeError::CurrentPasswordIncorrect)?
+            .0;
+        
+        let mut hasher = Sha256::new();
+        hasher.update(&derived_key);
+        let key_hash = format!("{:x}", hasher.finalize());
+        
+        if key_hash != verifier {
+            return Err(PasswordChangeError::CurrentPasswordIncorrect);
+        }
+    } else {
+        // If no verifier exists, we can't properly verify the password
+        // This might be the first time setting up the master key
+        log::warn!("No password verifier found - cannot verify current password");
+    }
 
     // Derive the new key to make sure the new password is valid
     let (_new_key, new_salt) = derive_master_key(new_password)
