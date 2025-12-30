@@ -1,14 +1,4 @@
 //! Logging module for FiSH_11
-
-use std::fs::OpenOptions;
-use std::io::{self, Write};
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex, Once};
-use std::time::Duration;
-
-use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION};
-use log::{LevelFilter, SetLoggerError};
-
 use crate::{log_debug, log_info};
 use base64;
 use chacha20poly1305::{
@@ -16,45 +6,76 @@ use chacha20poly1305::{
     aead::{Aead, KeyInit, OsRng},
 };
 use fish_11_core::globals::LOGGING_KEY;
+use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION};
+use log::{LevelFilter, SetLoggerError};
+use std::fs::OpenOptions;
+use std::io::{self, Write};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, Once};
+use std::time::Duration;
 
 // Ensure initialization happens only once
 static LOGGER_INIT: Once = Once::new();
 static mut LOGGER_INITIALIZED: bool = false;
 
-/// A simple logger that writes to both a file and the standard output
+/// A simple logger that writes to a file, with automatic recreation if deleted
 pub struct FileLogger {
     level: LevelFilter,
-    file: Arc<Mutex<std::fs::File>>,
+    log_path: PathBuf,
+    file: Arc<Mutex<Option<std::fs::File>>>,
 }
 
 impl FileLogger {
-    /// Create a new file logger with the given log level
-    pub fn new(level: LevelFilter, log_file: std::fs::File) -> Self {
-        FileLogger { level, file: Arc::new(Mutex::new(log_file)) }
+    /// Create a new file logger with the given log level and path
+    pub fn new(level: LevelFilter, log_path: PathBuf, log_file: std::fs::File) -> Self {
+        FileLogger { level, log_path, file: Arc::new(Mutex::new(Some(log_file))) }
+    }
+
+    /// Try to open or reopen the log file
+    fn open_log_file(&self) -> Option<std::fs::File> {
+        OpenOptions::new().create(true).append(true).open(&self.log_path).ok()
     }
 
     // Helper method to handle writing to the log file with timeout
+    // Automatically recreates the file if it was deleted
     fn write_to_file(&self, log_message: &str) {
         // Use a larger timeout for logging to prevent blocking issues
-        let lock_timeout = Duration::from_millis(2000); // Increased from 500ms to 2000ms
+        let lock_timeout = Duration::from_millis(2000);
         let start = std::time::Instant::now();
 
         // Try to get the lock with timeout
         while start.elapsed() < lock_timeout {
             match self.file.try_lock() {
-                Ok(mut file) => {
-                    // Successfully got the lock, write the message
-                    if let Err(_e) = file.write_all(log_message.as_bytes()) {
-                        // Don't use eprintln in a DLL - it can cause issues
-                        // Just silently ignore errors
-                    } else if let Err(_e) = file.flush() {
-                        // Also ignore flush errors silently
+                Ok(mut file_opt) => {
+                    // Check if we need to reopen the file (file was deleted or not open)
+                    let needs_reopen = match &*file_opt {
+                        Some(_) => !self.log_path.exists(),
+                        None => true,
+                    };
+
+                    if needs_reopen {
+                        // Try to reopen/recreate the file
+                        *file_opt = self.open_log_file();
+                    }
+
+                    // Now try to write
+                    if let Some(ref mut file) = *file_opt {
+                        if let Err(_e) = file.write_all(log_message.as_bytes()) {
+                            // Write failed - file might have been deleted between check and write
+                            // Try reopening once more
+                            if let Some(mut new_file) = self.open_log_file() {
+                                let _ = new_file.write_all(log_message.as_bytes());
+                                let _ = new_file.flush();
+                                *file_opt = Some(new_file);
+                            }
+                        } else {
+                            let _ = file.flush();
+                        }
                     }
                     return; // We're done, exit the loop
                 }
                 Err(_) => {
                     // Give other threads a chance and then retry
-                    // Increase the sleep time to reduce CPU usage
                     std::thread::yield_now();
                     std::thread::sleep(Duration::from_millis(20));
                 }
@@ -143,8 +164,10 @@ impl log::Log for FileLogger {
 
     fn flush(&self) {
         // Try to get the lock with a short timeout to avoid blocking
-        if let Ok(mut file) = self.file.try_lock() {
-            let _ = file.flush();
+        if let Ok(mut file_opt) = self.file.try_lock() {
+            if let Some(ref mut file) = *file_opt {
+                let _ = file.flush();
+            }
         }
     }
 }
@@ -186,7 +209,7 @@ pub fn init_logger(level: LevelFilter) -> Result<(), SetLoggerError> {
                 Ok(log_path) => {
                     match OpenOptions::new().create(true).append(true).open(&log_path) {
                         Ok(log_file) => {
-                            let logger = Box::new(FileLogger::new(effective_level, log_file));
+                            let logger = Box::new(FileLogger::new(effective_level, log_path.clone(), log_file));
 
                             match log::set_boxed_logger(logger) {
                                 Ok(_) => {
