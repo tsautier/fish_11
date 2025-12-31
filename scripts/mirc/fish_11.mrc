@@ -476,20 +476,37 @@ alias fish11_setkey {
 
 alias fish11_setkey_manual {
   if ($1 == $null || $2 == $null) {
-    echo 4 -a Syntax: /fish11_setkey_manual <target> <key>
+    echo 4 -a Syntax: /fish11_setkey_manual <#channel> <base64_encoded_32byte_key>
+    echo 4 -a Example: /fish11_setkey_manual #secret AGN2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0
     return
   }
-  var %target = $1
+
+  ; Vérifier que le target est bien un canal
+  var %channel = $1
+  if (!$regex(%channel, /^[#&]/)) {
+    echo 4 -a Error: Channel name must start with # or &
+    return
+  }
+
+  ; Vérifier que la clé est en base64 et fait 44 caractères (32 bytes encodés)
   var %key = $2-
-  var %input = $+(%network, $chr(32), %target, $chr(32), %key)
-  
-  var %msg = $dll(%Fish11DllFile, FiSH11_SetKeyFromPlaintext, %input)
+  if ($len(%key) != 44 || $regex(%key, /[^A-Za-z0-9+\/=]/)) {
+    echo 4 -a Error: Key must be a 44-character base64-encoded 32-byte cryptographic key
+    return
+  }
+
+  ; Appeler la bonne fonction DLL avec le bon format
+  var %input = $+(%channel, $chr(32), %key)
+  var %msg = $dll(%Fish11DllFile, FiSH11_SetManualChannelKey, %input)
 
   if (%msg && $left(%msg, 6) != Error:) {
-    echo -a *** FiSH_11: manual key set for %target on network $network
+    echo -a *** FiSH_11: manual channel key set for %channel
+    ; Activer automatiquement le chiffrement des topics pour ce canal
+    fish11_SetChannelIniValue %channel encrypt_topic 1
   }
   else {
-    echo -a *** FiSH_11: error setting manual key for %target $+ . DLL returned: %msg
+    var %error_msg = $iif(%msg, %msg, "Unknown error - could not set manual key for %channel")
+    echo -a *** FiSH_11: error setting manual key for %channel - %error_msg
   }
 }
 
