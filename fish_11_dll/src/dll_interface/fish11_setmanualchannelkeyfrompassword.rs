@@ -60,10 +60,10 @@ fn derive_key_from_password(password: &str) -> DllResult<[u8; 32]> {
     // Derive a 32-byte key using HKDF-SHA256
     let hkdf = Hkdf::<Sha256>::new(Some(salt), ikm);
     let mut output = [0u8; 32];
-    hkdf.expand(b"channel-key-expansion", &mut output)
-        .map_err(|e| DllError::KeyInvalid {
-            reason: format!("HKDF key derivation failed: {}", e)
-        })?;
+    hkdf.expand(b"channel-key-expansion", &mut output).map_err(|e| DllError::InvalidInput {
+        param: "password".to_string(),
+        reason: format!("HKDF key derivation failed: {}", e),
+    })?;
 
     Ok(output)
 }
@@ -75,7 +75,10 @@ mod tests {
     use std::ffi::CStr;
     use std::ptr;
 
-    fn call_set_manual_channel_key_from_password(input: &str, buffer_size: usize) -> (c_int, String) {
+    fn call_set_manual_channel_key_from_password(
+        input: &str,
+        buffer_size: usize,
+    ) -> (c_int, String) {
         let mut buffer = vec![0i8; buffer_size];
 
         // Copy the input into the data buffer (mIRC style: data is input/output)

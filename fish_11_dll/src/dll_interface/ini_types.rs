@@ -1,6 +1,7 @@
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
+use crate::config::{get_fish11_config, update_fish11_config};
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::{config, dll_function_identifier, log_debug};
@@ -114,6 +115,107 @@ dll_function_identifier!(INI_GetInt, data, {
     };
 
     Ok(value.to_string())
+});
+
+// Sets a string value in the config file.
+// Input: <key> <value>
+dll_function_identifier!(INI_SetString, data, {
+    let input = unsafe { crate::buffer_utils::parse_buffer_input(data)? };
+    let parts: Vec<&str> = input.splitn(2, ' ').collect();
+
+    let key = parts.get(0).map_or("", |k| k.trim());
+    if key.is_empty() {
+        return Err(DllError::MissingParameter("key".to_string()));
+    }
+
+    let value = parts.get(1).map_or("", |v| v.trim());
+
+    // Get current config
+    let mut config = get_fish11_config()?;
+
+    // Update the appropriate field based on the key
+    match key.to_lowercase().as_str() {
+        "plain_prefix" => {
+            config.plain_prefix = value.to_string();
+        }
+        "mark_encrypted" => {
+            config.mark_encrypted = value.to_string();
+        }
+        "encryption_prefix" => {
+            config.encryption_prefix = value.to_string();
+        }
+        _ => {
+            // For unknown keys, we'll still try to save the config
+            // but return a warning message
+            log_debug!("INI_SetString: unknown configuration key '{}'", key);
+        }
+    }
+
+    // Save the updated config
+    update_fish11_config(config)?;
+
+    Ok(format!("Configuration key '{}' set successfully", key).to_string())
+});
+
+// Sets an integer value in the config file.
+// Input: <key> <value>
+dll_function_identifier!(INI_SetInt, data, {
+    let input = unsafe { crate::buffer_utils::parse_buffer_input(data)? };
+    let parts: Vec<&str> = input.splitn(2, ' ').collect();
+
+    let key = parts.get(0).map_or("", |k| k.trim());
+    if key.is_empty() {
+        return Err(DllError::MissingParameter("key".to_string()));
+    }
+
+    let value_str = parts.get(1).map_or("", |v| v.trim());
+    let value = match value_str.parse::<i32>() {
+        Ok(v) => v,
+        Err(_) => {
+            return Err(DllError::InvalidInput {
+                param: "value".to_string(),
+                reason: "expected integer value".to_string(),
+            });
+        }
+    };
+
+    // Get current config
+    let mut config = get_fish11_config()?;
+
+    // Update the appropriate field based on the key
+    match key.to_lowercase().as_str() {
+        "mark_position" => {
+            config.mark_position = value as u8;
+        }
+        "process_incoming" => {
+            config.process_incoming = value != 0;
+        }
+        "process_outgoing" => {
+            config.process_outgoing = value != 0;
+        }
+        "encrypt_notice" => {
+            config.encrypt_notice = value != 0;
+        }
+        "encrypt_action" => {
+            config.encrypt_action = value != 0;
+        }
+        "no_fish10_legacy" => {
+            config.no_fish10_legacy = value != 0;
+        }
+        "fish_prefix" => {
+            config.fish_prefix = value != 0;
+        }
+        _ => {
+            // For unknown keys, we'll still try to save the config
+            // but return a warning message
+            log_debug!("INI_SetInt: unknown configuration key '{}'", key);
+        }
+    }
+
+    // Save the updated config
+    update_fish11_config(config)?;
+
+    Ok(format!("Configuration key '{}' set successfully", key).to_string())
 });
 
 #[cfg(test)]

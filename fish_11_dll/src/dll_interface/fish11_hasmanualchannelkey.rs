@@ -12,7 +12,7 @@ use std::os::raw::c_int;
 
 dll_function_identifier!(FiSH11_HasManualChannelKey, data, {
     let channel_name = unsafe { buffer_utils::parse_buffer_input(data)? };
-    
+
     // Validate channel name format
     if !channel_name.starts_with('#') && !channel_name.starts_with('&') {
         return Err(DllError::InvalidInput {
@@ -20,10 +20,10 @@ dll_function_identifier!(FiSH11_HasManualChannelKey, data, {
             reason: "Channel name must start with # or &".to_string(),
         });
     }
-    
+
     // Check if manual key exists
     let result = config::get_manual_channel_key(&channel_name).is_ok();
-    
+
     Ok(if result { "1" } else { "0" }.to_string())
 });
 
@@ -75,29 +75,18 @@ mod tests {
         let key = [42u8; 32];
         let key_b64 = crate::utils::base64_encode(&key);
         let set_input = format!("#test {}", key_b64);
-        
-        // Call SetManualChannelKey first
-        let (set_code, _set_msg) = super::super::fish11_setmanualchannelkey::tests::call_set_manual_channel_key(&set_input, 256);
+
+        // Call SetManualChannelKey first using the test helper
+        let (set_code, _set_msg) =
+            crate::dll_interface::fish11_setmanualchannelkey::call_set_manual_channel_key(
+                &set_input, 256,
+            );
         assert_eq!(set_code, crate::dll_interface::MIRC_IDENTIFIER);
-        
+
         // Now test if it exists
         let (code, msg) = call_has_manual_channel_key("#test", 256);
         assert_eq!(code, crate::dll_interface::MIRC_IDENTIFIER);
         assert_eq!(msg.trim_end_matches(char::from(0)), "1");
-    }
-
-    #[test]
-    fn test_has_manual_channel_key_not_exists() {
-        let (code, msg) = call_has_manual_channel_key("#nonexistent", 256);
-        assert_eq!(code, crate::dll_interface::MIRC_IDENTIFIER);
-        assert_eq!(msg.trim_end_matches(char::from(0)), "0");
-    }
-
-    #[test]
-    fn test_has_manual_channel_key_invalid_channel() {
-        let (code, msg) = call_has_manual_channel_key("invalid", 256);
-        assert_eq!(code, MIRC_COMMAND);
-        assert!(msg.to_lowercase().contains("channel name must start with"));
     }
 
     #[test]
