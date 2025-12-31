@@ -490,14 +490,17 @@ alias fish11_setkey_manual {
 
   ; Vérifier que la clé est en base64 et fait 44 caractères (32 bytes encodés)
   var %key = $2-
-  if ($len(%key) != 44 || $regex(%key, /[^A-Za-z0-9+\/=]/)) {
-    echo 4 -a Error: Key must be a 44-character base64-encoded 32-byte cryptographic key
-    return
+  
+  if ($len(%key) == 44 && $regex(%key, /^[A-Za-z0-9+\/=]+$/)) {
+    ; Clé base64 valide - utiliser la fonction standard
+    var %input = $+(%channel, $chr(32), %key)
+    var %msg = $dll(%Fish11DllFile, FiSH11_SetManualChannelKey, %input)
   }
-
-  ; Appeler la bonne fonction DLL avec le bon format
-  var %input = $+(%channel, $chr(32), %key)
-  var %msg = $dll(%Fish11DllFile, FiSH11_SetManualChannelKey, %input)
+  else {
+    ; Clé non-base64 ou de longueur différente - utiliser la fonction d'extension
+    var %input = $+(%channel, $chr(32), %key)
+    var %msg = $dll(%Fish11DllFile, FiSH11_SetManualChannelKeyFromPassword, %input)
+  }
 
   if (%msg && $left(%msg, 6) != Error:) {
     echo -a *** FiSH_11: manual channel key set for %channel
