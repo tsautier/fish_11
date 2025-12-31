@@ -1370,11 +1370,11 @@ menu channel {
   -
   FiSH Channel Encryption
   .Add a channel key encryption
-  ..Manual Key : fish11_set_manual_key_dialog $chan
-  ..FCEP-1 Key : fish11_init_fcep_dialog $chan
-  .Encrypt TOPIC
-  ..Enable Topic Encryption :{ fish11_SetChannelIniValue $chan encrypt_topic 1 | echo $color(Mode text) -at *** FiSH: topic encryption enabled for $chan }
-  ..Disable Topic Encryption :{ fish11_SetChannelIniValue $chan encrypt_topic 0 | echo $color(Mode text) -at *** FiSH: topic encryption disabled for $chan }
+  ..Manual key : fish11_set_manual_key_dialog $chan
+  ..FCEP-1 key : fish11_init_fcep_dialog $chan
+  .Encrypt topic
+  ..Enable topic encryption :{ fish11_SetChannelIniValue $chan encrypt_topic 1 | echo $color(Mode text) -at *** FiSH: topic encryption enabled for $chan }
+  ..Disable topic encryption :{ fish11_SetChannelIniValue $chan encrypt_topic 0 | echo $color(Mode text) -at *** FiSH: topic encryption disabled for $chan }
   .-
   .Show Channel Key Info : fish11_show_channel_key_info $chan
   .Remove Channel Key : fish11_remove_channel_key $chan
@@ -1753,7 +1753,13 @@ alias fcs { fish11_channel_settings }
 
 ; Boîte de dialogue pour la clé manuelle
 alias fish11_set_manual_key_dialog {
-  var %channel = $1
+  ; Vérifier si nous sommes dans une fenêtre de canal
+  if ($chantype($active) != # && $chantype($active) != &) {
+    echo $color(Error) -at *** FiSH_11: Manual key can only be set for channels. Please use this in a channel window.
+    return
+  }
+  
+  var %channel = $active
   var %key = $input(Enter 44-character base64 manual key for %channel $+ :, pvq, FiSH_11 Manual Channel Key)
 
   if (%key != $null) {
@@ -1763,7 +1769,13 @@ alias fish11_set_manual_key_dialog {
 
 ; Boîte de dialogue pour FCEP-1
 alias fish11_init_fcep_dialog {
-  var %channel = $1
+  ; Vérifier si nous sommes dans une fenêtre de canal
+  if ($chantype($active) != # && $chantype($active) != &) {
+    echo $color(Error) -at *** FiSH_11: FCEP-1 key can only be set for channels. Please use this in a channel window.
+    return
+  }
+  
+  var %channel = $active
   var %members = $input(Enter members to invite (space-separated) for %channel $+ :, pvq, FiSH_11 FCEP-1 Channel Setup)
 
   if (%members != $null) {
