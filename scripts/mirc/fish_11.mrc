@@ -1369,10 +1369,10 @@ alias INI_GetInt {
 menu channel {
   -
   FiSH Channel Encryption
+  .Add a channel key encryption
+  ..Manual Key : fish11_set_manual_key_dialog $chan
+  ..FCEP-1 Key : fish11_init_fcep_dialog $chan
   .Encrypt TOPIC
-  ..Set Encryption Method
-  ...Manual Key : fish11_set_manual_key_dialog $chan
-  ...FCEP-1 Key : fish11_init_fcep_dialog $chan
   ..Enable Topic Encryption :{ fish11_SetChannelIniValue $chan encrypt_topic 1 | echo $color(Mode text) -at *** FiSH: topic encryption enabled for $chan }
   ..Disable Topic Encryption :{ fish11_SetChannelIniValue $chan encrypt_topic 0 | echo $color(Mode text) -at *** FiSH: topic encryption disabled for $chan }
   .-
@@ -1516,14 +1516,14 @@ menu status,channel,nicklist,query {
     var %topic = $?="Enter encrypted topic for " $+ $active $+ ":"
     if (%topic != $null) etopic %topic
   }
-  .Channel Encryption Settings :{
+  .Add Channel Key Encryption :{
     ; Only allow in channel windows
     if ($chantype($active) != # && $chantype($active) != &) {
       echo $color(Mode text) -at *** FiSH_11: This command can only be used in channel windows
       return
     }
     ; Open a dialog to choose encryption method
-    var %choice = $input(Channel Encryption for $active $+ :, pvq, FiSH_11 Channel Settings)
+    var %choice = $input(Add Channel Key Encryption for $active $+ :, pvq, FiSH_11 Add Channel Key)
     if (%choice == $null) return
     
     if (%choice == 1) {
@@ -1533,14 +1533,6 @@ menu status,channel,nicklist,query {
     elseif (%choice == 2) {
       ; Set FCEP-1 Key
       fish11_init_fcep_dialog $active
-    }
-    elseif (%choice == 3) {
-      ; Show Key Info
-      fish11_show_channel_key_info $active
-    }
-    elseif (%choice == 4) {
-      ; Remove Key
-      fish11_remove_channel_key $active
     }
   }
   .List all keys :fish11_file_list_keys
@@ -1743,7 +1735,7 @@ alias fish11_channel_settings {
   }
   
   ; Open a dialog to choose encryption method
-  var %choice = $input(Channel Encryption for $active $+ :, pvq, FiSH_11 Channel Settings)
+  var %choice = $input(Add Channel Key Encryption for $active $+ :, pvq, FiSH_11 Add Channel Key)
   if (%choice == $null) return
   
   if (%choice == 1) {
@@ -1753,14 +1745,6 @@ alias fish11_channel_settings {
   elseif (%choice == 2) {
     ; Set FCEP-1 Key
     fish11_init_fcep_dialog $active
-  }
-  elseif (%choice == 3) {
-    ; Show Key Info
-    fish11_show_channel_key_info $active
-  }
-  elseif (%choice == 4) {
-    ; Remove Key
-    fish11_remove_channel_key $active
   }
 }
 
