@@ -21,6 +21,7 @@ mod fish11_logsetkey;
 mod fish11_setencryptionprefix;
 mod fish11_setfishprefix;
 mod fish11_setmanualchannelkey;
+mod fish11_setmanualchannelkeyfrompassword;
 mod fish11_hasmanualchannelkey;
 mod fish11_hasratchetchannelkey;
 mod fish11_removemanualchannelkey;
@@ -41,6 +42,7 @@ pub use fish11_masterkey::{
 pub use fish11_setencryptionprefix::FiSH11_SetEncryptionPrefix;
 pub use fish11_setfishprefix::FiSH11_SetFishPrefix;
 pub use fish11_setmanualchannelkey::FiSH11_SetManualChannelKey;
+pub use fish11_setmanualchannelkeyfrompassword::FiSH11_SetManualChannelKeyFromPassword;
 pub use fish11_hasmanualchannelkey::FiSH11_HasManualChannelKey;
 pub use fish11_hasratchetchannelkey::FiSH11_HasRatchetChannelKey;
 pub use fish11_removemanualchannelkey::FiSH11_RemoveManualChannelKey;
