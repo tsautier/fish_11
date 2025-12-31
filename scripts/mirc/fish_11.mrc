@@ -1734,6 +1734,39 @@ alias fish_logencrypt11 { fish11_logencrypt $1- }
 alias fish_logdecrypt11 { fish11_logdecrypt $1- }
 alias fish_logdecryptfile11 { fish11_logdecryptfile $1- }
 
+; Direct command for channel encryption settings
+alias fish11_channel_settings {
+  ; Check if we're in a channel window
+  if ($chantype($active) != # && $chantype($active) != &) {
+    echo $color(Mode text) -at *** FiSH_11: This command can only be used in channel windows
+    return
+  }
+  
+  ; Open a dialog to choose encryption method
+  var %choice = $input(Channel Encryption for $active $+ :, pvq, FiSH_11 Channel Settings)
+  if (%choice == $null) return
+  
+  if (%choice == 1) {
+    ; Set Manual Key
+    fish11_set_manual_key_dialog $active
+  }
+  elseif (%choice == 2) {
+    ; Set FCEP-1 Key
+    fish11_init_fcep_dialog $active
+  }
+  elseif (%choice == 3) {
+    ; Show Key Info
+    fish11_show_channel_key_info $active
+  }
+  elseif (%choice == 4) {
+    ; Remove Key
+    fish11_remove_channel_key $active
+  }
+}
+
+; Short alias for channel settings
+alias fcs { fish11_channel_settings }
+
 ; Boîte de dialogue pour la clé manuelle
 alias fish11_set_manual_key_dialog {
   var %channel = $1
