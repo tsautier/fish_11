@@ -2,8 +2,9 @@ use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::base64_decode;
 use crate::{buffer_utils, config, dll_function_identifier, log_debug};
-use std::ffi::c_char;
+use std::ffi::{CStr, c_char};
 use std::os::raw::c_int;
+use std::ptr;
 
 // Sets a manual encryption key for a channel.
 //
@@ -65,47 +66,41 @@ dll_function_identifier!(FiSH11_SetManualChannelKey, data, {
     Ok(format!("Manual channel key set for {}", channel_name))
 });
 
+// Public test helper function that can be used by other modules
+#[allow(dead_code)]
+pub fn call_set_manual_channel_key(input: &str, buffer_size: usize) -> (c_int, String) {
+    let mut buffer = vec![0i8; buffer_size];
+
+    // Copy the input into the data buffer (mIRC style: data is input/output)
+    if !input.is_empty() {
+        let bytes = input.as_bytes();
+        let copy_len = std::cmp::min(bytes.len(), buffer.len());
+        unsafe {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), buffer.as_mut_ptr() as *mut u8, copy_len);
+        }
+    }
+
+    // Call the actual function with proper mIRC DLL signature
+    let result_code = FiSH11_SetManualChannelKey(
+        ptr::null_mut(),                    // mWnd
+        ptr::null_mut(),                    // aWnd
+        buffer.as_mut_ptr() as *mut c_char, // data
+        ptr::null_mut(),                    // show
+        ptr::null_mut(),                    // nopause
+        ptr::null_mut(),                    // ret_buffer_size
+    );
+
+    // Extract the result string from the buffer
+    let result_cstr = unsafe { CStr::from_ptr(buffer.as_ptr() as *const c_char) };
+    let result_str = result_cstr.to_string_lossy().into_owned();
+
+    (result_code, result_str)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::dll_interface::MIRC_COMMAND;
-    use std::ffi::CStr;
-    use std::ptr;
-
-    fn call_set_manual_channel_key(input: &str, buffer_size: usize) -> (c_int, String) {
-        let mut buffer = vec![0i8; buffer_size];
-
-        // Copy the input into the data buffer (mIRC style: data is input/output)
-        if !input.is_empty() {
-            let bytes = input.as_bytes();
-            let copy_len = std::cmp::min(bytes.len(), buffer.len());
-            unsafe {
-                std::ptr::copy_nonoverlapping(
-                    bytes.as_ptr(),
-                    buffer.as_mut_ptr() as *mut u8,
-                    copy_len,
-                );
-            }
-        }
-
-        // Override buffer size for this test to prevent heap corruption
-        let prev_size = crate::dll_interface::override_buffer_size_for_test(buffer_size);
-
-        let result = FiSH11_SetManualChannelKey(
-            ptr::null_mut(),
-            ptr::null_mut(),
-            buffer.as_mut_ptr(),
-            ptr::null_mut(),
-            ptr::null_mut(),
-            ptr::null_mut(),
-        );
-
-        // Restore previous buffer size
-        crate::dll_interface::restore_buffer_size_for_test(prev_size);
-
-        let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
-        (result, c_str.to_string_lossy().to_string())
-    }
 
     #[test]
     fn test_set_manual_channel_key_normal() {
