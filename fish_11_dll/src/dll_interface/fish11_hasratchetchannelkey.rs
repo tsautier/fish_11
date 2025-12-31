@@ -9,10 +9,9 @@ use std::os::raw::c_int;
 // Input format: <#channel>
 //
 // Returns: "1" if key exists, "0" if not exists, or error message
-
 dll_function_identifier!(FiSH11_HasRatchetChannelKey, data, {
     let channel_name = unsafe { buffer_utils::parse_buffer_input(data)? };
-    
+
     // Validate channel name format
     if !channel_name.starts_with('#') && !channel_name.starts_with('&') {
         return Err(DllError::InvalidInput {
@@ -20,10 +19,10 @@ dll_function_identifier!(FiSH11_HasRatchetChannelKey, data, {
             reason: "Channel name must start with # or &".to_string(),
         });
     }
-    
+
     // Check if ratchet key exists
-    let result = config::get_ratchet_channel_key(&channel_name).is_ok();
-    
+    let result = config::has_ratchet_channel_key(&channel_name);
+
     Ok(if result { "1" } else { "0" }.to_string())
 });
 

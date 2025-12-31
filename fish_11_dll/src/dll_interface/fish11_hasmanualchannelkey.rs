@@ -77,13 +77,27 @@ mod tests {
         let set_input = format!("#test {}", key_b64);
         
         // Call SetManualChannelKey first
-        let (set_code, set_msg) = super::super::fish11_setmanualchannelkey::tests::call_set_manual_channel_key(&set_input, 256);
+        let (set_code, _set_msg) = super::super::fish11_setmanualchannelkey::tests::call_set_manual_channel_key(&set_input, 256);
         assert_eq!(set_code, crate::dll_interface::MIRC_IDENTIFIER);
         
         // Now test if it exists
         let (code, msg) = call_has_manual_channel_key("#test", 256);
         assert_eq!(code, crate::dll_interface::MIRC_IDENTIFIER);
         assert_eq!(msg.trim_end_matches(char::from(0)), "1");
+    }
+
+    #[test]
+    fn test_has_manual_channel_key_not_exists() {
+        let (code, msg) = call_has_manual_channel_key("#nonexistent", 256);
+        assert_eq!(code, crate::dll_interface::MIRC_IDENTIFIER);
+        assert_eq!(msg.trim_end_matches(char::from(0)), "0");
+    }
+
+    #[test]
+    fn test_has_manual_channel_key_invalid_channel() {
+        let (code, msg) = call_has_manual_channel_key("invalid", 256);
+        assert_eq!(code, MIRC_COMMAND);
+        assert!(msg.to_lowercase().contains("channel name must start with"));
     }
 
     #[test]
