@@ -504,8 +504,8 @@ alias fish11_setkey_manual {
 
   if (%msg && $left(%msg, 6) != Error:) {
     echo -a *** FiSH_11: manual channel key set for %channel
-    ; Activer automatiquement le chiffrement des topics pour ce canal
-    fish11_SetChannelIniValue %channel encrypt_topic 1
+    ; Note: Topic encryption must be enabled manually via the channel menu
+    ; fish11_SetChannelIniValue %channel encrypt_topic 1
   }
   else {
     var %error_msg = $iif(%msg, %msg, "Unknown error - could not set manual key for %channel")
