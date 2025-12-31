@@ -1368,10 +1368,18 @@ alias INI_GetInt {
 ; Menu for channel windows
 menu channel {
   -
-  FiSH global
+  FiSH Channel Encryption
+  .Encrypt TOPIC
+  ..Set Encryption Method
+  ...Manual Key : fish11_set_manual_key_dialog $chan
+  ...FCEP-1 Key : fish11_init_fcep_dialog $chan
+  ..Enable Topic Encryption :{ fish11_SetChannelIniValue $chan encrypt_topic 1 | echo $color(Mode text) -at *** FiSH: topic encryption enabled for $chan }
+  ..Disable Topic Encryption :{ fish11_SetChannelIniValue $chan encrypt_topic 0 | echo $color(Mode text) -at *** FiSH: topic encryption disabled for $chan }
+  .-
+  .Show Channel Key Info : fish11_show_channel_key_info $chan
+  .Remove Channel Key : fish11_remove_channel_key $chan
+  .-
   .Show keychan :fish11_showkey $chan
-  .Set manual keychan :{ var %key = $?="Enter manual key for " $+ $chan $+ ":" | if (%key != $null) fish11_setkey_manual $chan %key }
-  .Remove keychan :fish11_removekey $chan
   .Show fingerprint :fish11_showfingerprint $chan
   .Copy fingerprint to clipboard :{
     fish11_showfingerprint $chan
@@ -1402,10 +1410,6 @@ menu channel {
     var %topic = $?="Enter encrypted topic for " $+ $chan $+ ":"
     if (%topic != $null) etopic %topic
   }
-  .Misc config
-  ..Encrypt TOPIC
-  ...Enable :{ fish11_SetChannelIniValue $chan encrypt_topic 1 | echo $color(Mode text) -at *** FiSH: topic encryption enabled for $chan }
-  ...Disable :{ fish11_SetChannelIniValue $chan encrypt_topic 0 | echo $color(Mode text) -at *** FiSH: topic encryption disabled for $chan }
 
   .Encrypted logging
   ..Set key for encrypted logging:/fish11_setlogkey
@@ -1702,6 +1706,79 @@ alias fish_setlogkey11 { fish11_setlogkey $1- }
 alias fish_logencrypt11 { fish11_logencrypt $1- }
 alias fish_logdecrypt11 { fish11_logdecrypt $1- }
 alias fish_logdecryptfile11 { fish11_logdecryptfile $1- }
+
+; Boîte de dialogue pour la clé manuelle
+alias fish11_set_manual_key_dialog {
+  var %channel = $1
+  var %key = $input(Enter 44-character base64 manual key for %channel $+ :, pvq, FiSH_11 Manual Channel Key)
+
+  if (%key != $null) {
+    fish11_setkey_manual %channel %key
+  }
+}
+
+; Boîte de dialogue pour FCEP-1
+alias fish11_init_fcep_dialog {
+  var %channel = $1
+  var %members = $input(Enter members to invite (space-separated) for %channel $+ :, pvq, FiSH_11 FCEP-1 Channel Setup)
+
+  if (%members != $null) {
+    fish11_initchannel %channel %members
+  }
+}
+
+; Afficher les informations sur la clé du canal
+alias fish11_show_channel_key_info {
+  var %channel = $1
+
+  ; Vérifier si on a une clé manuelle
+  var %hasManualKey = $dll(%Fish11DllFile, FiSH11_HasManualChannelKey, %channel)
+
+  ; Vérifier si on a une clé FCEP/ratchet
+  var %hasRatchetKey = $dll(%Fish11DllFile, FiSH11_HasRatchetChannelKey, %channel)
+
+  ; Vérifier si le chiffrement des topics est activé
+  var %encryptTopic = $fish11_GetChannelIniValue(%channel, encrypt_topic)
+
+  window -dCo +l @FiSH-ChannelInfo -1 -1 400 150
+  titlebar @FiSH-ChannelInfo Channel Encryption Info for %channel
+
+  aline @FiSH-ChannelInfo Channel: %channel
+  aline @FiSH-ChannelInfo $chr(160)
+  aline @FiSH-ChannelInfo Manual Key: $iif(%hasManualKey == 1, 🔒 Set, 🔓 Not set)
+  aline @FiSH-ChannelInfo FCEP/Ratchet Key: $iif(%hasRatchetKey == 1, 🔒 Set, 🔓 Not set)
+  aline @FiSH-ChannelInfo Topic Encryption: $iif(%encryptTopic == 1, ✅ Enabled, ❌ Disabled)
+  aline @FiSH-ChannelInfo $chr(160)
+
+  if (%hasManualKey == 1 || %hasRatchetKey == 1) {
+    aline @FiSH-ChannelInfo Status: 🔒 Channel encryption is ACTIVE
+    aline @FiSH-ChannelInfo All messages and topics will be encrypted
+  }
+  else {
+    aline @FiSH-ChannelInfo Status: 🔓 Channel encryption is INACTIVE
+    aline @FiSH-ChannelInfo Messages and topics will be sent in plain text
+  }
+
+  button @FiSH-ChannelInfo "Close", 1, 150 120 100 25
+  var %result = $input(,pv,@FiSH-ChannelInfo)
+  window -c @FiSH-ChannelInfo
+}
+
+; Supprimer la clé du canal
+alias fish11_remove_channel_key {
+  var %channel = $1
+
+  ; Supprimer la clé manuelle si elle existe
+  $dll(%Fish11DllFile, FiSH11_RemoveManualChannelKey, %channel)
+
+  ; Supprimer la clé ratchet si elle existe
+  $dll(%Fish11DllFile, FiSH11_RemoveRatchetChannelKey, %channel)
+
+  ; Désactiver le chiffrement des topics
+  fish11_SetChannelIniValue %channel encrypt_topic 0
+
+  echo $color(Mode text) -at *** FiSH_11: All encryption keys removed for %channel
+}
 
 ; Function to encrypt log lines if logging key is set
 alias fish11_encrypt_log_line {
