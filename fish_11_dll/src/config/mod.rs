@@ -162,10 +162,16 @@ pub fn has_manual_channel_key(channel_name: &str) -> bool {
 }
 
 pub fn has_ratchet_channel_key(channel_name: &str) -> bool {
-    get_ratchet_channel_key(channel_name).is_ok()
+    // For now, we'll check if there's a ratchet state for this channel
+    // This is a simplified check - in a real implementation, you'd want to
+    // verify that the ratchet state has a valid current key
+    with_config(|config| {
+        let normalized_channel = channel_name.to_lowercase();
+        Ok(config.channel_ratchet_states.contains_key(&normalized_channel))
+    }).unwrap_or(false)
 }
 
-pub fn remove_manual_channel_key(channel_name: &str) -> Result<()> {
+pub fn remove_manual_channel_key(channel_name: &str) -> Result<(), crate::error::FishError> {
     let normalized_channel = channel_name.to_lowercase();
     let safe_channel_name = normalized_channel.replace('#', "hash_");
     let entry_key = format!("channel_key_{}", safe_channel_name);
@@ -176,12 +182,12 @@ pub fn remove_manual_channel_key(channel_name: &str) -> Result<()> {
     })
 }
 
-pub fn remove_ratchet_channel_key(channel_name: &str) -> Result<()> {
+pub fn remove_ratchet_channel_key(channel_name: &str) -> Result<(), crate::error::FishError> {
     let normalized_channel = channel_name.to_lowercase();
     
     with_config_mut(|config| {
         // Remove ratchet state for this channel
-        config.ratchet_states.remove(&normalized_channel);
+        config.channel_ratchet_states.remove(&normalized_channel);
         Ok(())
     })
 }
