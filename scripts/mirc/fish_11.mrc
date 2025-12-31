@@ -1368,7 +1368,7 @@ alias INI_GetInt {
 ; Menu for channel windows
 menu channel {
   -
-  FiSH Channel Encryption
+  FiSH_11 channel encryption
   .Add a channel key encryption
   ..Manual key : fish11_set_manual_key_dialog $chan
   ..FCEP-1 key : fish11_init_fcep_dialog $chan
@@ -1376,8 +1376,8 @@ menu channel {
   ..Enable topic encryption :{ fish11_SetChannelIniValue $chan encrypt_topic 1 | echo $color(Mode text) -at *** FiSH: topic encryption enabled for $chan }
   ..Disable topic encryption :{ fish11_SetChannelIniValue $chan encrypt_topic 0 | echo $color(Mode text) -at *** FiSH: topic encryption disabled for $chan }
   .-
-  .Show Channel Key Info : fish11_show_channel_key_info $chan
-  .Remove Channel Key : fish11_remove_channel_key $chan
+  .Show channel key info : fish11_show_channel_key_info $chan
+  .Remove channel key : fish11_remove_channel_key $chan
   .-
   .Show keychan :fish11_showkey $chan
   .Show fingerprint :fish11_showfingerprint $chan
@@ -1421,7 +1421,7 @@ menu channel {
 ; Menu for query windows
 menu query {
   -
-  FiSH
+  FiSH_11
   .X25519 keyXchange: fish11_X25519_INIT $1
   .-
   .Show key :fish11_showkey $1
@@ -1463,7 +1463,7 @@ menu query {
 ; Menu for nicklist
 menu nicklist {
   -
-  FiSH
+  FiSH_11
   .X25519 keyXchange: fish11_X25519_INIT $1
   .-
   .Show key :fish11_showkey $1
@@ -1502,7 +1502,7 @@ menu status,channel,nicklist,query {
   .Injection version : fish11_injection_version
   .Help :fish11_help
   .-
-  .Master Key
+  .Master key
   ..Unlock master key :fish11_unlock
   ..Lock master key :fish11_lock
   ..Show master key status :fish11_masterkey_status
@@ -1516,9 +1516,9 @@ menu status,channel,nicklist,query {
     var %topic = $?="Enter encrypted topic for " $+ $active $+ ":"
     if (%topic != $null) etopic %topic
   }
-  .Add Channel Key Encryption :{
-    ; Only allow in channel windows
-    if ($chantype($active) != # && $chantype($active) != &) {
+  .Add channel key encryption :{
+    ; Only allow in channel windows (more robust check)
+    if ($window($active).type != channel) {
       echo $color(Mode text) -at *** FiSH_11: This command can only be used in channel windows
       return
     }
@@ -1550,11 +1550,11 @@ menu status,channel,nicklist,query {
   ...Enable :{ fish11_SetIniValue process_incoming 1 | echo $color(Mode text) -at *** FiSH: incoming message decryption enabled }
   ...Disable :{ fish11_SetIniValue process_incoming 0 | echo $color(Mode text) -at *** FiSH: incoming message decryption disabled }
   ..-
-  ..Crypt-Mark (Incoming)
+  ..Crypt-mark (Incoming)
   ...Prefix :{ fish11_SetIniValue mark_position 2 | echo $color(Mode text) -at *** FiSH: encryption mark set to prefix }
   ...Suffix :{ fish11_SetIniValue mark_position 1 | echo $color(Mode text) -at *** FiSH: encryption mark set to suffix }
   ...Disable :{ fish11_SetIniValue mark_position 0 | echo $color(Mode text) -at *** FiSH: encryption mark disabled }
-  ..Crypt-Mark (Outgoing) $+ $chr(32) $+ %mark_outgoing
+  ..Crypt-mark (Outgoing) $+ $chr(32) $+ %mark_outgoing
   ...Enable :set %mark_outgoing [On]
   ...Disable :set %mark_outgoing [Off]
   ...-
@@ -1588,8 +1588,8 @@ menu status,channel,nicklist,query {
   ..-
   ..Open config file :fish11_ViewIniFile
   ..-
-  ..FiSH 11 - secure IRC encryption :shell -o https://github.com/ggielly/fish_11
-  .Backup and Restore
+  ..FiSH_11 - secure IRC encryption :shell -o https://github.com/ggielly/fish_11
+  .Backup and restore
   ..Create backup now :fish11_ScheduleBackup
   ..Restore from backup :{
     var %file = $sfile($+(",$mircdir,fish_11\backups\"),Restore FiSH keys from:,*.bak)
@@ -1728,8 +1728,8 @@ alias fish_logdecryptfile11 { fish11_logdecryptfile $1- }
 
 ; Direct command for channel encryption settings
 alias fish11_channel_settings {
-  ; Check if we're in a channel window
-  if ($chantype($active) != # && $chantype($active) != &) {
+  ; Check if we're in a channel window (more robust check)
+  if ($window($active).type != channel) {
     echo $color(Mode text) -at *** FiSH_11: This command can only be used in channel windows
     return
   }
@@ -1753,9 +1753,9 @@ alias fcs { fish11_channel_settings }
 
 ; Boîte de dialogue pour la clé manuelle
 alias fish11_set_manual_key_dialog {
-  ; Vérifier si nous sommes dans une fenêtre de canal
-  if ($chantype($active) != # && $chantype($active) != &) {
-    echo $color(Error) -at *** FiSH_11: Manual key can only be set for channels. Please use this in a channel window.
+  ; Vérifier si nous sommes dans une fenêtre de canal (méthode plus robuste)
+  if ($window($active).type != channel) {
+    echo $color(Error) -at *** FiSH_11: Manual key can only be set for channels. Current window: $active (type: $window($active).type)
     return
   }
   
@@ -1769,9 +1769,9 @@ alias fish11_set_manual_key_dialog {
 
 ; Boîte de dialogue pour FCEP-1
 alias fish11_init_fcep_dialog {
-  ; Vérifier si nous sommes dans une fenêtre de canal
-  if ($chantype($active) != # && $chantype($active) != &) {
-    echo $color(Error) -at *** FiSH_11: FCEP-1 key can only be set for channels. Please use this in a channel window.
+  ; Vérifier si nous sommes dans une fenêtre de canal (méthode plus robuste)
+  if ($window($active).type != channel) {
+    echo $color(Error) -at *** FiSH_11: FCEP-1 key can only be set for channels. Current window: $active (type: $window($active).type)
     return
   }
   
