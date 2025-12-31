@@ -72,7 +72,7 @@ mod tests {
     use std::ffi::CStr;
     use std::ptr;
 
-    fn call_set_manual_channel_key(input: &str, buffer_size: usize) -> (c_int, String) {
+    pub fn call_set_manual_channel_key(input: &str, buffer_size: usize) -> (c_int, String) {
         let mut buffer = vec![0i8; buffer_size];
 
         // Copy the input into the data buffer (mIRC style: data is input/output)
