@@ -1516,6 +1516,33 @@ menu status,channel,nicklist,query {
     var %topic = $?="Enter encrypted topic for " $+ $active $+ ":"
     if (%topic != $null) etopic %topic
   }
+  .Channel Encryption Settings :{
+    ; Only allow in channel windows
+    if ($chantype($active) != # && $chantype($active) != &) {
+      echo $color(Mode text) -at *** FiSH_11: This command can only be used in channel windows
+      return
+    }
+    ; Open a dialog to choose encryption method
+    var %choice = $input(Channel Encryption for $active $+ :, pvq, FiSH_11 Channel Settings)
+    if (%choice == $null) return
+    
+    if (%choice == 1) {
+      ; Set Manual Key
+      fish11_set_manual_key_dialog $active
+    }
+    elseif (%choice == 2) {
+      ; Set FCEP-1 Key
+      fish11_init_fcep_dialog $active
+    }
+    elseif (%choice == 3) {
+      ; Show Key Info
+      fish11_show_channel_key_info $active
+    }
+    elseif (%choice == 4) {
+      ; Remove Key
+      fish11_remove_channel_key $active
+    }
+  }
   .List all keys :fish11_file_list_keys
   .Test encryption :fish11_test_crypt
   .-
