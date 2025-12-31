@@ -1,5 +1,5 @@
 use crate::platform_types::{BOOL, HWND};
-use crate::unified_error::DllError;
+use crate::unified_error::{DllError, DllResult};
 use crate::{buffer_utils, config, dll_function_identifier, log_debug};
 use std::ffi::c_char;
 use std::os::raw::c_int;
@@ -46,23 +46,25 @@ dll_function_identifier!(FiSH11_SetManualChannelKeyFromPassword, data, {
 });
 
 /// Derives a 32-byte cryptographic key from password/short key material using HKDF
-fn derive_key_from_password(password: &str) -> Result<[u8; 32]> {
+fn derive_key_from_password(password: &str) -> DllResult<[u8; 32]> {
     use hkdf::Hkdf;
     use sha2::Sha256;
-    
+
     // Use channel name as salt to prevent rainbow table attacks
     // In a real implementation, we'd use a random salt stored with the key
     let salt = b"FiSH11-ChannelKey";
-    
+
     // Use the password as IKM (input key material)
     let ikm = password.as_bytes();
-    
+
     // Derive a 32-byte key using HKDF-SHA256
     let hkdf = Hkdf::<Sha256>::new(Some(salt), ikm);
     let mut output = [0u8; 32];
     hkdf.expand(b"channel-key-expansion", &mut output)
-        .map_err(|e| FishError::CryptoError(format!("HKDF expansion failed: {}", e)))?;
-    
+        .map_err(|e| DllError::KeyInvalid {
+            reason: format!("HKDF key derivation failed: {}", e)
+        })?;
+
     Ok(output)
 }
 
