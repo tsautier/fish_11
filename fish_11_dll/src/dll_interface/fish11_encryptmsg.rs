@@ -25,31 +25,35 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
 
     // Channel encryption logic here
     if target.starts_with('#') || target.starts_with('&') {
+        #[cfg(debug_assertions)]
         log_debug!("Encrypting for channel: {}", target);
 
         // Attempt to get a channel key. This will succeed for both manual keys and ratchet keys.
         if let Ok(key) = config::get_channel_key_with_fallback(target) {
             // A key was found, proceed with encryption.
 
-            // Log message content if DEBUG flag is enabled for sensitive content
-            if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                log_debug!(
-                    "DLL_Interface: channel message encryption input for channel '{}': '{}'",
-                    target,
-                    message
-                );
-            }
+            #[cfg(debug_assertions)]
+            log_debug!(
+                "DLL_Interface: channel message encryption input for channel '{}': '{}'",
+                target,
+                message
+            );
 
             // Encrypt with the key, using the channel name as Associated Data.
-            let encrypted_b64 =
-                crypto::encrypt_message(&key, message, Some(target), Some(target.as_bytes()))
-                    .map_err(|e| DllError::EncryptionFailed {
-                        context: format!("encrypting for channel {}", target),
-                        cause: e.to_string(),
-                    })?;
+            let encrypted_b64 = crypto::chacha20::encrypt_message(
+                &key,
+                message,
+                Some(target),
+                Some(target.as_bytes()),
+            )
+            .map_err(|e| DllError::EncryptionFailed {
+                context: format!("encrypting for channel {}", target),
+                cause: e.to_string(),
+            })?;
 
             // Log encrypted result if DEBUG flag is enabled for sensitive content
             if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
+                #[cfg(debug_assertions)]
                 log_debug!(
                     "DLL_Interface: channel message encrypted output for channel '{}': '{}'",
                     target,
@@ -64,43 +68,44 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
         // If no key is found (manual or ratchet), fall through and send as plaintext.
     }
 
-    // --- Private message encryption logic
+    // Private message encryption logic
     let nickname = utility::normalize_private_target(target)?;
 
+    #[cfg(debug_assertions)]
     log_debug!("Encrypting for nickname: {}", nickname);
 
     // 2. Retrieve the encryption key for the target.
     let key = utility::get_private_key(&nickname)?;
     let key_ref = &key;
 
+    #[cfg(debug_assertions)]
     log_debug!("Successfully retrieved encryption key");
 
     // Log message content if DEBUG flag is enabled for sensitive content
-    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-        log_debug!(
-            "DLL_Interface: private message encryption input for target '{}': '{}'",
-            &nickname,
-            message
-        );
-    }
+    #[cfg(debug_assertions)]
+    log_debug!(
+        "DLL_Interface: private message encryption input for target '{}': '{}'",
+        &nickname,
+        message
+    );
 
-    // 3. Encrypt the message using the retrieved key (no AD for private messages).
-    let encrypted_base64 = crypto::encrypt_message(key_ref, message, Some(&nickname), None)
-        .map_err(|e| DllError::EncryptionFailed {
-            context: format!("encrypting for {}", nickname),
-            cause: e.to_string(),
-        })?;
+    // Encrypt the message using the retrieved key (no AD for private messages).
+    let encrypted_base64 =
+        crypto::chacha20::encrypt_message(key_ref, message, Some(&nickname), None).map_err(
+            |e| DllError::EncryptionFailed {
+                context: format!("encrypting for {}", nickname),
+                cause: e.to_string(),
+            },
+        )?;
 
-    // Log encrypted result if DEBUG flag is enabled for sensitive content
-    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-        log_debug!(
-            "DLL_Interface: private message encrypted output for target '{}': '{}'",
-            &nickname,
-            &encrypted_base64
-        );
-    }
+    #[cfg(debug_assertions)]
+    log_debug!(
+        "DLL_Interface: private message encrypted output for target '{}': '{}'",
+        &nickname,
+        &encrypted_base64
+    );
 
-    // 4. Format the result with the FiSH protocol prefix and return.
+    // Format the result with the FiSH protocol prefix and return.
     let result = format!("+FiSH {}", encrypted_base64);
 
     log::info!("Successfully encrypted message for {}", nickname);
@@ -126,7 +131,8 @@ mod tests {
         let message = "Hello world!";
         let key = [0u8; 32];
         config::set_key_default(nickname, &key, true).unwrap();
-        let encrypted = crypto::encrypt_message(&key, message, Some(nickname), None).unwrap();
+        let encrypted =
+            crypto::chacha20::encrypt_message(&key, message, Some(nickname), None).unwrap();
         assert!(!encrypted.is_empty());
     }
 
@@ -181,8 +187,8 @@ mod tests {
     fn test_encryptmsg_topic_format() {
         // Topic messages in IRC follow the same encryption pattern as other messages
         // but are handled in a different context by the engine
-
         let topic_target = "#topicchan";
+
         // Verify channel detection
         assert!(topic_target.starts_with('#'));
 

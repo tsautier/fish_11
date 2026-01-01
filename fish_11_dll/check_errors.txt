@@ -1,0 +1,271 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\src\FiSH\fish_11\fish_11_dll\Cargo.toml
+workspace: C:\src\FiSH\fish_11\Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\src\FiSH\fish_11\fish_11_core\Cargo.toml
+workspace: C:\src\FiSH\fish_11\Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\src\FiSH\fish_11\fish_11_cli\Cargo.toml
+workspace: C:\src\FiSH\fish_11\Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\src\FiSH\fish_11\fish_11_inject\Cargo.toml
+workspace: C:\src\FiSH\fish_11\Cargo.toml
+warning: unused imports: `SystemTime` and `UNIX_EPOCH`
+   --> fish_11_core\src\logging\writers\file_writer.rs:164:25
+    |
+164 |         use std::time::{SystemTime, UNIX_EPOCH};
+    |                         ^^^^^^^^^^  ^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `log::LevelFilter`
+  --> fish_11_core\src\logging\mod.rs:18:5
+   |
+18 | use log::LevelFilter;
+   |     ^^^^^^^^^^^^^^^^
+
+warning: value assigned to `rotation_lock` is never read
+   --> fish_11_core\src\logging\writers\file_writer.rs:186:33
+    |
+186 | ...                   rotation_lock = OpenOptions::new()
+    |                       ^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `get_master_key` is never used
+  --> fish_11_core\src\master_key\core\mod.rs:29:4
+   |
+29 | fn get_master_key() -> Option<MasterKey> {
+   |    ^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `fish_11_core` (lib) generated 4 warnings (run `cargo fix --lib -p fish_11_core` to apply 2 suggestions)
+    Checking fish_11 v11.25.0 (C:\src\FiSH\fish_11\fish_11_dll)
+warning: unexpected `cfg` condition value: `serde`
+   --> fish_11_dll\src\config\models.rs:169:16
+    |
+169 |     #[cfg_attr(feature = "serde", serde(skip))]
+    |                ^^^^^^^^^^^^^^^^^ help: remove the condition
+    |
+    = note: no expected values for `feature`
+    = help: consider adding `serde` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+    = note: `#[warn(unexpected_cfgs)]` on by default
+
+warning: unused import: `derive_master_key`
+ --> fish_11_dll\src\config\encrypted_file_storage.rs:7:53
+  |
+7 |     EncryptedBlob, decrypt_data, derive_config_kek, derive_master_key, encrypt_data,
+  |                                                     ^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `CStr` and `ptr`
+ --> fish_11_dll\src\dll_interface\fish11_getconfigpath.rs:1:28
+  |
+1 | use crate::dll_interface::{CStr, ptr};
+  |                            ^^^^  ^^^
+
+warning: unused import: `crate::crypto::generate_keypair`
+ --> fish_11_dll\src\dll_interface\fish11_exchangekey.rs:4:5
+  |
+4 | use crate::crypto::generate_keypair;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `save_if_modified` found for struct `parking_lot::lock_api::MutexGuard<'_, parking_lot::RawMutex, FishConfig>` in the current scope
+   --> fish_11_dll\src\dll_interface\fish11_decryptmsg.rs:164:39
+    |
+164 |                 config::CONFIG.lock().save_if_modified().ok(); // Ensuring simple save if needed, though mark_nonce_seen is memory only.
+    |                                       ^^^^^^^^^^^^^^^^ method not found in `parking_lot::lock_api::MutexGuard<'_, parking_lot::RawMutex, FishConfig>`
+
+error[E0599]: no variant named `KeyGenerationFailed` found for enum `unified_error::DllError`
+   --> fish_11_dll\src\dll_interface\fish11_exchangekey.rs:305:81
+    |
+305 |             let boxed_keypair = engine.generate_keypair().map_err(|e| DllError::KeyGenerationFailed { reason: e.to_string() })?;
+    |                                                                                 ^^^^^^^^^^^^^^^^^^^
+    |
+   ::: fish_11_dll\src\unified_error.rs:27:1
+    |
+ 27 | pub enum DllError {
+    | ----------------- variant `KeyGenerationFailed` not found here
+    |
+help: there is a variant with a similar name
+    |
+305 -             let boxed_keypair = engine.generate_keypair().map_err(|e| DllError::KeyGenerationFailed { reason: e.to_string() })?;
+305 +             let boxed_keypair = engine.generate_keypair().map_err(|e| DllError::KeyDerivationFailed { reason: e.to_string() })?;
+    |
+
+error[E0599]: no variant or associated item named `CryptoError` found for enum `unified_error::DllError` in the current scope
+   --> fish_11_dll\src\dll_interface\fish11_exchangekey.rs:316:46
+    |
+316 |                 None => return Err(DllError::CryptoError("Failed to downcast keypair".to_string()))
+    |                                              ^^^^^^^^^^^ variant or associated item not found in `unified_error::DllError`
+    |
+   ::: fish_11_dll\src\unified_error.rs:27:1
+    |
+ 27 | pub enum DllError {
+    | ----------------- variant or associated item `CryptoError` not found for this enum
+
+warning: variable does not need to be mutable
+  --> fish_11_dll\src\crypto\chacha20.rs:48:9
+   |
+48 |     let mut cache = cache_lock_result.unwrap();
+   |         ----^^^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `data`
+   --> fish_11_dll\src\unified_error.rs:542:21
+    |
+542 |                   let $data = input_ptr;
+    |                       ^^^^^
+    |
+   ::: fish_11_dll\src\dll_interface\fish11_filelistkeys.rs:7:1
+    |
+  7 | / dll_function_identifier!(FiSH11_FileListKeys, data, {
+  8 | |     log_debug!("Starting key listing");
+...   |
+ 47 | |     Ok(result_string)
+ 48 | | });
+    | |__- in this macro invocation
+    |
+help: `data` is captured in macro and introduced a unused variable
+   --> fish_11_dll\src\unified_error.rs:542:21
+    |
+542 |                   let $data = input_ptr;
+    |                       ^^^^^
+    |
+   ::: fish_11_dll\src\dll_interface\fish11_filelistkeys.rs:7:1
+    |
+  7 | / dll_function_identifier!(FiSH11_FileListKeys, data, {
+  8 | |     log_debug!("Starting key listing");
+...   |
+ 47 | |     Ok(result_string)
+ 48 | | });
+    | |__- in this macro invocation
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+    = note: this warning originates in the macro `dll_function_identifier` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `ret_buffer_size`
+  --> fish_11_dll\src\dll_interface\fish11_logdecrypt.rs:39:5
+   |
+39 |     ret_buffer_size: i32,
+   |     ^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_ret_buffer_size`
+
+warning: unused variable: `ret_buffer_size`
+  --> fish_11_dll\src\dll_interface\fish11_logencrypt.rs:33:5
+   |
+33 |     ret_buffer_size: i32,
+   |     ^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_ret_buffer_size`
+
+warning: value assigned to `buffer_size` is never read
+   --> fish_11_dll\src\dll_interface\core.rs:185:27
+    |
+185 |     let mut buffer_size = DEFAULT_MIRC_BUFFER_SIZE;
+    |                           ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `unicode_mode` is never read
+   --> fish_11_dll\src\dll_interface\core.rs:186:28
+    |
+186 |     let mut unicode_mode = false;
+    |                            ^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: unused variable: `data`
+   --> fish_11_dll\src\unified_error.rs:542:21
+    |
+542 |                   let $data = input_ptr;
+    |                       ^^^^^
+    |
+   ::: fish_11_dll\src\dll_interface\fish11_masterkey.rs:205:1
+    |
+205 | / dll_function_identifier!(FiSH11_MasterKeyLock, data, {
+...   |
+212 | |     Ok("1".to_string())
+213 | | });
+    | |__- in this macro invocation
+    |
+help: `data` is captured in macro and introduced a unused variable
+   --> fish_11_dll\src\unified_error.rs:542:21
+    |
+542 |                   let $data = input_ptr;
+    |                       ^^^^^
+    |
+   ::: fish_11_dll\src\dll_interface\fish11_masterkey.rs:205:1
+    |
+205 | / dll_function_identifier!(FiSH11_MasterKeyLock, data, {
+...   |
+212 | |     Ok("1".to_string())
+213 | | });
+    | |__- in this macro invocation
+    = note: this warning originates in the macro `dll_function_identifier` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `data`
+   --> fish_11_dll\src\unified_error.rs:542:21
+    |
+542 |                   let $data = input_ptr;
+    |                       ^^^^^
+    |
+   ::: fish_11_dll\src\dll_interface\fish11_masterkey.rs:319:1
+    |
+319 | / dll_function_identifier!(FiSH11_MasterKeyStatus, data, {
+...   |
+326 | |     Ok(status.to_string())
+327 | | });
+    | |__- in this macro invocation
+    |
+help: `data` is captured in macro and introduced a unused variable
+   --> fish_11_dll\src\unified_error.rs:542:21
+    |
+542 |                   let $data = input_ptr;
+    |                       ^^^^^
+    |
+   ::: fish_11_dll\src\dll_interface\fish11_masterkey.rs:319:1
+    |
+319 | / dll_function_identifier!(FiSH11_MasterKeyStatus, data, {
+...   |
+326 | |     Ok(status.to_string())
+327 | | });
+    | |__- in this macro invocation
+    = note: this warning originates in the macro `dll_function_identifier` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `data`
+   --> fish_11_dll\src\unified_error.rs:542:21
+    |
+542 |                   let $data = input_ptr;
+    |                       ^^^^^
+    |
+   ::: fish_11_dll\src\dll_interface\fish11_masterkey.rs:329:1
+    |
+329 | / dll_function_identifier!(FiSH11_MasterKeyIsUnlocked, data, {
+...   |
+336 | |     Ok(result.to_string())
+337 | | });
+    | |__- in this macro invocation
+    |
+help: `data` is captured in macro and introduced a unused variable
+   --> fish_11_dll\src\unified_error.rs:542:21
+    |
+542 |                   let $data = input_ptr;
+    |                       ^^^^^
+    |
+   ::: fish_11_dll\src\dll_interface\fish11_masterkey.rs:329:1
+    |
+329 | / dll_function_identifier!(FiSH11_MasterKeyIsUnlocked, data, {
+...   |
+336 | |     Ok(result.to_string())
+337 | | });
+    | |__- in this macro invocation
+    = note: this warning originates in the macro `dll_function_identifier` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+For more information about this error, try `rustc --explain E0599`.
+warning: `fish_11` (lib) generated 13 warnings
+error: could not compile `fish_11` (lib) due to 3 previous errors; 13 warnings emitted

@@ -1,5 +1,6 @@
 use crate::config::{CONFIG, get_key, get_keypair, save_config, set_key, store_keypair};
-use crate::crypto::x25519::{X25519KeyPair as KeyPair, format_public_key, generate_keypair};
+use crate::crypto::x25519::{X25519KeyPair, X25519KeyExchange, format_public_key};
+use crate::crypto::{KeyExchange, KeyPair};
 use crate::dll_interface::KEY_EXCHANGE_TIMEOUT_SECONDS;
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::{DllError, DllResult};
@@ -276,7 +277,7 @@ fn ensure_key_exists(nickname: &str) -> DllResult<bool> {
 
 /// Get or generate our Curve25519 keypair for Diffie-Hellman key exchange
 /// Returns (keypair, was_generated: bool)
-fn get_or_generate_keypair_internal() -> DllResult<(KeyPair, bool)> {
+fn get_or_generate_keypair_internal() -> DllResult<(X25519KeyPair, bool)> {
     let lookup_start = Instant::now();
     let existing_keypair = get_keypair();
 
@@ -298,7 +299,22 @@ fn get_or_generate_keypair_internal() -> DllResult<(KeyPair, bool)> {
             #[cfg(debug_assertions)]
             log_debug!("Starting keypair generation...");
 
-            let new_keypair = generate_keypair();
+            // Use Trait for generation
+            let engine = X25519KeyExchange;
+            let boxed_keypair = engine.generate_keypair().map_err(|e| DllError::KeyExchangeFailed(e.to_string()))?;
+            
+            // Downcast to concrete type for storage/return
+             // Note: Unwrapping is safe here because we know X25519KeyExchange produces X25519KeyPair 
+             // and we are inside the dll where we know the types.
+            let new_keypair = match boxed_keypair.as_any().downcast_ref::<X25519KeyPair>() {
+                Some(kp) => X25519KeyPair {
+                    private_key: secrecy::Secret::new(*kp.private_key.expose_secret()),
+                    public_key: kp.public_key,
+                    creation_time: kp.creation_time
+                },
+                None => return Err(DllError::KeyExchangeFailed("Failed to downcast keypair".to_string()))
+            };
+
             let keygen_duration = keygen_start.elapsed();
 
             #[cfg(debug_assertions)]
@@ -328,12 +344,12 @@ fn get_or_generate_keypair_internal() -> DllResult<(KeyPair, bool)> {
 
 /// Get or generate our Curve25519 keypair
 /// TODO : this is a public API for backward compatibility, need to fix this later
-fn get_or_generate_keypair() -> DllResult<KeyPair> {
+fn get_or_generate_keypair() -> DllResult<X25519KeyPair> {
     get_or_generate_keypair_internal().map(|(kp, _)| kp)
 }
 
 /// Validate that a keypair is not all zeros (safety check)
-fn validate_keypair_safety(keypair: &KeyPair) -> DllResult<()> {
+fn validate_keypair_safety(keypair: &X25519KeyPair) -> DllResult<()> {
     // Use the comprehensive validation function
     validate_keypair(keypair)
 }
@@ -421,15 +437,18 @@ fn generate_secure_random_key() -> DllResult<[u8; 32]> {
 }
 
 /// Validate a keypair using comprehensive checks
-fn validate_keypair(keypair: &KeyPair) -> DllResult<()> {
+fn validate_keypair(keypair: &X25519KeyPair) -> DllResult<()> {
     // Check for all-zero keys
-    let public_zeros = [0u8; 32];
-    let private_zeros = [0u8; 32];
-
-    if bool::from(keypair.public_key.ct_eq(&public_zeros))
-        || bool::from(keypair.private_key.expose_secret().ct_eq(&private_zeros))
-    {
-        return Err(DllError::KeyInvalid { reason: "keypair contains all zeros".to_string() });
+    let zeros = [0u8; 32];
+    if keypair.public_key.ct_eq(&zeros).into() {
+        return Err(DllError::KeyInvalid {
+            reason: "Public key is all zeros".to_string(),
+        });
+    }
+    if keypair.private_key.expose_secret().ct_eq(&zeros).into() {
+        return Err(DllError::KeyInvalid {
+            reason: "Private key is all zeros".to_string(),
+        });
     }
 
     // Check if public key is on the curve (basic validation)
@@ -550,6 +569,7 @@ mod tests {
 
     #[test]
     fn test_get_or_generate_keypair_returns_existing() {
+        use crate::crypto::generate_keypair;
         // Generate and store a keypair
         let original_keypair = generate_keypair();
         let _ = store_keypair(&original_keypair);
@@ -567,6 +587,7 @@ mod tests {
 
     #[test]
     fn test_validate_keypair_safety_valid() {
+        use crate::crypto::generate_keypair;
         let keypair = generate_keypair();
 
         let result = validate_keypair_safety(&keypair);
@@ -576,7 +597,7 @@ mod tests {
 
     #[test]
     fn test_validate_keypair_safety_all_zeros() {
-        let keypair = KeyPair {
+        let keypair = X25519KeyPair {
             public_key: [0u8; 32],
             private_key: secrecy::Secret::new([0u8; 32]),
             creation_time: chrono::Utc::now(),
@@ -598,7 +619,7 @@ mod tests {
         let mut private_key = [0u8; 32];
         private_key[0] = 1;
 
-        let keypair = KeyPair {
+        let keypair = X25519KeyPair {
             public_key: [0u8; 32],
             private_key: secrecy::Secret::new(private_key),
             creation_time: chrono::Utc::now(),
@@ -614,7 +635,7 @@ mod tests {
         let mut public_key = [0u8; 32];
         public_key[0] = 1;
 
-        let keypair = KeyPair {
+        let keypair = X25519KeyPair {
             public_key,
             private_key: secrecy::Secret::new([0u8; 32]),
             creation_time: chrono::Utc::now(),
@@ -676,7 +697,7 @@ mod tests {
 
     #[test]
     fn test_validate_keypair_all_zeros() {
-        let keypair = KeyPair {
+        let keypair = X25519KeyPair {
             public_key: [0u8; 32],
             private_key: secrecy::Secret::new([0u8; 32]),
             creation_time: chrono::Utc::now(),
@@ -691,7 +712,7 @@ mod tests {
         let mut private_key = [0u8; 32];
         private_key[0] = 1; // Make it non-zero
 
-        let keypair = KeyPair {
+        let keypair = X25519KeyPair {
             public_key: [0u8; 32],
             private_key: secrecy::Secret::new(private_key),
             creation_time: chrono::Utc::now(),
@@ -706,7 +727,7 @@ mod tests {
         let mut public_key = [0u8; 32];
         public_key[0] = 1; // Make it non-zero
 
-        let keypair = KeyPair {
+        let keypair = X25519KeyPair {
             public_key,
             private_key: secrecy::Secret::new([0u8; 32]),
             creation_time: chrono::Utc::now(),

@@ -7,7 +7,10 @@ use windows::Win32::System::Threading::GetCurrentProcess;
 /// Checks:
 /// 1. Is not NULL
 /// 2. Is within the address space of the given module (if module handle provided)
-pub unsafe fn validate_function_pointer(ptr: FARPROC, module: Option<HMODULE>) -> Result<(), String> {
+pub unsafe fn validate_function_pointer(
+    ptr: FARPROC,
+    module: Option<HMODULE>,
+) -> Result<(), String> {
     if ptr.is_none() {
         return Err("Function pointer is NULL".to_string());
     }
@@ -48,8 +51,8 @@ pub unsafe fn validate_function_pointer(ptr: FARPROC, module: Option<HMODULE>) -
 /// - `ptr` is a valid pointer to machine code compatible with the signature `T`
 /// - `module` matches the module where the function is expected to reside
 pub unsafe fn unsafe_transmute_validated<T: Copy>(
-    ptr: FARPROC, 
-    module: Option<HMODULE>
+    ptr: FARPROC,
+    module: Option<HMODULE>,
 ) -> Result<T, String> {
     // 1. Validate the pointer
     validate_function_pointer(ptr, module)?;
