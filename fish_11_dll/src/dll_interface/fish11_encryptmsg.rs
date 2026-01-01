@@ -1,11 +1,10 @@
-///! Provides the DLL interface for encrypting messages using the FiSH protocol, including key management and encryption logic.
-use std::ffi::c_char;
-use std::os::raw::c_int;
-
 use crate::dll_interface::utility;
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::{buffer_utils, config, crypto, dll_function_identifier, log_debug};
+///! Provides the DLL interface for encrypting messages using the FiSH protocol, including key management and encryption logic.
+use std::ffi::c_char;
+use std::os::raw::c_int;
 
 // Encrypts a message for a specific nickname or channel.
 //

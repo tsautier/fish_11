@@ -1,19 +1,20 @@
-use std::ffi::{CString, c_char};
-
+use crate::dll_interface::NICK_VALIDATOR;
+use crate::error::FishError;
+use crate::{buffer_utils, log_debug, log_error, log_warn};
 use base64;
 use base64::Engine;
 use rand::Rng;
 use rand::rngs::OsRng;
-
-use crate::dll_interface::NICK_VALIDATOR;
-use crate::error::FishError;
-use crate::{buffer_utils, log_debug, log_error, log_warn};
+use std::ffi::{CString, c_char};
 
 /// Checks if there is an established TCP connection owned by the current process.
 ///
 /// This uses the Windows API `GetTcpTable2` to list all TCP connections and checks
 /// for any connection in the `ESTABLISHED` state that belongs to the current PID.
-
+///
+/// WARNING : TODO : this function anly works on Windows. On other platforms, it should be
+/// modified accordingly.
+///
 pub fn is_socket_connected() -> bool {
     unsafe {
         use std::alloc::{Layout, alloc, dealloc};
@@ -30,6 +31,7 @@ pub fn is_socket_connected() -> bool {
         let res = GetTcpTable2(std::ptr::null_mut(), &mut size, 1);
 
         if res != ERROR_INSUFFICIENT_BUFFER && res != NO_ERROR {
+            #[cfg(debug_assertions)]
             log_debug!("GetTcpTable2 failed to get size: {}", res);
             return false;
         }
@@ -204,6 +206,7 @@ pub fn validate_nickname(
 ) -> bool {
     #[cfg(debug_assertions)]
     log_debug!("FiSH11_ExchangeKey[{}]: validating nickname: '{}'", trace_id, nickname); // Check if nickname is empty
+    
     if nickname.is_empty() {
         log_warn!("FiSH11_ExchangeKey[{}]: empty nickname provided", trace_id);
         match CString::new("Usage: /dll fish_11.dll FiSH11_ExchangeKey <nickname>") {
