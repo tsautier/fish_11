@@ -33,12 +33,14 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     let normalized_input = crate::utils::normalize_target(input_trimmed);
     let nickname = normalize_nick(normalized_input);
 
+    #[cfg(debug_assertions)]
     log_debug!("Parse input took {:?}", parse_start.elapsed());
 
     if nickname.is_empty() {
         return Err(DllError::MissingParameter("nickname".to_string()));
     }
 
+    #[cfg(debug_assertions)]
     log_debug!(
         "Key exchange initiated for nickname/channel: {} (original: {})",
         nickname,
@@ -62,6 +64,7 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     // Step 1: ensure key exists (may generate new key)
     let step1_start = Instant::now();
 
+    #[cfg(debug_assertions)]
     log_debug!("Starting ensure_key_exists...");
 
     let key_was_generated = ensure_key_exists(&nickname)?;
@@ -72,6 +75,7 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
 
     let step1_duration = step1_start.elapsed();
 
+    #[cfg(debug_assertions)]
     log_debug!(
         "Step 1 (ensure_key_exists) took {:?} - key_generated: {}",
         step1_duration,
@@ -89,6 +93,7 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     // Step 2: get or generate keypair
     let step2_start = Instant::now();
 
+    #[cfg(debug_assertions)]
     log_debug!("Starting get_or_generate_keypair_internal...");
 
     let (keypair, keypair_was_generated) = get_or_generate_keypair_internal()?;
@@ -98,6 +103,7 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     }
     let step2_duration = step2_start.elapsed();
 
+    #[cfg(debug_assertions)]
     log_debug!(
         "Step 2 (keypair) took {:?} - keypair_generated: {}",
         step2_duration,
@@ -115,12 +121,14 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     // Step 3: validate keypair
     let step3_start = Instant::now();
 
+    #[cfg(debug_assertions)]
     log_debug!("Starting validate_keypair_safety...");
 
     validate_keypair_safety(&keypair)?;
 
     let step3_duration = step3_start.elapsed();
 
+    #[cfg(debug_assertions)]
     log_debug!("Step 3 (validation) took {:?}", step3_duration);
 
     #[cfg(debug_assertions)]
@@ -131,11 +139,13 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     // Step 4: format public key for sharing
     let step4_start = Instant::now();
 
+    #[cfg(debug_assertions)]
     log_debug!("Starting format_public_key...");
 
     let formatted_key = format_public_key(&keypair.public_key);
     let step4_duration = step4_start.elapsed();
 
+    #[cfg(debug_assertions)]
     log_debug!("Step 4 (formatting) took {:?}", step4_duration);
 
     if !formatted_key.starts_with("X25519_INIT:") {
@@ -144,6 +154,7 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
         });
     }
 
+    #[cfg(debug_assertions)]
     log_debug!("Public key formatted successfully (length: {})", formatted_key.len());
 
     // Step 5: save config ONCE if anything was modified
@@ -162,12 +173,14 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
         save_config(&config_snapshot, None)?;
 
         let save_duration = save_start.elapsed();
+        #[cfg(debug_assertions)]
         log_debug!("Configuration saved in {:?}", save_duration);
 
         if save_duration.as_secs() > 2 {
             log_warn!("Config save took longer than 2 seconds! Check disk I/O performance.");
         }
     } else {
+        #[cfg(debug_assertions)]
         log_debug!("No configuration changes to save");
     }
 
@@ -175,12 +188,14 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     let total_duration = overall_start.elapsed();
 
     if key_was_generated {
+        #[cfg(debug_assertions)]
         log_debug!(
             "Key exchange setup completed for {} (generated new key) in {:?}",
             nickname,
             total_duration
         );
     } else {
+        #[cfg(debug_assertions)]
         log_debug!(
             "Key exchange setup completed successfully for {} in {:?}",
             nickname,
@@ -206,23 +221,28 @@ fn ensure_key_exists(nickname: &str) -> DllResult<bool> {
     let lookup_start = Instant::now();
     let existing_key = get_key(nickname, None);
 
+    #[cfg(debug_assertions)]
     log_debug!("get_key_default lookup took {:?}", lookup_start.elapsed());
 
     match existing_key {
         Ok(_) => {
+            #[cfg(debug_assertions)]
             log_debug!("Found existing key for {}", nickname);
             Ok(false) // Key already existed
         }
         Err(_) => {
+            #[cfg(debug_assertions)]
             log_debug!("No existing key found for {}, generating new key", nickname);
 
             let keygen_start = Instant::now();
+            #[cfg(debug_assertions)]
             log_debug!("Starting RNG for key generation...");
 
             // Use the secure random key generator with retry logic
             let key_bytes = generate_secure_random_key()?;
 
             let keygen_duration = keygen_start.elapsed();
+            #[cfg(debug_assertions)]
             log_debug!("RNG key generation took {:?}", keygen_duration);
 
             #[cfg(debug_assertions)]
@@ -234,13 +254,16 @@ fn ensure_key_exists(nickname: &str) -> DllResult<bool> {
             }
 
             let store_start = Instant::now();
+            #[cfg(debug_assertions)]
             log_debug!("Storing key in config...");
 
             // Store the key with overwrite enabled (in-memory only, no disk I/O yet)
             set_key(nickname, &key_bytes, None, true, true)?;
 
+            #[cfg(debug_assertions)]
             log_debug!("set_key_default took {:?}", store_start.elapsed());
 
+            #[cfg(debug_assertions)]
             log_debug!(
                 "Successfully generated and stored new key for {} (not yet saved to disk)",
                 nickname
@@ -256,23 +279,28 @@ fn get_or_generate_keypair_internal() -> DllResult<(KeyPair, bool)> {
     let lookup_start = Instant::now();
     let existing_keypair = get_keypair();
 
+    #[cfg(debug_assertions)]
     log_debug!("get_keypair lookup took {:?}", lookup_start.elapsed());
 
     match existing_keypair {
         Ok(kp) => {
+            #[cfg(debug_assertions)]
             log_debug!("Retrieved existing keypair");
             Ok((kp, false))
         }
         Err(_) => {
+            #[cfg(debug_assertions)]
             log_debug!("No keypair found, generating new one");
 
             let keygen_start = Instant::now();
 
+            #[cfg(debug_assertions)]
             log_debug!("Starting keypair generation...");
 
             let new_keypair = generate_keypair();
             let keygen_duration = keygen_start.elapsed();
 
+            #[cfg(debug_assertions)]
             log_debug!("Keypair generation took {:?}", keygen_duration);
 
             #[cfg(debug_assertions)]
@@ -282,11 +310,13 @@ fn get_or_generate_keypair_internal() -> DllResult<(KeyPair, bool)> {
 
             let store_start = Instant::now();
 
+            #[cfg(debug_assertions)]
             log_debug!("Storing keypair in config...");
 
             // Store the new keypair (in-memory only, no disk I/O yet)
             store_keypair(&new_keypair)?;
 
+            #[cfg(debug_assertions)]
             log_debug!("store_keypair took {:?}", store_start.elapsed());
 
             log_info!("Successfully generated and stored new keypair (not yet saved to disk)");
@@ -317,6 +347,7 @@ fn check_timeout(start_time: Instant, timeout: std::time::Duration, stage: &str)
             stage: stage.to_string(),
         })
     } else {
+        #[cfg(debug_assertions)]
         log_debug!("Timeout check passed at stage '{}': {:?} elapsed", stage, elapsed);
         Ok(())
     }
@@ -330,27 +361,38 @@ fn generate_secure_random_key() -> DllResult<[u8; 32]> {
     // return a specific DllError instead of letting the panic propagate.
     for attempt in 1..=3 {
         let attempt_start = Instant::now();
+
+        #[cfg(debug_assertions)]
         log_debug!("RNG attempt {}/3...", attempt);
 
         let generation_result = std::panic::catch_unwind(|| {
             let rng_create_start = Instant::now();
             let mut rng = OsRng;
+
+            #[cfg(debug_assertions)]
             log_debug!("OsRng creation took {:?}", rng_create_start.elapsed());
 
             let mut key_bytes = [0u8; 32];
             let fill_start = Instant::now();
+
             rng.fill_bytes(&mut key_bytes);
+
+            #[cfg(debug_assertions)]
             log_debug!("fill_bytes(32) took {:?}", fill_start.elapsed());
 
             key_bytes
         });
 
         let attempt_duration = attempt_start.elapsed();
+
+        #[cfg(debug_assertions)]
         log_debug!("Attempt {} total duration: {:?}", attempt, attempt_duration);
 
         match generation_result {
             Ok(key_bytes) => {
                 let duration = start.elapsed();
+
+                #[cfg(debug_assertions)]
                 log_debug!(
                     "Successfully generated random key on attempt {} in {:?}",
                     attempt,
@@ -445,10 +487,9 @@ fn is_likely_connected() -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::ffi::CString;
     use std::ptr;
-
-    use super::*;
 
     // Helper function to create a test buffer
     fn _create_test_buffer(initial_content: &str) -> (*mut c_char, usize) {
