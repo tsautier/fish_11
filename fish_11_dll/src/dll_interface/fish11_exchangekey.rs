@@ -19,7 +19,8 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     log_info!("=== Key exchange initiated ===");
 
     // This function is time-sensitive as it's part of an interactive user workflow.
-    // A timeout ensures we don't block mIRC indefinitely if crypto operations hang.
+    // A timeout ensures we don't block the program-caller indefinitely
+    // if crypto operations hang.
     let start_time = Instant::now();
     let timeout = std::time::Duration::from_secs(KEY_EXCHANGE_TIMEOUT_SECONDS as u64);
 
@@ -31,6 +32,7 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan, etc.)
     let normalized_input = crate::utils::normalize_target(input_trimmed);
     let nickname = normalize_nick(normalized_input);
+
     log_debug!("Parse input took {:?}", parse_start.elapsed());
 
     if nickname.is_empty() {
@@ -50,17 +52,26 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     let mut config_modified = false;
 
     // Check if we're currently connected to IRC
-    // Note: In a real implementation, we would check the socket connection status here
-    // For now, we'll proceed but add better error handling for disconnection scenarios
+    if !is_likely_connected() {
+        log_warn!("Key exchange attempted while not connected to IRC");
+        return Err(crate::unified_error::DllError::NotConnected(
+            "Cannot perform key exchange when not connected to IRC".to_string(),
+        ));
+    }
 
-    // Step 1: Ensure key exists (may generate new key)
+    // Step 1: ensure key exists (may generate new key)
     let step1_start = Instant::now();
+
     log_debug!("Starting ensure_key_exists...");
+
     let key_was_generated = ensure_key_exists(&nickname)?;
+
     if key_was_generated {
         config_modified = true;
     }
+
     let step1_duration = step1_start.elapsed();
+
     log_debug!(
         "Step 1 (ensure_key_exists) took {:?} - key_generated: {}",
         step1_duration,
@@ -75,16 +86,18 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     // Timeout check 2
     check_timeout(start_time, timeout, "before keypair generation")?;
 
-    // Step 2: Get or generate keypair
+    // Step 2: get or generate keypair
     let step2_start = Instant::now();
 
     log_debug!("Starting get_or_generate_keypair_internal...");
 
     let (keypair, keypair_was_generated) = get_or_generate_keypair_internal()?;
+
     if keypair_was_generated {
         config_modified = true;
     }
     let step2_duration = step2_start.elapsed();
+
     log_debug!(
         "Step 2 (keypair) took {:?} - keypair_generated: {}",
         step2_duration,
@@ -99,7 +112,7 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     // Timeout check 3
     check_timeout(start_time, timeout, "before keypair validation")?;
 
-    // Step 3: Validate keypair
+    // Step 3: validate keypair
     let step3_start = Instant::now();
 
     log_debug!("Starting validate_keypair_safety...");
@@ -115,11 +128,14 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
         log_warn!("Step 3 took more than 100ms: {:?}", step3_duration);
     }
 
-    // Step 4: Format public key for sharing
+    // Step 4: format public key for sharing
     let step4_start = Instant::now();
+
     log_debug!("Starting format_public_key...");
+
     let formatted_key = format_public_key(&keypair.public_key);
     let step4_duration = step4_start.elapsed();
+
     log_debug!("Step 4 (formatting) took {:?}", step4_duration);
 
     if !formatted_key.starts_with("X25519_INIT:") {
@@ -130,9 +146,10 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
 
     log_debug!("Public key formatted successfully (length: {})", formatted_key.len());
 
-    // Step 5: Save config ONCE if anything was modified
+    // Step 5: save config ONCE if anything was modified
     if config_modified {
         let save_start = Instant::now();
+
         log_info!("Saving configuration changes...");
 
         // Take a snapshot of the config and release the lock immediately
@@ -154,10 +171,9 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
         log_debug!("No configuration changes to save");
     }
 
-    // Return the formatted public key token directly so callers (like the mIRC
-    // script) can use it programmatically instead of parsing a verbose /echo
-    // message. Keep logging for UX and debugging.
+    // Return the formatted public key token directly so callers
     let total_duration = overall_start.elapsed();
+
     if key_was_generated {
         log_debug!(
             "Key exchange setup completed for {} (generated new key) in {:?}",
@@ -189,6 +205,7 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
 fn ensure_key_exists(nickname: &str) -> DllResult<bool> {
     let lookup_start = Instant::now();
     let existing_key = get_key(nickname, None);
+
     log_debug!("get_key_default lookup took {:?}", lookup_start.elapsed());
 
     match existing_key {
@@ -238,6 +255,7 @@ fn ensure_key_exists(nickname: &str) -> DllResult<bool> {
 fn get_or_generate_keypair_internal() -> DllResult<(KeyPair, bool)> {
     let lookup_start = Instant::now();
     let existing_keypair = get_keypair();
+
     log_debug!("get_keypair lookup took {:?}", lookup_start.elapsed());
 
     match existing_keypair {
@@ -277,7 +295,8 @@ fn get_or_generate_keypair_internal() -> DllResult<(KeyPair, bool)> {
     }
 }
 
-/// Get or generate our Curve25519 keypair (public API, for backward compatibility)
+/// Get or generate our Curve25519 keypair
+/// TODO : this is a public API for backward compatibility, need to fix this later
 fn get_or_generate_keypair() -> DllResult<KeyPair> {
     get_or_generate_keypair_internal().map(|(kp, _)| kp)
 }
@@ -379,6 +398,45 @@ fn validate_keypair(keypair: &KeyPair) -> DllResult<()> {
     }
 
     Ok(())
+}
+
+/// Checks if we're likely connected to an IRC server.
+///
+/// This function uses several heuristics to determine connection status:
+///   checks if we have a current network name set (indicates active connection)
+///   checks if we have any active keys (indicates recent IRC activity)
+///   checks if the master key is unlocked (indicates active session)
+///
+/// TODO : this is not a definitive check of socket connection status, but provides
+/// a reasonable heuristic for whether we can perform IRC operations. :D
+fn is_likely_connected() -> bool {
+    // Check if we have a current network name (strong indicator of active connection)
+    if let Some(network) = crate::get_current_network() {
+        if !network.is_empty() {
+            log_debug!(
+                "is_likely_connected: Current network '{}' detected - likely connected",
+                network
+            );
+            return true;
+        }
+    }
+
+    // Check if we have any active keys (indicates recent IRC activity)
+    if let Ok(keys) = crate::config::key_management::list_keys() {
+        if !keys.is_empty() {
+            log_debug!("is_likely_connected: {} active keys found - likely connected", keys.len());
+            return true;
+        }
+    }
+
+    // Check if master key is unlocked (indicates active session)
+    if crate::dll_interface::fish11_masterkey::is_master_key_unlocked() {
+        log_debug!("is_likely_connected: Master key is unlocked - likely in active session");
+        return true;
+    }
+
+    log_debug!("is_likely_connected: No connection indicators found - likely disconnected");
+    false
 }
 
 #[cfg(test)]
