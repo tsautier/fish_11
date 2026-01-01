@@ -413,6 +413,7 @@ fn is_likely_connected() -> bool {
     // Check if we have a current network name (strong indicator of active connection)
     if let Some(network) = crate::get_current_network() {
         if !network.is_empty() {
+            #[cfg(debug_assertions)]
             log_debug!(
                 "is_likely_connected: Current network '{}' detected - likely connected",
                 network
@@ -424,6 +425,7 @@ fn is_likely_connected() -> bool {
     // Check if we have any active keys (indicates recent IRC activity)
     if let Ok(keys) = crate::config::key_management::list_keys() {
         if !keys.is_empty() {
+            #[cfg(debug_assertions)]
             log_debug!("is_likely_connected: {} active keys found - likely connected", keys.len());
             return true;
         }
@@ -431,10 +433,12 @@ fn is_likely_connected() -> bool {
 
     // Check if master key is unlocked (indicates active session)
     if crate::dll_interface::fish11_masterkey::is_master_key_unlocked() {
+        #[cfg(debug_assertions)]
         log_debug!("is_likely_connected: Master key is unlocked - likely in active session");
         return true;
     }
 
+    #[cfg(debug_assertions)]
     log_debug!("is_likely_connected: No connection indicators found - likely disconnected");
     false
 }
