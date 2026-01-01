@@ -15,6 +15,7 @@ pub enum DllError {
     CryptoError(String),
     Timeout,
     NullPointer,
+    NotConnected(String),
 }
 
 impl DllError {
@@ -43,6 +44,10 @@ impl DllError {
             }
             DllError::CryptoError(msg) => {
                 buffer_utils::write_error_message(data, &format!("Cryptography error: {}", msg));
+                MIRC_COMMAND
+            }
+            DllError::NotConnected(msg) => {
+                buffer_utils::write_error_message(data, &format!("Not connected to IRC: {}", msg));
                 MIRC_COMMAND
             }
         }

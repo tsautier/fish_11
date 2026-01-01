@@ -27,21 +27,23 @@ use crate::{buffer_utils, config, crypto, dll_function_identifier, log_debug};
 */
 
 dll_function_identifier!(FiSH11_DecryptMsg, data, {
-    // 1. Parse input: <target> <encrypted_message>
+    // Parse input: <target> <encrypted_message>
     let input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
     let parsed = utility::parse_input(&input_str)?;
 
     let target = parsed.target;
     let mut encrypted_message = parsed.message.trim();
 
-    // 2. Strip the "+FiSH " prefix if present.
+    // Strip the "+FiSH " prefix if present.
     if let Some(stripped) = encrypted_message.strip_prefix("+FiSH ") {
         encrypted_message = stripped;
+        #[cfg(debug_assertions)]
         log_debug!("Stripped +FiSH prefix from encrypted message");
     }
 
-    // --- Channel Decryption Logic ---
+    // Channel decryption logic
     if target.starts_with('#') || target.starts_with('&') {
+        #[cfg(debug_assertions)]
         log_debug!("Decrypting for channel: {}", target);
 
         // Check if we have a manual channel key set. If so, try it with simple decryption (no ratchet).
@@ -49,31 +51,27 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
             let key = config::get_channel_key_with_fallback(target)?;
 
             // Log encrypted content if DEBUG flag is enabled for sensitive content
-            if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                log_debug!(
-                    "DLL_Interface: decrypting channel message for '{}' (manual key): '{}'",
-                    target,
-                    encrypted_message
-                );
-            }
+            #[cfg(debug_assertions)]
+            log_debug!(
+                "DLL_Interface: decrypting channel message for '{}' (manual key): '{}'",
+                target,
+                encrypted_message
+            );
 
             // Decrypt with the fixed key, using the channel name as Associated Data.
             let decrypted =
-                crypto::decrypt_message(&key, encrypted_message, Some(target.as_bytes())).map_err(
-                    |e| DllError::DecryptionFailed {
+                crypto::chacha20::decrypt_message(&key, encrypted_message, Some(target.as_bytes()))
+                    .map_err(|e| DllError::DecryptionFailed {
                         context: format!("decrypting for channel {} with manual key", target),
                         cause: e.to_string(),
-                    },
-                )?;
+                    })?;
 
-            // Log decrypted content if DEBUG flag is enabled for sensitive content
-            if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                log_debug!(
-                    "DLL_Interface: decrypted channel message for '{}' (manual key): '{}'",
-                    target,
-                    &decrypted
-                );
-            }
+            #[cfg(debug_assertions)]
+            log_debug!(
+                "DLL_Interface: decrypted channel message for '{}' (manual key): '{}'",
+                target,
+                &decrypted
+            );
 
             log::info!("Successfully decrypted message for channel {} using manual key", target);
             return Ok(decrypted);
@@ -92,40 +90,39 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
                     cause: "Could not convert slice to 12-byte nonce array".to_string(),
                 })?;
 
-            // 1. Anti-replay check (read-only)
-            if config::check_nonce(target, &nonce)? {
+            // Anti-replay check (read-only)
+            if crypto::chacha20::is_nonce_replay(&nonce)? {
                 return Err(DllError::ReplayAttackDetected { channel: target.to_string() });
             }
 
-            // 2. Attempt decryption with ratchet state
+            // Attempt decryption with ratchet state
             let decrypted = config::with_ratchet_state_mut(target, |state| {
                 // Log encrypted content if DEBUG flag is enabled for sensitive content
-                if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                    log_debug!(
-                        "DLL_Interface: decrypting ratchet channel message for '{}': '{}'",
-                        target,
-                        encrypted_message
-                    );
-                }
+
+                #[cfg(debug_assertions)]
+                log_debug!(
+                    "DLL_Interface: decrypting ratchet channel message for '{}': '{}'",
+                    target,
+                    encrypted_message
+                );
 
                 // Try current key first
-                if let Ok(plaintext) = crypto::decrypt_message(
+                if let Ok(plaintext) = crypto::chacha20::decrypt_message(
                     &state.current_key,
                     encrypted_message,
                     Some(target.as_bytes()),
                 ) {
                     // Success with current key. Advance the ratchet.
-                    let next_key = crypto::advance_ratchet_key(&state.current_key, &nonce, target)?;
+                    let next_key =
+                        crypto::chacha20::advance_ratchet_key(&state.current_key, &nonce, target)?;
                     state.advance(next_key);
 
-                    // Log decrypted content if DEBUG flag is enabled for sensitive content
-                    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                        log_debug!(
-                            "DLL_Interface: decrypted ratchet channel message for '{}' with current key: '{}'",
-                            target,
-                            &plaintext
-                        );
-                    }
+                    #[cfg(debug_assertions)]
+                    log_debug!(
+                        "DLL_Interface: decrypted ratchet channel message for '{}' with current key: '{}'",
+                        target,
+                        &plaintext
+                    );
 
                     return Ok(Some(plaintext)); // Return plaintext to outer scope
                 }
@@ -133,9 +130,11 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
                 // If current key fails, try previous keys for out-of-order messages
                 for old_key in state.previous_keys.iter().rev() {
                     // Check newest first
-                    if let Ok(plaintext) =
-                        crypto::decrypt_message(old_key, encrypted_message, Some(target.as_bytes()))
-                    {
+                    if let Ok(plaintext) = crypto::chacha20::decrypt_message(
+                        old_key,
+                        encrypted_message,
+                        Some(target.as_bytes()),
+                    ) {
                         // Success with a previous key. DO NOT advance the ratchet.
                         log::warn!(
                             "Decrypted message for {} with a previous ratchet key (out-of-order message)",
@@ -143,13 +142,12 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
                         );
 
                         // Log decrypted content if DEBUG flag is enabled for sensitive content
-                        if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                            log_debug!(
-                                "DLL_Interface: decrypted ratchet channel message for '{}' with old key: '{}'",
-                                target,
-                                &plaintext
-                            );
-                        }
+                        #[cfg(debug_assertions)]
+                        log_debug!(
+                            "DLL_Interface: decrypted ratchet channel message for '{}' with old key: '{}'",
+                            target,
+                            &plaintext
+                        );
 
                         return Ok(Some(plaintext)); // Return plaintext to outer scope
                     }
@@ -159,8 +157,9 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
             })?;
 
             if let Some(plaintext) = decrypted {
-                // 3. Add nonce to cache ONLY after successful decryption
-                config::add_nonce(target, nonce)?;
+                // Add nonce to cache ONLY after successful decryption
+                crypto::chacha20::mark_nonce_seen(&nonce)?;
+                // Config automatic save is not triggered for nonce cache as it's memory-only/lazy_static in chacha20.rs
                 log::info!("Successfully decrypted ratchet message for {}", target);
                 return Ok(plaintext);
             } else {
@@ -172,38 +171,38 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
         }
     }
 
-    // --- Private Message Decryption Logic ---
+    // Private message decryption logic
     let nickname = utility::normalize_private_target(target)?;
     log_debug!("Decrypting for nickname: {}", nickname);
 
     let key = utility::get_private_key(&nickname)?;
     let key_ref = &key;
 
+    #[cfg(debug_assertions)]
     log_debug!("Successfully retrieved decryption key");
 
-    // Log encrypted content if DEBUG flag is enabled for sensitive content
-    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-        log_debug!(
-            "DLL_Interface: decrypting private message for '{}': '{}'",
-            nickname,
-            encrypted_message
-        );
-    }
+    #[cfg(debug_assertions)]
+    log_debug!(
+        "DLL_Interface: decrypting private message for '{}': '{}'",
+        nickname,
+        encrypted_message
+    );
 
     // Decrypt the message (no AD for private messages).
-    let decrypted = crypto::decrypt_message(key_ref, encrypted_message, None).map_err(|e| {
-        DllError::DecryptionFailed {
-            context: format!("decrypting for {}", nickname),
-            cause: e.to_string(),
-        }
-    })?;
+    let decrypted =
+        crypto::chacha20::decrypt_message(key_ref, encrypted_message, None).map_err(|e| {
+            DllError::DecryptionFailed {
+                context: format!("decrypting for {}", nickname),
+                cause: e.to_string(),
+            }
+        })?;
 
     // Log decrypted content if DEBUG flag is enabled for sensitive content
-    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-        log_debug!("DLL_Interface: decrypted private message for '{}': '{}'", nickname, &decrypted);
-    }
+    #[cfg(debug_assertions)]
+    log_debug!("DLL_Interface: decrypted private message for '{}': '{}'", nickname, &decrypted);
 
-    log::info!("Successfully decrypted message for {}", nickname);
+    #[cfg(debug_assertions)]
+    log::debug!("Successfully decrypted message for {}", nickname);
 
     Ok(decrypted)
 });
@@ -226,8 +225,9 @@ mod tests {
         let key = [0u8; 32];
         let message = "Hello world!";
         config::set_key_default(nickname, &key, true).unwrap();
-        let encrypted = crypto::encrypt_message(&key, message, Some(nickname), None).unwrap();
-        let decrypted = crypto::decrypt_message(&key, &encrypted, None).unwrap();
+        let encrypted =
+            crypto::chacha20::encrypt_message(&key, message, Some(nickname), None).unwrap();
+        let decrypted = crypto::chacha20::decrypt_message(&key, &encrypted, None).unwrap();
         assert_eq!(decrypted, message);
     }
 

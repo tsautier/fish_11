@@ -155,11 +155,7 @@ pub unsafe extern "system" fn hooked_recv(
 
                 // Log what we're actually returning
                 if let Ok(text) = std::str::from_utf8(&processed_buffer[..bytes_to_copy]) {
-                    info!(
-                        "[RECV] {}: returning to mIRC: {}",
-                        s.0,
-                        text.trim_end()
-                    );
+                    info!("[RECV] {}: returning to mIRC: {}", s.0, text.trim_end());
                 } else {
                     debug!(
                         "[RECV DEBUG] socket {}: returning binary data (first 64 bytes): {:02X?}",
@@ -285,7 +281,7 @@ pub unsafe extern "system" fn hooked_send(
     } else {
         drop(stats);
     }
-    
+
     if let Err(e) = socket_info.on_sending(data_slice) {
         error!("Error processing outgoing data: {:?}", e);
     }
@@ -463,9 +459,9 @@ pub fn uninstall_socket_hooks() {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use super::*;
     use crate::engines::InjectEngines;
+    use std::sync::Arc;
 
     #[test]
     fn test_valid_exports() {

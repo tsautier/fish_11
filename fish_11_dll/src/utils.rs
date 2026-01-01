@@ -1,13 +1,99 @@
-use std::ffi::{CString, c_char};
-
+use crate::dll_interface::NICK_VALIDATOR;
+use crate::error::FishError;
+use crate::{buffer_utils, log_debug, log_error, log_warn};
 use base64;
 use base64::Engine;
 use rand::Rng;
 use rand::rngs::OsRng;
+use std::ffi::{CString, c_char};
 
-use crate::dll_interface::NICK_VALIDATOR;
-use crate::error::FishError;
-use crate::{buffer_utils, log_debug, log_error, log_warn};
+/// Checks if there is an established TCP connection owned by the current process.
+///
+/// This uses the Windows API `GetTcpTable2` to list all TCP connections and checks
+/// for any connection in the `ESTABLISHED` state that belongs to the current PID.
+///
+/// WARNING : TODO : this function anly works on Windows. On other platforms, it should be
+/// modified accordingly.
+///
+pub fn is_socket_connected() -> bool {
+    unsafe {
+        use std::alloc::{Layout, alloc, dealloc};
+        use winapi::shared::tcpmib::{MIB_TCP_STATE_ESTAB, MIB_TCPROW2, MIB_TCPTABLE2};
+        use winapi::shared::winerror::{ERROR_INSUFFICIENT_BUFFER, NO_ERROR};
+        use winapi::um::iphlpapi::GetTcpTable2;
+        use winapi::um::processthreadsapi::GetCurrentProcessId;
+
+        let pid = GetCurrentProcessId();
+        let mut size: u32 = 0;
+
+        // First call to get the necessary size
+        // 1 (TRUE) for bOrder (third argument) to sort the table, though sorting doesn't matter for us
+        let res = GetTcpTable2(std::ptr::null_mut(), &mut size, 1);
+
+        if res != ERROR_INSUFFICIENT_BUFFER && res != NO_ERROR {
+            #[cfg(debug_assertions)]
+            log_debug!("GetTcpTable2 failed to get size: {}", res);
+            return false;
+        }
+
+        if size == 0 {
+            return false;
+        }
+
+        // Allocate buffer
+        // Align to MIB_TCPTABLE2 alignment which is likely 4 or 8 bytes. 8 is safe.
+        let layout = Layout::from_size_align(size as usize, 8).unwrap();
+        let buffer = alloc(layout);
+
+        if buffer.is_null() {
+            log_error!("Failed to allocate memory for TCP table");
+            return false;
+        }
+
+        let table_ptr = buffer as *mut MIB_TCPTABLE2;
+
+        // Second call to get actual data
+        let res = GetTcpTable2(table_ptr, &mut size, 1);
+
+        if res != NO_ERROR {
+            log_error!("GetTcpTable2 failed: {}", res);
+            dealloc(buffer, layout);
+            return false;
+        }
+
+        let num_entries = (*table_ptr).dwNumEntries as usize;
+
+        // The table array is at the end of the struct.
+        // In winapi, MIB_TCPTABLE2 includes table: [MIB_TCPROW2; 1]
+        let rows_ptr = &((*table_ptr).table) as *const _ as *const MIB_TCPROW2;
+
+        let mut connected = false;
+
+        if num_entries > 0 {
+            let rows = std::slice::from_raw_parts(rows_ptr, num_entries);
+            for row in rows {
+                // Check for Established state (MIB_TCP_STATE_ESTAB = 5) and matching PID
+                if row.dwOwningPid == pid && row.dwState == MIB_TCP_STATE_ESTAB {
+                    connected = true;
+                    // We found one, that's enough to say we are connected
+                    break;
+                }
+            }
+        }
+
+        dealloc(buffer, layout);
+
+        if connected {
+            #[cfg(debug_assertions)]
+            log_debug!("is_socket_connected: Found established TCP connection for PID {}", pid);
+        } else {
+            #[cfg(debug_assertions)]
+            log_debug!("is_socket_connected: No established TCP connections found for PID {}", pid);
+        }
+
+        connected
+    }
+}
 
 /// Encode binary data to a base64 string using the standard Base64 alphabet with padding.
 ///
@@ -118,7 +204,9 @@ pub fn validate_nickname(
     buffer_size: usize,
     trace_id: &str,
 ) -> bool {
+    #[cfg(debug_assertions)]
     log_debug!("FiSH11_ExchangeKey[{}]: validating nickname: '{}'", trace_id, nickname); // Check if nickname is empty
+    
     if nickname.is_empty() {
         log_warn!("FiSH11_ExchangeKey[{}]: empty nickname provided", trace_id);
         match CString::new("Usage: /dll fish_11.dll FiSH11_ExchangeKey <nickname>") {

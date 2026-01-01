@@ -12,7 +12,7 @@ use std::os::raw::c_int;
 
 dll_function_identifier!(FiSH11_RemoveManualChannelKey, data, {
     let channel_name = unsafe { buffer_utils::parse_buffer_input(data)? };
-    
+
     // Validate channel name format
     if !channel_name.starts_with('#') && !channel_name.starts_with('&') {
         return Err(DllError::InvalidInput {
@@ -20,12 +20,12 @@ dll_function_identifier!(FiSH11_RemoveManualChannelKey, data, {
             reason: "Channel name must start with # or &".to_string(),
         });
     }
-    
+
     // Remove the manual channel key
     config::remove_manual_channel_key(&channel_name)?;
-    
+
     log_debug!("Successfully removed manual channel key for {}", channel_name);
-    
+
     Ok(format!("Manual channel key removed for {}", channel_name))
 });
 

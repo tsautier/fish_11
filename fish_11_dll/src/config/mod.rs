@@ -168,7 +168,8 @@ pub fn has_ratchet_channel_key(channel_name: &str) -> bool {
     with_config(|config| {
         let normalized_channel = channel_name.to_lowercase();
         Ok(config.channel_ratchet_states.contains_key(&normalized_channel))
-    }).unwrap_or(false)
+    })
+    .unwrap_or(false)
 }
 
 pub fn remove_manual_channel_key(channel_name: &str) -> Result<(), crate::error::FishError> {
@@ -184,7 +185,7 @@ pub fn remove_manual_channel_key(channel_name: &str) -> Result<(), crate::error:
 
 pub fn remove_ratchet_channel_key(channel_name: &str) -> Result<(), crate::error::FishError> {
     let normalized_channel = channel_name.to_lowercase();
-    
+
     with_config_mut(|config| {
         // Remove ratchet state for this channel
         config.channel_ratchet_states.remove(&normalized_channel);

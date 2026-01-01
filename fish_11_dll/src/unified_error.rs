@@ -50,6 +50,10 @@ pub enum DllError {
     #[error("encryption key for '{nickname}' has expired")]
     KeyExpired { nickname: String },
 
+    /// Not connected to IRC server
+    #[error("not connected to IRC: {0}")]
+    NotConnected(String),
+
     /// Key has invalid length or format
     #[error("invalid key: {reason}")]
     KeyInvalid { reason: String },
