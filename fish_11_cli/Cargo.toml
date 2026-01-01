@@ -10,11 +10,27 @@ authors = ["GuY"]
 libloading = "0.9.0"
 fish_11_core = { path = "../fish_11_core" }
 
-#term_size = "0.3"
-
 # Platform-specific dependencies
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winuser", "windef", "libloaderapi"] }
 
 [build-dependencies]
 vergen = { version = "9.0.6", features = ["build", "cargo", "rustc", "si"] }
+
+[profile.dev]
+opt-level = 0      # No optimization for faster compilation
+debug = 2          # Full debug information (maximum)
+strip = false      # Keep all symbols
+panic = "unwind"   # Full stack traces for debugging
+incremental = true # Faster recompilation
+lto = false        # Faster compilation
+
+[profile.release]
+opt-level = "z"   # Optimize for size
+lto = true        # Link Time Optimization
+codegen-units = 1 # Maximum optimization
+panic = "abort"   # Remove unwinding code
+strip = true      # Remove symbols
+
+[profile.release.package."*"]
+codegen-units = 1

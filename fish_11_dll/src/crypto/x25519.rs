@@ -7,6 +7,9 @@
 //! - Public key validation against low-order points
 //! - Secure key pair generation and rotation
 
+use crate::crypto::{KeyExchange, KeyPair};
+use crate::error::{FishError, Result};
+use crate::utils::{base64_decode, base64_encode, generate_random_bytes};
 use chacha20poly1305::aead::{Aead, KeyInit, OsRng, Payload};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use chrono::{DateTime, Duration, Utc};
@@ -16,6 +19,7 @@ use log::warn;
 use lru_time_cache::LruCache;
 use secrecy::{ExposeSecret, Secret};
 use sha2::{Digest, Sha256};
+use std::any::Any;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::Mutex;
@@ -23,9 +27,6 @@ use std::sync::atomic::AtomicU64;
 use subtle::ConstantTimeEq;
 use x25519_dalek::{PublicKey, StaticSecret};
 use zeroize::Zeroize;
-
-use crate::error::{FishError, Result};
-use crate::utils::{base64_decode, base64_encode, generate_random_bytes};
 
 const MAX_CIPHERTEXT_SIZE: usize = MAX_MESSAGE_SIZE + 16 + 12; // message + auth tag + nonce
 const NONCE_SIZE_BYTES: usize = 12; // ChaCha20-Poly1305 standard nonce size (96 bits)
@@ -51,13 +52,13 @@ lazy_static::lazy_static! {
 
 #[derive(Debug)]
 /// Represents a key pair for Curve25519 key exchange
-pub struct KeyPair {
+pub struct X25519KeyPair {
     pub private_key: Secret<[u8; 32]>,
     pub public_key: [u8; 32],
     pub creation_time: DateTime<Utc>,
 }
 
-impl Zeroize for KeyPair {
+impl Zeroize for X25519KeyPair {
     fn zeroize(&mut self) {
         // We access the raw private key bytes via expose_secret to securely zero them
         let mut private_copy = *self.private_key.expose_secret();
@@ -77,13 +78,13 @@ pub fn generate_symmetric_key() -> Result<[u8; 32]> {
         .map_err(|_| FishError::CryptoError("Failed to convert Vec<u8> to [u8; 32]".to_string()))
 }
 
-impl Drop for KeyPair {
+impl Drop for X25519KeyPair {
     fn drop(&mut self) {
         self.zeroize();
     }
 }
 
-impl KeyPair {
+impl X25519KeyPair {
     pub fn needs_rotation(&self) -> bool {
         // Rotate every 7 days
         Utc::now() - self.creation_time > Duration::days(7)
@@ -98,7 +99,7 @@ impl KeyPair {
 /// # Returns
 /// A `KeyPair` containing the private key (wrapped in `Secret`), public key,
 /// and creation timestamp for rotation tracking.
-pub fn generate_keypair() -> KeyPair {
+pub fn generate_keypair() -> X25519KeyPair {
     let secret = StaticSecret::random_from_rng(OsRng);
     let public = PublicKey::from(&secret);
 
@@ -108,10 +109,41 @@ pub fn generate_keypair() -> KeyPair {
     // Log key generation (audit trail)
     log_audit("Generated new keypair");
 
-    KeyPair {
+    X25519KeyPair {
         private_key: private_secret,
         public_key: *public.as_bytes(),
         creation_time: Utc::now(),
+    }
+}
+
+impl KeyPair for X25519KeyPair {
+    fn public_key_formatted(&self) -> String {
+        format_public_key(&self.public_key)
+    }
+
+    fn compute_shared_secret(&self, public_key: &[u8]) -> Result<[u8; 32]> {
+        if public_key.len() != 32 {
+            return Err(FishError::InvalidInput("Public key must be 32 bytes".to_string()));
+        }
+        let mut pk_array = [0u8; 32];
+        pk_array.copy_from_slice(public_key);
+        compute_shared_secret(&self.private_key, &pk_array)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+pub struct X25519KeyExchange;
+
+impl KeyExchange for X25519KeyExchange {
+    fn generate_keypair(&self) -> Result<Box<dyn KeyPair>> {
+        Ok(Box::new(generate_keypair()))
+    }
+
+    fn extract_public_key(&self, formatted: &str) -> Result<Vec<u8>> {
+        extract_public_key(formatted).map(|k| k.to_vec())
     }
 }
 
@@ -279,6 +311,7 @@ pub fn encrypt_message(
     // Generate a secure nonce using fully random bytes (12 bytes)
     let nonce_bytes = generate_random_bytes(NONCE_SIZE_BYTES);
     let mut nonce_array = [0u8; NONCE_SIZE_BYTES];
+
     nonce_array.copy_from_slice(&nonce_bytes[..NONCE_SIZE_BYTES]);
 
     let nonce = Nonce::from(nonce_array);
@@ -303,7 +336,9 @@ pub fn encrypt_message(
     if let Some(rec) = recipient {
         let mut hasher = Sha256::default();
         hasher.update(message.as_bytes());
+
         let msg_hash = base64_encode(&hasher.finalize()[0..8]);
+
         log_audit(&format!("Encrypt for {} - {}", rec, msg_hash));
 
         // Log sensitive content if DEBUG flag is enabled for sensitive content
@@ -371,6 +406,7 @@ pub fn decrypt_message(
 
     // Split into nonce and ciphertext : 12 bytes nonce
     let nonce = &data[..NONCE_SIZE_BYTES];
+
     // The rest is ciphertext
     let ciphertext = &data[NONCE_SIZE_BYTES..];
 
@@ -380,10 +416,12 @@ pub fn decrypt_message(
         nonce_array.copy_from_slice(nonce);
 
         let cache_lock_result = NONCE_CACHE.lock();
+
         if cache_lock_result.is_err() {
             return Err(FishError::CryptoError("Failed to acquire nonce cache lock".to_string()));
         }
         let mut cache = cache_lock_result.unwrap();
+
         if cache.contains_key(&nonce_array) {
             return Err(FishError::CryptoError("Potential replay attack detected".to_string()));
         }
@@ -394,7 +432,9 @@ pub fn decrypt_message(
     let chacha_key = Key::from(*key);
     let cipher = ChaCha20Poly1305::new(&chacha_key);
     let mut nonce_array = [0u8; NONCE_SIZE_BYTES];
+
     nonce_array.copy_from_slice(nonce);
+
     let nonce = Nonce::from(nonce_array);
 
     // Decrypt, including associated data if provided
@@ -406,8 +446,10 @@ pub fn decrypt_message(
 
     // Log decryption (audit trail)
     let mut hasher = Sha256::default();
+
     hasher.update(&plaintext);
     let msg_hash = base64_encode(&hasher.finalize()[0..8]);
+
     log_audit(&format!("Decrypt - {}", msg_hash));
 
     // Log sensitive content if DEBUG flag is enabled for sensitive content
@@ -542,6 +584,7 @@ pub fn process_dh_key_exchange(
 /// Check if a string is in valid public key format
 pub fn is_valid_public_key_format(formatted: &str) -> bool {
     const PREFIX: &str = "X25519_INIT:";
+    
     let encoded = match formatted.strip_prefix(PREFIX) {
         Some(e) => e,
         None => return false,
@@ -1261,6 +1304,7 @@ mod fcep1_ratchet_tests {
 
             // Extract nonce and advance ratchet
             let encrypted_bytes_result = crate::utils::base64_decode(&encrypted);
+
             if encrypted_bytes_result.is_err() {
                 panic!(
                     "Ratchet test failed to base64 decode encrypted data: {:?}",
@@ -1322,6 +1366,7 @@ mod fcep1_ratchet_tests {
 
         let key1 = state.current_key;
         let next_key1 = advance_ratchet_key(&key1, &nonce, "#test").unwrap();
+
         state.advance(next_key1);
 
         // Key 1 should be in previous_keys
@@ -1331,6 +1376,7 @@ mod fcep1_ratchet_tests {
         // Advance again
         let key2 = state.current_key;
         let next_key2 = advance_ratchet_key(&key2, &nonce, "#test").unwrap();
+
         state.advance(next_key2);
 
         // Keys should all be different
@@ -1359,15 +1405,18 @@ mod fcep1_ratchet_tests {
         let key1 = state.current_key;
         let nonce1 = [1u8; 12];
         let next_key1_result = advance_ratchet_key(&key1, &nonce1, channel);
+
         if next_key1_result.is_err() {
             panic!("Failed to advance ratchet key1: {:?}", next_key1_result.err());
         }
         let next_key1 = next_key1_result.unwrap();
+
         state.advance(next_key1);
 
         let key2 = state.current_key;
         let nonce2 = [2u8; 12];
         let next_key2_result = advance_ratchet_key(&key2, &nonce2, channel);
+
         if next_key2_result.is_err() {
             panic!("Failed to advance ratchet key2: {:?}", next_key2_result.err());
         }
@@ -1388,6 +1437,7 @@ mod fcep1_ratchet_tests {
 
         let msg3 = "current message";
         let encrypted3_result = encrypt_message(&key3, msg3, None, Some(channel.as_bytes()));
+
         if encrypted3_result.is_err() {
             panic!("Encryption of msg3 failed: {:?}", encrypted3_result.err());
         }

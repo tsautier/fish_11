@@ -1,3 +1,10 @@
+use crate::config::{CONFIG, get_key, get_keypair, save_config, set_key, store_keypair};
+use crate::crypto::x25519::{X25519KeyPair as KeyPair, format_public_key, generate_keypair};
+use crate::dll_interface::KEY_EXCHANGE_TIMEOUT_SECONDS;
+use crate::platform_types::{BOOL, HWND};
+use crate::unified_error::{DllError, DllResult};
+use crate::utils::{is_socket_connected, normalize_nick};
+use crate::{buffer_utils, dll_function_identifier, log_debug, log_info, log_warn};
 use rand::RngCore;
 use rand::rngs::OsRng;
 use secrecy::ExposeSecret;
@@ -6,16 +13,9 @@ use std::os::raw::c_int;
 use std::time::Instant;
 use subtle::ConstantTimeEq;
 
-use crate::config::{CONFIG, get_key, get_keypair, save_config, set_key, store_keypair};
-use crate::crypto::{KeyPair, format_public_key, generate_keypair};
-use crate::dll_interface::KEY_EXCHANGE_TIMEOUT_SECONDS;
-use crate::platform_types::{BOOL, HWND};
-use crate::unified_error::{DllError, DllResult};
-use crate::utils::normalize_nick;
-use crate::{buffer_utils, dll_function_identifier, log_debug, log_info, log_warn};
-
 dll_function_identifier!(FiSH11_ExchangeKey, data, {
     let overall_start = Instant::now();
+
     log_info!("=== Key exchange initiated ===");
 
     // This function is time-sensitive as it's part of an interactive user workflow.
@@ -56,6 +56,7 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     // Check if we're currently connected to IRC
     if !is_likely_connected() {
         log_warn!("Key exchange attempted while not connected to IRC");
+
         return Err(crate::unified_error::DllError::NotConnected(
             "Cannot perform key exchange when not connected to IRC".to_string(),
         ));
@@ -442,46 +443,18 @@ fn validate_keypair(keypair: &KeyPair) -> DllResult<()> {
     Ok(())
 }
 
-/// Checks if we're likely connected to an IRC server.
-///
-/// This function uses several heuristics to determine connection status:
-///   checks if we have a current network name set (indicates active connection)
-///   checks if we have any active keys (indicates recent IRC activity)
-///   checks if the master key is unlocked (indicates active session)
-///
-/// TODO : this is not a definitive check of socket connection status, but provides
-/// a reasonable heuristic for whether we can perform IRC operations. :D
 fn is_likely_connected() -> bool {
-    // Check if we have a current network name (strong indicator of active connection)
-    if let Some(network) = crate::get_current_network() {
-        if !network.is_empty() {
-            #[cfg(debug_assertions)]
-            log_debug!(
-                "is_likely_connected: Current network '{}' detected - likely connected",
-                network
-            );
-            return true;
-        }
-    }
-
-    // Check if we have any active keys (indicates recent IRC activity)
-    if let Ok(keys) = crate::config::key_management::list_keys() {
-        if !keys.is_empty() {
-            #[cfg(debug_assertions)]
-            log_debug!("is_likely_connected: {} active keys found - likely connected", keys.len());
-            return true;
-        }
-    }
-
-    // Check if master key is unlocked (indicates active session)
-    if crate::dll_interface::fish11_masterkey::is_master_key_unlocked() {
+    // Use the robust GetTcpTable2 check implemented in utils
+    // This reliably detects if we have an ESTABLISHED TCP connection
+    if is_socket_connected() {
         #[cfg(debug_assertions)]
-        log_debug!("is_likely_connected: Master key is unlocked - likely in active session");
+        log_debug!("is_likely_connected: Verified TCP connection found via GetTcpTable2");
         return true;
     }
 
+    // Fallback/Log if not connected
     #[cfg(debug_assertions)]
-    log_debug!("is_likely_connected: No connection indicators found - likely disconnected");
+    log_debug!("is_likely_connected: No verified TCP connection found");
     false
 }
 
