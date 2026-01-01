@@ -1,5 +1,5 @@
 use crate::config::{CONFIG, get_key, get_keypair, save_config, set_key, store_keypair};
-use crate::crypto::x25519::{X25519KeyPair, X25519KeyExchange, format_public_key};
+use crate::crypto::x25519::{X25519KeyExchange, X25519KeyPair, format_public_key};
 use crate::crypto::{KeyExchange, KeyPair};
 use crate::dll_interface::KEY_EXCHANGE_TIMEOUT_SECONDS;
 use crate::platform_types::{BOOL, HWND};
@@ -301,18 +301,24 @@ fn get_or_generate_keypair_internal() -> DllResult<(X25519KeyPair, bool)> {
 
             // Use Trait for generation
             let engine = X25519KeyExchange;
-            let boxed_keypair = engine.generate_keypair().map_err(|e| DllError::KeyExchangeFailed(e.to_string()))?;
-            
+            let boxed_keypair = engine
+                .generate_keypair()
+                .map_err(|e| DllError::KeyExchangeFailed(e.to_string()))?;
+
             // Downcast to concrete type for storage/return
-             // Note: Unwrapping is safe here because we know X25519KeyExchange produces X25519KeyPair 
-             // and we are inside the dll where we know the types.
+            // Note: Unwrapping is safe here because we know X25519KeyExchange produces X25519KeyPair
+            // and we are inside the dll where we know the types.
             let new_keypair = match boxed_keypair.as_any().downcast_ref::<X25519KeyPair>() {
                 Some(kp) => X25519KeyPair {
                     private_key: secrecy::Secret::new(*kp.private_key.expose_secret()),
                     public_key: kp.public_key,
-                    creation_time: kp.creation_time
+                    creation_time: kp.creation_time,
                 },
-                None => return Err(DllError::KeyExchangeFailed("Failed to downcast keypair".to_string()))
+                None => {
+                    return Err(DllError::KeyExchangeFailed(
+                        "Failed to downcast keypair".to_string(),
+                    ));
+                }
             };
 
             let keygen_duration = keygen_start.elapsed();
@@ -441,14 +447,10 @@ fn validate_keypair(keypair: &X25519KeyPair) -> DllResult<()> {
     // Check for all-zero keys
     let zeros = [0u8; 32];
     if keypair.public_key.ct_eq(&zeros).into() {
-        return Err(DllError::KeyInvalid {
-            reason: "Public key is all zeros".to_string(),
-        });
+        return Err(DllError::KeyInvalid { reason: "Public key is all zeros".to_string() });
     }
     if keypair.private_key.expose_secret().ct_eq(&zeros).into() {
-        return Err(DllError::KeyInvalid {
-            reason: "Private key is all zeros".to_string(),
-        });
+        return Err(DllError::KeyInvalid { reason: "Private key is all zeros".to_string() });
     }
 
     // Check if public key is on the curve (basic validation)

@@ -82,11 +82,9 @@ pub fn is_socket_connected() -> bool {
         dealloc(buffer, layout);
 
         if connected {
-
             #[cfg(debug_assertions)]
             log_debug!("is_socket_connected: Found established TCP connection for PID {}", pid);
         } else {
-
             #[cfg(debug_assertions)]
             log_debug!("is_socket_connected: No established TCP connections found for PID {}", pid);
         }
@@ -204,7 +202,6 @@ pub fn validate_nickname(
     buffer_size: usize,
     trace_id: &str,
 ) -> bool {
-
     #[cfg(debug_assertions)]
     log_debug!("FiSH11_ExchangeKey[{}]: validating nickname: '{}'", trace_id, nickname); // Check if nickname is empty
     if nickname.is_empty() {

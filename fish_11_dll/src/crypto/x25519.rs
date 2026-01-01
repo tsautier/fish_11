@@ -13,6 +13,7 @@ use crate::utils::{base64_decode, base64_encode};
 use chrono::{DateTime, Duration, Utc};
 use hkdf::Hkdf;
 use log::warn;
+use rand::rngs::OsRng;
 use secrecy::{ExposeSecret, Secret};
 use sha2::Sha256;
 use std::any::Any;
@@ -21,9 +22,6 @@ use std::io::Write;
 use subtle::ConstantTimeEq;
 use x25519_dalek::{PublicKey, StaticSecret};
 use zeroize::Zeroize;
-use rand::rngs::OsRng;
-
-
 
 #[derive(Debug)]
 /// Represents a key pair for Curve25519 key exchange
@@ -45,8 +43,6 @@ impl Zeroize for X25519KeyPair {
         }
     }
 }
-
-
 
 impl Drop for X25519KeyPair {
     fn drop(&mut self) {
@@ -234,8 +230,6 @@ fn validate_public_key(bytes: &[u8; 32]) -> Result<()> {
     Ok(())
 }
 
-
-
 /// Format a public key for sharing over IRC
 ///
 /// Encodes a 32-byte X25519 public key as base64 with the `X25519_INIT:` prefix.
@@ -355,7 +349,7 @@ pub fn process_dh_key_exchange(
 /// Check if a string is in valid public key format
 pub fn is_valid_public_key_format(formatted: &str) -> bool {
     const PREFIX: &str = "X25519_INIT:";
-    
+
     let encoded = match formatted.strip_prefix(PREFIX) {
         Some(e) => e,
         None => return false,
@@ -503,10 +497,6 @@ mod tests {
         assert_eq!(shared1, shared2, "Shared secrets should be identical");
     }
 
-
-
-
-
     #[test]
     fn test_validate_public_key_rejects_all_zeros() {
         let zero_key = [0u8; 32];
@@ -585,5 +575,3 @@ mod tests {
         assert!(result.is_err(), "compute_shared_secret should reject low-order public keys");
     }
 }
-
-

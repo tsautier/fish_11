@@ -349,12 +349,10 @@ pub fn delete_key(nickname: &str, network: Option<&str>) -> Result<()> {
         }
 
         if entry_removed || key_removed {
-
             #[cfg(debug_assertions)]
             log_debug!("Successfully removed key for {}", normalized_nick);
             Ok(())
         } else {
-
             #[cfg(debug_assertions)]
             log_debug!("Key not found for {} in any format", normalized_nick);
             Err(FishError::KeyNotFound(normalized_nick))
@@ -468,7 +466,6 @@ pub fn get_configured_key_ttl() -> i64 {
         Ok(ttl) => {
             // Validate TTL is within acceptable range
             if ttl < MIN_TTL {
-
                 #[cfg(debug_assertions)]
                 log_debug!(
                     "Configured TTL ({}) is below minimum ({}), using minimum",
@@ -477,7 +474,6 @@ pub fn get_configured_key_ttl() -> i64 {
                 );
                 MIN_TTL
             } else if ttl > MAX_TTL {
-
                 #[cfg(debug_assertions)]
                 log_debug!("Configured TTL ({}) exceeds maximum ({}), using maximum", ttl, MAX_TTL);
                 MAX_TTL
@@ -486,7 +482,6 @@ pub fn get_configured_key_ttl() -> i64 {
             }
         }
         Err(e) => {
-
             #[cfg(debug_assertions)]
             log_debug!("Failed to read TTL config: {}, using default ({})", e, DEFAULT_TTL);
             DEFAULT_TTL
@@ -518,13 +513,11 @@ pub fn get_configured_key_ttl() -> i64 {
 /// set_configured_key_ttl(172800)?;
 /// ```
 pub fn set_configured_key_ttl(ttl_seconds: i64) -> DllResult<()> {
-
     #[cfg(debug_assertions)]
     log_debug!("Attempting to set configured key TTL to {} seconds", ttl_seconds);
 
     // Validate TTL is within acceptable range
     if ttl_seconds < MIN_KEY_TTL {
-
         #[cfg(debug_assertions)]
         log_debug!("Invalid TTL value: {}. Below minimum of {} seconds.", ttl_seconds, MIN_KEY_TTL);
         return Err(DllError::InvalidInput {
@@ -537,7 +530,6 @@ pub fn set_configured_key_ttl(ttl_seconds: i64) -> DllResult<()> {
     }
 
     if ttl_seconds > MAX_KEY_TTL {
-
         #[cfg(debug_assertions)]
         log_debug!(
             "Invalid TTL value: {}. Exceeds maximum of {} seconds.",
@@ -554,7 +546,6 @@ pub fn set_configured_key_ttl(ttl_seconds: i64) -> DllResult<()> {
     }
 
     with_config_mut(|config| {
-
         #[cfg(debug_assertions)]
         log_debug!("Setting config.fish11.key_ttl to Some({})", ttl_seconds);
         config.fish11.key_ttl = Some(ttl_seconds);
@@ -752,14 +743,12 @@ pub fn get_our_keypair() -> Result<([u8; 32], [u8; 32])> {
 /// List all stored keys in the configuration
 pub fn list_keys() -> Result<Vec<(String, String, Option<String>, Option<String>)>> {
     with_config(|config| {
-
         #[cfg(debug_assertions)]
         log_debug!("list_keys: Starting to process {} total entries", config.entries.len());
         let mut result = Vec::new();
 
         // Process all entries in the new format: "nickname@network" or "#channel@network"
         for (entry_key, entry) in config.entries.iter() {
-
             #[cfg(debug_assertions)]
             log_debug!(
                 "list_keys: Processing entry: '{}' with key present: {}",
@@ -769,7 +758,6 @@ pub fn list_keys() -> Result<Vec<(String, String, Option<String>, Option<String>
 
             // Skip entries without keys
             if entry.key.is_none() {
-
                 #[cfg(debug_assertions)]
                 log_debug!("list_keys: Skipping entry '{}' due to no key", entry_key);
                 continue;
@@ -826,7 +814,7 @@ pub fn get_keypair() -> Result<crypto::x25519::X25519KeyPair> {
 
             private_key.copy_from_slice(&private_data);
             public_key.copy_from_slice(&public_data);
-            
+
             // Get approximate creation time from metadata or use current time
             let creation_time = match &config.keypair_creation_time {
                 Some(time_str) => chrono::DateTime::parse_from_rfc3339(time_str)

@@ -1,6 +1,6 @@
+use crate::crypto::MessageCipher;
 use crate::error::{FishError, Result};
 use crate::utils::{base64_decode, base64_encode, generate_random_bytes};
-use crate::crypto::MessageCipher;
 use base64::Engine as _;
 use base64::engine::general_purpose;
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
@@ -71,13 +71,28 @@ pub fn mark_nonce_seen(nonce: &[u8]) -> Result<()> {
 pub struct ChaCha20Poly1305Cipher;
 
 impl MessageCipher for ChaCha20Poly1305Cipher {
-    fn encrypt(&self, key: &[u8], message: &str, recipient: Option<&str>, associated_data: Option<&[u8]>) -> Result<String> {
-        let key_array: [u8; 32] = key.try_into().map_err(|_| FishError::InvalidInput("Key must be 32 bytes".to_string()))?;
+    fn encrypt(
+        &self,
+        key: &[u8],
+        message: &str,
+        recipient: Option<&str>,
+        associated_data: Option<&[u8]>,
+    ) -> Result<String> {
+        let key_array: [u8; 32] = key
+            .try_into()
+            .map_err(|_| FishError::InvalidInput("Key must be 32 bytes".to_string()))?;
         encrypt_message(&key_array, message, recipient, associated_data)
     }
 
-    fn decrypt(&self, key: &[u8], encrypted_data: &str, associated_data: Option<&[u8]>) -> Result<String> {
-        let key_array: [u8; 32] = key.try_into().map_err(|_| FishError::InvalidInput("Key must be 32 bytes".to_string()))?;
+    fn decrypt(
+        &self,
+        key: &[u8],
+        encrypted_data: &str,
+        associated_data: Option<&[u8]>,
+    ) -> Result<String> {
+        let key_array: [u8; 32] = key
+            .try_into()
+            .map_err(|_| FishError::InvalidInput("Key must be 32 bytes".to_string()))?;
         decrypt_message(&key_array, encrypted_data, associated_data)
     }
 

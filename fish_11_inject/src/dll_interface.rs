@@ -38,7 +38,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
     // Safety check
     if loadinfo.is_null() {
         error!("LoadDll() called with NULL loadinfo!");
-        
+
         error!("LoadDll() : loadinfo pointer is NULL - aborting");
         return MIRC_HALT; // Indicate failure
     }
@@ -130,7 +130,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
                 MB_ICONEXCLAMATION | MB_OK,
             );
         }
-        
+
         li.m_keep = 0; // Tell mIRC to unload us !
 
         #[cfg(debug_assertions)]
