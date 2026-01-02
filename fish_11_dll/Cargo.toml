@@ -41,6 +41,7 @@ thiserror = "2.0"
 
 # Shared core library
 fish_11_core = { path = "../fish_11_core" }
+#windows = "0.62.2"
 
 # Platform-specific dependencies
 [target.'cfg(windows)'.dependencies]

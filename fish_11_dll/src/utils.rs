@@ -9,13 +9,35 @@ use std::ffi::{CString, c_char};
 
 /// Checks if there is an established TCP connection owned by the current process.
 ///
-/// This uses the Windows API `GetTcpTable2` to list all TCP connections and checks
-/// for any connection in the `ESTABLISHED` state that belongs to the current PID.
-///
-/// WARNING : TODO : this function anly works on Windows. On other platforms, it should be
-/// modified accordingly.
-///
+/// This checks for any connection in the `ESTABLISHED` state that belongs to the current PID.
+/// The implementation is platform-specific:
+/// - On Windows, it uses the `GetTcpTable2` API from `iphlpapi.dll`.
+/// - On Unix-like systems, it reads `/proc/net/tcp` and `/proc/self/fd` to find matching sockets.
+/// Returns true if an established connection is found, false otherwise.
+/// 
 pub fn is_socket_connected() -> bool {
+    #[cfg(windows)]
+    {
+        is_socket_connected_windows()
+    }
+    #[cfg(not(windows))]
+    {
+        is_socket_connected_unix()
+    }
+}
+
+#[cfg(windows)]
+/// Windows implementation using GetTcpTable2 from iphlpapi.dll
+/// 
+/// This function retrieves the TCP connection table and checks for any established
+/// connections owned by the current process.
+/// 
+/// It uses unsafe code to call Windows API functions and handle raw pointers.
+/// Returns true if an established connection is found, false otherwise.
+/// 
+/// TODO: maybe consider caching results or optimizing for frequent calls if performance becomes an issue.
+/// 
+fn is_socket_connected_windows() -> bool {
     unsafe {
         use std::alloc::{Layout, alloc, dealloc};
         use winapi::shared::tcpmib::{MIB_TCP_STATE_ESTAB, MIB_TCPROW2, MIB_TCPTABLE2};
@@ -93,6 +115,90 @@ pub fn is_socket_connected() -> bool {
 
         connected
     }
+}
+
+#[cfg(not(windows))]
+// Other Unix (BSD, macOS): the implementation relies on /proc/net/tcp(6). While its Linux-centric, some BSDs
+// with Linux emulation (linprocfs) might support it. For native BSD/macOS support, sysctl bindings
+// would be required in the future but are out of scope for a basic portable implementation without adding large dependencies.
+//
+// TODO : implement native BSD/macOS support using sysctl.
+//
+/// For now, this function will only work on Linux systems with /proc filesystem.
+/// It checks /proc/net/tcp or /proc/net/tcp6 for established connections and matches them against the current process's 
+/// file descriptors in /proc/self/fd.
+/// 
+
+
+fn is_socket_connected_unix() -> bool {
+    use std::collections::HashSet;
+    use std::fs::{self, File};
+    use std::io::{BufRead, BufReader};
+
+    // Helper to parse /proc/net/tcp and return a set of established inodes
+    fn get_established_inodes(path: &str) -> HashSet<String> {
+        let mut inodes = HashSet::new();
+        if let Ok(file) = File::open(path) {
+            let reader = BufReader::new(file);
+            // Skip header
+            for line in reader.lines().skip(1) {
+                if let Ok(l) = line {
+                    // Line format:
+                    // sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+                    // 0: 0100007F:13AD 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 33527 1 0000000000000000 100 0 0 10 0
+                    let parts: Vec<&str> = l.split_whitespace().collect();
+                    if parts.len() >= 10 {
+                        let state = parts[3];
+                        let inode = parts[9];
+
+                        // State 01 is ESTABLISHED
+                        if state == "01" {
+                            inodes.insert(inode.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        inodes
+    }
+
+    // FIRST get all inodes for established TCP connections from system tables
+    let mut established_inodes = get_established_inodes("/proc/net/tcp");
+
+    // Optionally check tcp6 as well if desired, but sticking to tcp for basic compat
+    let established_inodes_v6 = get_established_inodes("/proc/net/tcp6");
+    established_inodes.extend(established_inodes_v6);
+
+    if established_inodes.is_empty() {
+        return false; // No established connections at all
+    }
+
+    // THEN Iterate over our own file descriptors to see if we own any of these sockets
+    if let Ok(entries) = fs::read_dir("/proc/self/fd") {
+        for entry in entries {
+            if let Ok(entry) = entry {
+                if let Ok(path) = entry.path().read_link() {
+                    let path_str = path.to_string_lossy();
+                    // format is socket:[inode]
+                    if path_str.starts_with("socket:[") && path_str.ends_with("]") {
+                        let inode_str = &path_str[8..path_str.len() - 1];
+                        if established_inodes.contains(inode_str) {
+                            #[cfg(debug_assertions)]
+                            log_debug!(
+                                "is_socket_connected: found established TCP connection (inode {})",
+                                inode_str
+                            );
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    log_debug!("is_socket_connected: no established TCP connections found in /proc/self/fd");
+    false
 }
 
 /// Encode binary data to a base64 string using the standard Base64 alphabet with padding.
@@ -206,7 +312,7 @@ pub fn validate_nickname(
 ) -> bool {
     #[cfg(debug_assertions)]
     log_debug!("FiSH11_ExchangeKey[{}]: validating nickname: '{}'", trace_id, nickname); // Check if nickname is empty
-    
+
     if nickname.is_empty() {
         log_warn!("FiSH11_ExchangeKey[{}]: empty nickname provided", trace_id);
         match CString::new("Usage: /dll fish_11.dll FiSH11_ExchangeKey <nickname>") {
