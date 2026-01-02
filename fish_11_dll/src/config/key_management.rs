@@ -1,6 +1,3 @@
-use chrono::{Local, NaiveDateTime};
-use secrecy::ExposeSecret;
-
 use crate::config::config_access::{with_config, with_config_mut};
 use crate::config::models::{EntryData, FishConfig};
 use crate::config::networks;
@@ -8,6 +5,8 @@ use crate::error::{FishError, Result};
 use crate::unified_error::{DllError, DllResult};
 use crate::utils::{base64_decode, base64_encode, normalize_nick};
 use crate::{crypto, log_debug, log_info};
+use chrono::{Local, NaiveDateTime};
+use secrecy::ExposeSecret;
 
 // ============================================================================
 // TTL Configuration Constants
@@ -795,44 +794,48 @@ pub fn list_keys() -> Result<Vec<(String, String, Option<String>, Option<String>
     })
 }
 
+/// Internal: get keypair from config without acquiring locks
+pub(crate) fn get_keypair_internal(
+    config: &FishConfig,
+) -> Result<Option<crypto::x25519::X25519KeyPair>> {
+    // If we have both keys, return them
+    if let (Some(private_b64), Some(public_b64)) = (&config.our_private_key, &config.our_public_key)
+    {
+        let private_data = base64_decode(private_b64)?;
+        let public_data = base64_decode(public_b64)?;
+
+        if private_data.len() != 32 || public_data.len() != 32 {
+            return Err(FishError::ConfigError("Invalid stored keypair".to_string()));
+        }
+        let mut private_key = [0u8; 32];
+        let mut public_key = [0u8; 32];
+
+        private_key.copy_from_slice(&private_data);
+        public_key.copy_from_slice(&public_data);
+
+        // Get approximate creation time from metadata or use current time
+        let creation_time = match &config.keypair_creation_time {
+            Some(time_str) => chrono::DateTime::parse_from_rfc3339(time_str)
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .unwrap_or_else(|_| chrono::Utc::now()),
+            None => chrono::Utc::now(),
+        };
+
+        return Ok(Some(crypto::x25519::X25519KeyPair {
+            private_key: secrecy::Secret::new(private_key),
+            public_key,
+            creation_time,
+        }));
+    }
+
+    // No keys found
+    Ok(None)
+}
+
 /// Get our stored keypair, or generate a new one if none exists
 pub fn get_keypair() -> Result<crypto::x25519::X25519KeyPair> {
     // First try to get existing keypair
-    let keypair_result = with_config(|config| {
-        // If we have both keys, return them
-        if let (Some(private_b64), Some(public_b64)) =
-            (&config.our_private_key, &config.our_public_key)
-        {
-            let private_data = base64_decode(private_b64)?;
-            let public_data = base64_decode(public_b64)?;
-
-            if private_data.len() != 32 || public_data.len() != 32 {
-                return Err(FishError::ConfigError("Invalid stored keypair".to_string()));
-            }
-            let mut private_key = [0u8; 32];
-            let mut public_key = [0u8; 32];
-
-            private_key.copy_from_slice(&private_data);
-            public_key.copy_from_slice(&public_data);
-
-            // Get approximate creation time from metadata or use current time
-            let creation_time = match &config.keypair_creation_time {
-                Some(time_str) => chrono::DateTime::parse_from_rfc3339(time_str)
-                    .map(|dt| dt.with_timezone(&chrono::Utc))
-                    .unwrap_or_else(|_| chrono::Utc::now()),
-                None => chrono::Utc::now(),
-            };
-
-            return Ok(Some(crypto::x25519::X25519KeyPair {
-                private_key: secrecy::Secret::new(private_key),
-                public_key,
-                creation_time,
-            }));
-        }
-
-        // No keys found
-        Ok(None)
-    })?;
+    let keypair_result = with_config(|config| get_keypair_internal(config))?;
 
     // If we found a keypair, return it
     if let Some(keypair) = keypair_result {
