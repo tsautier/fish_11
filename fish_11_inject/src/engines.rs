@@ -1,10 +1,10 @@
 //! This module handles the registration and management of external engines for the FiSH IRC client.
 
-use std::collections::HashMap;
-use std::ffi::{CStr, CString};
 use fish_11_core::globals::FISH_INJECT_ENGINE_VERSION;
 use log::{error, info, trace, warn};
 use parking_lot::{Mutex, RwLock};
+use std::collections::HashMap;
+use std::ffi::{CStr, CString};
 
 // C structure definition provided by engines
 #[repr(C)]

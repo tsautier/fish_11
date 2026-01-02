@@ -3,14 +3,13 @@
 //! This module allows users to set fixed encryption keys for channels that will
 //! be persisted to the configuration file in an encrypted format.
 
-use secrecy::ExposeSecret;
-
 use crate::config::config_access::{with_config, with_config_mut};
-use crate::config::models::EntryData;
+use crate::config::models::{EntryData, FishConfig};
 use crate::error::{FishError, Result};
 use crate::unified_error::{DllError, DllResult};
 use crate::utils::{base64_decode, base64_encode};
 use crate::{crypto, log_debug};
+use secrecy::ExposeSecret;
 
 /// Sets a manual channel key in the configuration after encrypting it.
 ///
@@ -142,7 +141,7 @@ pub fn get_manual_channel_key(channel_name: &str) -> DllResult<[u8; 32]> {
         })?;
 
         // Decrypt the key
-        decrypt_channel_key_from_storage(encrypted_key_b64, &normalized_channel)
+        decrypt_channel_key_from_storage(encrypted_key_b64, &normalized_channel, config)
     })
     .map_err(DllError::from)
 }
@@ -159,26 +158,22 @@ fn encrypt_channel_key_for_storage(key: &[u8; 32], channel_name: &str) -> Result
     // Convert key to base64 string
     let key_b64 = base64_encode(&key[..]);
 
-    // Log sensitive content if DEBUG flag is enabled for sensitive content
-    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-        log_debug!(
-            "Manual_Channel_Keys: encrypting channel key for '{}': {} bytes",
-            channel_name,
-            key_b64.len()
-        );
-    }
+    #[cfg(debug_assertions)]
+    log_debug!(
+        "Manual_Channel_Keys: encrypting channel key for '{}': {} bytes",
+        channel_name,
+        key_b64.len()
+    );
 
     // Encrypt the channel key with the master key
     let encrypted_key = crypto::encrypt_message(&master_key, &key_b64, None, Some(ad))?;
 
-    // Log encrypted result if DEBUG flag is enabled for sensitive content
-    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-        log_debug!(
-            "Manual_Channel_Keys: encrypted channel key for '{}': {} bytes",
-            channel_name,
-            encrypted_key.len()
-        );
-    }
+    #[cfg(debug_assertions)]
+    log_debug!(
+        "Manual_Channel_Keys: encrypted channel key for '{}': {} bytes",
+        channel_name,
+        encrypted_key.len()
+    );
 
     Ok(encrypted_key)
 }
@@ -186,34 +181,33 @@ fn encrypt_channel_key_for_storage(key: &[u8; 32], channel_name: &str) -> Result
 fn decrypt_channel_key_from_storage(
     encrypted_key_b64: &str,
     channel_name: &str,
+    config: &FishConfig,
 ) -> Result<[u8; 32]> {
     // Derive the same master encryption key from the user's private key
-    let master_key = derive_master_storage_key()?;
+    let master_key = derive_master_storage_key_internal(config)?;
 
     // Use the channel name as Associated Data to prevent cross-channel key usage
     let ad_str = format!("channel_key_{}", channel_name);
     let ad = ad_str.as_bytes();
 
-    // Log sensitive content if DEBUG flag is enabled for sensitive content
-    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-        log_debug!(
-            "Manual_Channel_Keys: decrypting channel key for '{}': {} bytes",
-            channel_name,
-            encrypted_key_b64.len()
-        );
-    }
+    // Log sensitive content if DEBUG flag is enabled for sensitive content#[cfg(debug_assertions)]
+
+    #[cfg(debug_assertions)]
+    log_debug!(
+        "Manual_Channel_Keys: decrypting channel key for '{}': {} bytes",
+        channel_name,
+        encrypted_key_b64.len()
+    );
 
     // Decrypt the base64-encoded channel key
     let decrypted_key_b64 = crypto::decrypt_message(&master_key, encrypted_key_b64, Some(ad))?;
 
-    // Log decrypted result if DEBUG flag is enabled for sensitive content
-    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-        log_debug!(
-            "Manual_Channel_Keys: decrypted channel key for '{}': {} bytes",
-            channel_name,
-            decrypted_key_b64.len()
-        );
-    }
+    #[cfg(debug_assertions)]
+    log_debug!(
+        "Manual_Channel_Keys: decrypted channel key for '{}': {} bytes",
+        channel_name,
+        decrypted_key_b64.len()
+    );
 
     // Now decode the base64 to get the actual key
     let key_bytes = base64_decode(&decrypted_key_b64)
@@ -250,6 +244,30 @@ fn derive_master_storage_key() -> Result<[u8; 32]> {
         .map_err(|e| FishError::CryptoError(format!("HKDF expansion failed: {}", e)))?;
 
     Ok(output)
+}
+
+/// Internal version that derives a master key using a provided config reference
+/// to avoid recursive locking issues.
+fn derive_master_storage_key_internal(config: &FishConfig) -> Result<[u8; 32]> {
+    use hkdf::Hkdf;
+    use sha2::Sha256;
+
+    // Get the user's private key using the internal function to avoid recursive locking
+    if let Some(keypair) = crate::config::key_management::get_keypair_internal(config)? {
+        let private_bytes = keypair.private_key.expose_secret();
+
+        // Use HKDF to derive a 32-byte key for storage purposes
+        let hkdf = Hkdf::<Sha256>::new(None, private_bytes);
+        let mut output = [0u8; 32];
+        hkdf.expand(b"FiSH11-ChannelKeyStorage", &mut output)
+            .map_err(|e| FishError::CryptoError(format!("HKDF expansion failed: {}", e)))?;
+
+        Ok(output)
+    } else {
+        Err(FishError::ConfigError(
+            "No keypair available for deriving master storage key".to_string(),
+        ))
+    }
 }
 
 /// Lists all manually stored channel keys (for display purposes).

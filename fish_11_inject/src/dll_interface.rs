@@ -1,4 +1,4 @@
-use std::ffi::{CString, c_int, c_char};
+use std::ffi::{CString, c_char, c_int};
 use std::sync::atomic::Ordering;
 
 // use fish_11_core::buffer_utils::write_cstring_to_buffer; // Removed as mIRC LoadDll doesn't support returned data
@@ -17,12 +17,12 @@ use crate::{
 
 #[repr(C)]
 pub struct LOADINFO {
-    pub m_version: u32,  // mVersion (DWORD)
-    pub m_hwnd: HWND,    // mHwnd (HWND)
-    pub m_keep: i32,     // mKeep (BOOL)
-    pub m_unicode: i32,  // mUnicode (BOOL)
-    pub m_beta: u32,     // mBeta (DWORD)
-    pub m_bytes: u32,    // mBytes (DWORD)
+    pub m_version: u32, // mVersion (DWORD)
+    pub m_hwnd: HWND,   // mHwnd (HWND)
+    pub m_keep: i32,    // mKeep (BOOL)
+    pub m_unicode: i32, // mUnicode (BOOL)
+    pub m_beta: u32,    // mBeta (DWORD)
+    pub m_bytes: u32,   // mBytes (DWORD)
 }
 
 #[no_mangle]
@@ -38,7 +38,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
     // Safety check
     if loadinfo.is_null() {
         error!("LoadDll() called with NULL loadinfo!");
-        #[cfg(debug_assertions)]
+
         error!("LoadDll() : loadinfo pointer is NULL - aborting");
         return MIRC_HALT; // Indicate failure
     }
@@ -112,7 +112,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
     info!("Setting up socket hooks...");
 
     #[cfg(debug_assertions)]
-    info!("LoadDll() : Calling install_hooks()...");
+    info!("LoadDll() : calling install_hooks()...");
 
     if let Err(e) = install_hooks() {
         error!("Failed to set up Winsock hooks: {}", e);
@@ -130,7 +130,8 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
                 MB_ICONEXCLAMATION | MB_OK,
             );
         }
-        li.m_keep = 0; // Tell mIRC to unload us
+
+        li.m_keep = 0; // Tell mIRC to unload us !
 
         #[cfg(debug_assertions)]
         error!("LoadDll() : returning MIRC_HALT due to hook installation failure");
@@ -151,11 +152,10 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
 
         // Prepare version string as a command
         let version_cmd = format!("*** FiSH_11 inject v{} loaded successfully. ***", BUILD_VERSION);
-        
+
         // Removed logic attempting to write to m_filename as mIRC LOADINFO does not have a filename/data buffer.
         // We rely on scripts calling FiSH11_InjectVersion explicitly or debug info.
         info!("Version info: {}", version_cmd);
-
     } else {
         #[cfg(debug_assertions)]
         info!("LoadDll() : VERSION_SHOWN already true, skipping version message");

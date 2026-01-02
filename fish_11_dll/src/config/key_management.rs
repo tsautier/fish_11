@@ -1,6 +1,3 @@
-use chrono::{Local, NaiveDateTime};
-use secrecy::ExposeSecret;
-
 use crate::config::config_access::{with_config, with_config_mut};
 use crate::config::models::{EntryData, FishConfig};
 use crate::config::networks;
@@ -8,6 +5,8 @@ use crate::error::{FishError, Result};
 use crate::unified_error::{DllError, DllResult};
 use crate::utils::{base64_decode, base64_encode, normalize_nick};
 use crate::{crypto, log_debug, log_info};
+use chrono::{Local, NaiveDateTime};
+use secrecy::ExposeSecret;
 
 // ============================================================================
 // TTL Configuration Constants
@@ -148,9 +147,9 @@ fn get_key_internal(config: &FishConfig, nickname: &str, network: Option<&str>) 
             check_expiration(entry, &normalized_nick)?;
 
             // Log sensitive content if DEBUG flag is enabled for sensitive content (without revealing the full key)
-            if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                log_debug!("Config: retrieved key for '{}' ({} bytes)", entry_key, key_str.len());
-            }
+            #[cfg(debug_assertions)]
+            log_debug!("Config: retrieved key for '{}' ({} bytes)", entry_key, key_str.len());
+
             return base64_decode(key_str).map_err(FishError::from);
         }
     }
@@ -163,7 +162,9 @@ fn get_key_internal(config: &FishConfig, nickname: &str, network: Option<&str>) 
                 // Check for expiration
                 check_expiration(entry, &normalized_nick)?;
 
+                #[cfg(debug_assertions)]
                 log_debug!("Key found with fallback to @default for {}", normalized_nick);
+
                 return base64_decode(key_str).map_err(FishError::from);
             }
         }
@@ -180,6 +181,7 @@ fn get_key_internal(config: &FishConfig, nickname: &str, network: Option<&str>) 
                     // Check for expiration
                     check_expiration(entry_data, &normalized_nick)?;
 
+                    #[cfg(debug_assertions)]
                     log_debug!(
                         "Key found with network fallback for '{}' (found in '{}')",
                         normalized_nick,
@@ -249,6 +251,8 @@ pub fn set_key(
             };
 
             let entry_key = format!("{}:{}", net, nickname);
+
+            #[cfg(debug_assertions)]
             log_debug!("Checking for existing key with entry: {}", entry_key);
 
             if config.entries.contains_key(&entry_key) {
@@ -269,12 +273,11 @@ pub fn set_key(
             format!("{}@{}", normalized_nick, network_name) // Format: nickname@network
         };
 
+        #[cfg(debug_assertions)]
         log_debug!("Setting key for entry: {}", entry_key);
 
-        // Log sensitive content if DEBUG flag is enabled for sensitive content
-        if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-            log_debug!("Config: storing key for '{}': base64_{}bytes", entry_key, key.len());
-        }
+        #[cfg(debug_assertions)]
+        log_debug!("Config: storing key for '{}': base64_{}bytes", entry_key, key.len());
 
         let entry = EntryData {
             key: Some(base64_encode(key)),
@@ -331,9 +334,11 @@ pub fn delete_key(nickname: &str, network: Option<&str>) -> Result<()> {
             format!("{}@{}", normalized_nick, network_name)
         };
 
+        #[cfg(debug_assertions)]
         log_debug!("Attempting to delete key with entry: {}", entry_key);
 
         let entry_removed = config.entries.remove(&entry_key).is_some();
+
         // Remove from keys map too if present
         let key_removed = config.keys.remove(&normalized_nick).is_some();
 
@@ -343,9 +348,11 @@ pub fn delete_key(nickname: &str, network: Option<&str>) -> Result<()> {
         }
 
         if entry_removed || key_removed {
+            #[cfg(debug_assertions)]
             log_debug!("Successfully removed key for {}", normalized_nick);
             Ok(())
         } else {
+            #[cfg(debug_assertions)]
             log_debug!("Key not found for {} in any format", normalized_nick);
             Err(FishError::KeyNotFound(normalized_nick))
         }
@@ -458,6 +465,7 @@ pub fn get_configured_key_ttl() -> i64 {
         Ok(ttl) => {
             // Validate TTL is within acceptable range
             if ttl < MIN_TTL {
+                #[cfg(debug_assertions)]
                 log_debug!(
                     "Configured TTL ({}) is below minimum ({}), using minimum",
                     ttl,
@@ -465,6 +473,7 @@ pub fn get_configured_key_ttl() -> i64 {
                 );
                 MIN_TTL
             } else if ttl > MAX_TTL {
+                #[cfg(debug_assertions)]
                 log_debug!("Configured TTL ({}) exceeds maximum ({}), using maximum", ttl, MAX_TTL);
                 MAX_TTL
             } else {
@@ -472,6 +481,7 @@ pub fn get_configured_key_ttl() -> i64 {
             }
         }
         Err(e) => {
+            #[cfg(debug_assertions)]
             log_debug!("Failed to read TTL config: {}, using default ({})", e, DEFAULT_TTL);
             DEFAULT_TTL
         }
@@ -502,10 +512,12 @@ pub fn get_configured_key_ttl() -> i64 {
 /// set_configured_key_ttl(172800)?;
 /// ```
 pub fn set_configured_key_ttl(ttl_seconds: i64) -> DllResult<()> {
+    #[cfg(debug_assertions)]
     log_debug!("Attempting to set configured key TTL to {} seconds", ttl_seconds);
 
     // Validate TTL is within acceptable range
     if ttl_seconds < MIN_KEY_TTL {
+        #[cfg(debug_assertions)]
         log_debug!("Invalid TTL value: {}. Below minimum of {} seconds.", ttl_seconds, MIN_KEY_TTL);
         return Err(DllError::InvalidInput {
             param: "ttl_seconds".to_string(),
@@ -517,6 +529,7 @@ pub fn set_configured_key_ttl(ttl_seconds: i64) -> DllResult<()> {
     }
 
     if ttl_seconds > MAX_KEY_TTL {
+        #[cfg(debug_assertions)]
         log_debug!(
             "Invalid TTL value: {}. Exceeds maximum of {} seconds.",
             ttl_seconds,
@@ -532,12 +545,14 @@ pub fn set_configured_key_ttl(ttl_seconds: i64) -> DllResult<()> {
     }
 
     with_config_mut(|config| {
+        #[cfg(debug_assertions)]
         log_debug!("Setting config.fish11.key_ttl to Some({})", ttl_seconds);
         config.fish11.key_ttl = Some(ttl_seconds);
         config.mark_dirty();
         Ok(())
     })?;
 
+    #[cfg(debug_assertions)]
     log_debug!("Successfully set and saved key TTL to {} seconds.", ttl_seconds);
     Ok(())
 }
@@ -727,11 +742,13 @@ pub fn get_our_keypair() -> Result<([u8; 32], [u8; 32])> {
 /// List all stored keys in the configuration
 pub fn list_keys() -> Result<Vec<(String, String, Option<String>, Option<String>)>> {
     with_config(|config| {
+        #[cfg(debug_assertions)]
         log_debug!("list_keys: Starting to process {} total entries", config.entries.len());
         let mut result = Vec::new();
 
         // Process all entries in the new format: "nickname@network" or "#channel@network"
         for (entry_key, entry) in config.entries.iter() {
+            #[cfg(debug_assertions)]
             log_debug!(
                 "list_keys: Processing entry: '{}' with key present: {}",
                 entry_key,
@@ -740,6 +757,7 @@ pub fn list_keys() -> Result<Vec<(String, String, Option<String>, Option<String>
 
             // Skip entries without keys
             if entry.key.is_none() {
+                #[cfg(debug_assertions)]
                 log_debug!("list_keys: Skipping entry '{}' due to no key", entry_key);
                 continue;
             }
@@ -759,6 +777,7 @@ pub fn list_keys() -> Result<Vec<(String, String, Option<String>, Option<String>
                         entry.date.clone(),
                     ));
 
+                    #[cfg(debug_assertions)]
                     log_debug!(
                         "Found key for {} on network {} ({})",
                         name_part,
@@ -769,48 +788,54 @@ pub fn list_keys() -> Result<Vec<(String, String, Option<String>, Option<String>
             }
         }
 
+        #[cfg(debug_assertions)]
         log_debug!("list_keys: Found {} total keys", result.len());
         Ok(result)
     })
 }
 
-/// Get our stored keypair, or generate a new one if none exists
-pub fn get_keypair() -> Result<crypto::KeyPair> {
-    // First try to get existing keypair
-    let keypair_result = with_config(|config| {
-        // If we have both keys, return them
-        if let (Some(private_b64), Some(public_b64)) =
-            (&config.our_private_key, &config.our_public_key)
-        {
-            let private_data = base64_decode(private_b64)?;
-            let public_data = base64_decode(public_b64)?;
+/// Internal: get keypair from config without acquiring locks
+pub(crate) fn get_keypair_internal(
+    config: &FishConfig,
+) -> Result<Option<crypto::x25519::X25519KeyPair>> {
+    // If we have both keys, return them
+    if let (Some(private_b64), Some(public_b64)) = (&config.our_private_key, &config.our_public_key)
+    {
+        let private_data = base64_decode(private_b64)?;
+        let public_data = base64_decode(public_b64)?;
 
-            if private_data.len() != 32 || public_data.len() != 32 {
-                return Err(FishError::ConfigError("Invalid stored keypair".to_string()));
-            }
-            let mut private_key = [0u8; 32];
-            let mut public_key = [0u8; 32];
-
-            private_key.copy_from_slice(&private_data);
-            public_key.copy_from_slice(&public_data);
-            // Get approximate creation time from metadata or use current time
-            let creation_time = match &config.keypair_creation_time {
-                Some(time_str) => chrono::DateTime::parse_from_rfc3339(time_str)
-                    .map(|dt| dt.with_timezone(&chrono::Utc))
-                    .unwrap_or_else(|_| chrono::Utc::now()),
-                None => chrono::Utc::now(),
-            };
-
-            return Ok(Some(crypto::KeyPair {
-                private_key: secrecy::Secret::new(private_key),
-                public_key,
-                creation_time,
-            }));
+        if private_data.len() != 32 || public_data.len() != 32 {
+            return Err(FishError::ConfigError("Invalid stored keypair".to_string()));
         }
+        let mut private_key = [0u8; 32];
+        let mut public_key = [0u8; 32];
 
-        // No keys found
-        Ok(None)
-    })?;
+        private_key.copy_from_slice(&private_data);
+        public_key.copy_from_slice(&public_data);
+
+        // Get approximate creation time from metadata or use current time
+        let creation_time = match &config.keypair_creation_time {
+            Some(time_str) => chrono::DateTime::parse_from_rfc3339(time_str)
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .unwrap_or_else(|_| chrono::Utc::now()),
+            None => chrono::Utc::now(),
+        };
+
+        return Ok(Some(crypto::x25519::X25519KeyPair {
+            private_key: secrecy::Secret::new(private_key),
+            public_key,
+            creation_time,
+        }));
+    }
+
+    // No keys found
+    Ok(None)
+}
+
+/// Get our stored keypair, or generate a new one if none exists
+pub fn get_keypair() -> Result<crypto::x25519::X25519KeyPair> {
+    // First try to get existing keypair
+    let keypair_result = with_config(|config| get_keypair_internal(config))?;
 
     // If we found a keypair, return it
     if let Some(keypair) = keypair_result {
@@ -818,14 +843,14 @@ pub fn get_keypair() -> Result<crypto::KeyPair> {
     }
 
     // Otherwise, generate a new keypair
-    let keypair = crypto::generate_keypair();
+    let keypair = crypto::x25519::generate_keypair();
     store_keypair(&keypair)?;
 
     Ok(keypair)
 }
 
 /// Store our keypair for future use
-pub fn store_keypair(keypair: &crypto::KeyPair) -> Result<()> {
+pub fn store_keypair(keypair: &crypto::x25519::X25519KeyPair) -> Result<()> {
     with_config_mut(|config| {
         config.our_private_key = Some(base64_encode(keypair.private_key.expose_secret()));
         config.our_public_key = Some(base64_encode(&keypair.public_key));

@@ -164,4 +164,65 @@ mod tests {
         let (_, result) = call_dll_function(INI_GetInt as _, "unknown_key");
         assert_eq!(result, "0");
     }
+
+    // INI_SetString Tests
+    #[test]
+    fn test_ini_setstring_plain_prefix() {
+        setup_test_config();
+        let (_, result) = call_dll_function(INI_SetString as _, "plain_prefix +newtest");
+        assert!(result.contains("set successfully"));
+
+        // Verify the value was actually set
+        let (_, get_result) = call_dll_function(INI_GetString as _, "plain_prefix");
+        assert_eq!(get_result, "+newtest");
+    }
+
+    #[test]
+    fn test_ini_setstring_mark_encrypted() {
+        setup_test_config();
+        let (_, result) = call_dll_function(INI_SetString as _, "mark_encrypted [NEW]");
+        assert!(result.contains("set successfully"));
+
+        // Verify the value was actually set
+        let (_, get_result) = call_dll_function(INI_GetString as _, "mark_encrypted");
+        assert_eq!(get_result, "[NEW]");
+    }
+
+    #[test]
+    fn test_ini_setstring_unknown_key() {
+        setup_test_config();
+        let (_, result) = call_dll_function(INI_SetString as _, "unknown_key some_value");
+        assert!(result.contains("set successfully"));
+    }
+
+    // INI_SetInt Tests
+    #[test]
+    fn test_ini_setint_mark_position() {
+        setup_test_config();
+        let (_, result) = call_dll_function(INI_SetInt as _, "mark_position 99");
+        assert!(result.contains("set successfully"));
+
+        // Verify the value was actually set
+        let (_, get_result) = call_dll_function(INI_GetInt as _, "mark_position");
+        assert_eq!(get_result, "99");
+    }
+
+    #[test]
+    fn test_ini_setint_process_incoming() {
+        setup_test_config();
+        let (_, result) = call_dll_function(INI_SetInt as _, "process_incoming 1");
+        assert!(result.contains("set successfully"));
+
+        // Verify the value was actually set
+        let (_, get_result) = call_dll_function(INI_GetBool as _, "process_incoming");
+        assert_eq!(get_result, "1");
+    }
+
+    #[test]
+    fn test_ini_setint_invalid_value() {
+        setup_test_config();
+        let (result_code, result) = call_dll_function(INI_SetInt as _, "mark_position invalid");
+        assert_eq!(result_code, crate::dll_interface::MIRC_ERROR);
+        assert!(result.to_lowercase().contains("invalid"));
+    }
 }
