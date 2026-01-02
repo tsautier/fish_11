@@ -1,22 +1,30 @@
-use std::sync::Mutex;
-
-use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION};
-use log;
-#[cfg(windows)]
-use winapi::shared::minwindef::{DWORD, HINSTANCE, LPVOID, TRUE};
-
 use crate::dll_interface::DEFAULT_MIRC_BUFFER_SIZE;
 use crate::platform_types::{BOOL, HWND, c_int};
 use crate::{log_debug, log_info};
+use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION};
+use log;
+use std::sync::Mutex;
+#[cfg(windows)]
+use windows::Win32::Foundation::HINSTANCE;
 
+const TRUE: c_int = 1;
+
+#[cfg(windows)]
+type DWORD = u32;
+#[cfg(windows)]
+type LPVOID = *mut std::ffi::c_void;
 #[cfg(not(windows))]
 type DWORD = u32;
 #[cfg(not(windows))]
 type HINSTANCE = *mut std::ffi::c_void;
 #[cfg(not(windows))]
 type LPVOID = *mut std::ffi::c_void;
-#[cfg(not(windows))]
+
+/* #[cfg(not(windows))]
 const TRUE: c_int = 1;
+
+#[cfg(windows)]
+const TRUE: c_int = 1; */
 
 /// mIRC stuffaize
 #[allow(dead_code)]
@@ -108,7 +116,8 @@ pub(crate) fn get_buffer_size_basic() -> usize {
 #[cfg(windows)]
 pub extern "system" fn DllMain(_hinst: HINSTANCE, reason: DWORD, _: LPVOID) -> BOOL {
     match reason {
-        winapi::um::winnt::DLL_PROCESS_ATTACH => {
+        1 => {
+            // DLL_PROCESS_ATTACH
             // Initialize logger first with Info level (can be changed to Debug for more details)
             let _ = crate::logging::init_logger(log::LevelFilter::Info);
 
@@ -118,12 +127,13 @@ pub extern "system" fn DllMain(_hinst: HINSTANCE, reason: DWORD, _: LPVOID) -> B
             // Log version info once during DLL attach
             if crate::logging::is_logger_initialized() {
                 log_info!(
-                    "DLL Process Attach - FiSH v{} (built {} {})",
+                    "DLL process attach - FiSH_11 v{} (built {} {})",
                     BUILD_VERSION,
                     BUILD_DATE.as_str(),
                     BUILD_TIME.as_str()
                 );
-                log_debug!("System information: Process ID: {}", std::process::id());
+                #[cfg(debug_assertions)]
+                log_debug!("System information: process ID: {}", std::process::id());
 
                 // When this DLL is loaded, it tries to register itself with the inject DLL.
                 #[cfg(windows)]
@@ -134,6 +144,7 @@ pub extern "system" fn DllMain(_hinst: HINSTANCE, reason: DWORD, _: LPVOID) -> B
                 {
                     use std::env;
                     if let Ok(os_info) = env::var("OS") {
+                        #[cfg(debug_assertions)]
                         log_debug!("Operating System: {}", os_info);
                     }
                 }
@@ -141,11 +152,13 @@ pub extern "system" fn DllMain(_hinst: HINSTANCE, reason: DWORD, _: LPVOID) -> B
 
             TRUE
         }
-        winapi::um::winnt::DLL_PROCESS_DETACH => {
+        0 => {
+            // DLL_PROCESS_DETACH
             // Use structured logging helper for module shutdown
             crate::logging::log_module_shutdown("DLL Core");
 
             if crate::logging::is_logger_initialized() {
+                #[cfg(debug_assertions)]
                 log::info!("DLL Process Detach: FiSH_11 DLL unloaded");
             }
 
@@ -166,7 +179,8 @@ pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
     }
 
     // Log version information to file, not to console
-    log_debug!("LoadDll called for FiSH v{}", BUILD_VERSION);
+    #[cfg(debug_assertions)]
+    log_debug!("LoadDll called for FiSH_11 v{}", BUILD_VERSION);
 
     // Log function entry with structured logging
     crate::logging::log_function_entry("LoadDll", None::<i32>);
@@ -208,19 +222,25 @@ pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
             *global_info = Some(*load);
 
             // Log structured configuration using standard log macros
+            #[cfg(debug_assertions)]
             log::info!("CONFIG [mIRC]: version = {}", mirc_version);
+            #[cfg(debug_assertions)]
             log::info!("CONFIG [mIRC]: buffer_size = {}", buffer_size);
+            #[cfg(debug_assertions)]
             log::info!("CONFIG [mIRC]: unicode_mode = {}", unicode_mode);
         }
     } else {
         // Log the null pointer situation
+        #[cfg(debug_assertions)]
         log::warn!("LoadDll called with null pointer - using default buffer size");
     }
 
     // Log successful initialization
+    #[cfg(debug_assertions)]
     log::info!("FiSH_11 v{} initialized successfully for mIRC {}", BUILD_VERSION, mirc_version);
 
     // Log function exit
+    #[cfg(debug_assertions)]
     log_debug!("EXIT: LoadDll - returned TRUE");
 
     TRUE
@@ -254,7 +274,7 @@ pub extern "stdcall" fn UnloadDll(_timeout: c_int) -> c_int {
         let state_result = LOAD_INFO.lock();
         if state_result.is_err() {
             log::error!(
-                "FATAL: Failed to acquire LOAD_INFO mutex lock during cleanup. DLL may be in corrupted state."
+                "FATAL: failed to acquire LOAD_INFO mutex lock during cleanup. DLL may be in corrupted state."
             );
             return 0; // Return failure
         }
@@ -302,7 +322,7 @@ pub extern "C" fn LoadDll(load: *mut LOADINFO) -> BOOL {
             let global_info_result = LOAD_INFO.lock();
             if global_info_result.is_err() {
                 log::error!(
-                    "FATAL: Failed to acquire LOAD_INFO mutex lock in GetInfo. DLL may be in corrupted state."
+                    "FATAL: failed to acquire LOAD_INFO mutex lock in GetInfo. DLL may be in corrupted state."
                 );
                 return 0; // Return failure
             }
@@ -347,6 +367,8 @@ pub extern "C" fn UnloadDll(_timeout: c_int) -> c_int {
             return 0; // Return failure
         }
         let mut state = state_result.unwrap();
+
+        #[cfg(debug_assertions)]
         log_debug!("Cleaning up LOAD_INFO resources");
         *state = None;
     }

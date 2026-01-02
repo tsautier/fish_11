@@ -14,7 +14,7 @@ use std::ffi::{CString, c_char};
 /// - On Windows, it uses the `GetTcpTable2` API from `iphlpapi.dll`.
 /// - On Unix-like systems, it reads `/proc/net/tcp` and `/proc/self/fd` to find matching sockets.
 /// Returns true if an established connection is found, false otherwise.
-/// 
+///
 pub fn is_socket_connected() -> bool {
     #[cfg(windows)]
     {
@@ -28,33 +28,34 @@ pub fn is_socket_connected() -> bool {
 
 #[cfg(windows)]
 /// Windows implementation using GetTcpTable2 from iphlpapi.dll
-/// 
+///
 /// This function retrieves the TCP connection table and checks for any established
 /// connections owned by the current process.
-/// 
+///
 /// It uses unsafe code to call Windows API functions and handle raw pointers.
 /// Returns true if an established connection is found, false otherwise.
-/// 
+///
 /// TODO: maybe consider caching results or optimizing for frequent calls if performance becomes an issue.
-/// 
+///
 fn is_socket_connected_windows() -> bool {
     unsafe {
         use std::alloc::{Layout, alloc, dealloc};
-        use winapi::shared::tcpmib::{MIB_TCP_STATE_ESTAB, MIB_TCPROW2, MIB_TCPTABLE2};
-        use winapi::shared::winerror::{ERROR_INSUFFICIENT_BUFFER, NO_ERROR};
-        use winapi::um::iphlpapi::GetTcpTable2;
-        use winapi::um::processthreadsapi::GetCurrentProcessId;
-
+        use windows::Win32::Foundation::ERROR_INSUFFICIENT_BUFFER;
+        use windows::Win32::NetworkManagement::IpHelper::{
+            GetTcpTable2, MIB_TCP_STATE_ESTAB, MIB_TCPROW2, MIB_TCPTABLE2,
+        };
+        use windows::Win32::System::Threading::GetCurrentProcessId;
         let pid = GetCurrentProcessId();
         let mut size: u32 = 0;
 
         // First call to get the necessary size
         // 1 (TRUE) for bOrder (third argument) to sort the table, though sorting doesn't matter for us
-        let res = GetTcpTable2(std::ptr::null_mut(), &mut size, 1);
+        let res = GetTcpTable2(None, &mut size, true);
 
-        if res != ERROR_INSUFFICIENT_BUFFER && res != NO_ERROR {
+        if res != ERROR_INSUFFICIENT_BUFFER.0 && res != 0 {
             #[cfg(debug_assertions)]
             log_debug!("GetTcpTable2 failed to get size: {}", res);
+
             return false;
         }
 
@@ -75,9 +76,9 @@ fn is_socket_connected_windows() -> bool {
         let table_ptr = buffer as *mut MIB_TCPTABLE2;
 
         // Second call to get actual data
-        let res = GetTcpTable2(table_ptr, &mut size, 1);
+        let res = GetTcpTable2(Some(table_ptr), &mut size, true);
 
-        if res != NO_ERROR {
+        if res != 0 {
             log_error!("GetTcpTable2 failed: {}", res);
             dealloc(buffer, layout);
             return false;
@@ -93,9 +94,10 @@ fn is_socket_connected_windows() -> bool {
 
         if num_entries > 0 {
             let rows = std::slice::from_raw_parts(rows_ptr, num_entries);
+            
             for row in rows {
                 // Check for Established state (MIB_TCP_STATE_ESTAB = 5) and matching PID
-                if row.dwOwningPid == pid && row.dwState == MIB_TCP_STATE_ESTAB {
+                if row.dwOwningPid == pid && row.dwState == MIB_TCP_STATE_ESTAB.0 as u32 {
                     connected = true;
                     // We found one, that's enough to say we are connected
                     break;
@@ -125,10 +127,9 @@ fn is_socket_connected_windows() -> bool {
 // TODO : implement native BSD/macOS support using sysctl.
 //
 /// For now, this function will only work on Linux systems with /proc filesystem.
-/// It checks /proc/net/tcp or /proc/net/tcp6 for established connections and matches them against the current process's 
+/// It checks /proc/net/tcp or /proc/net/tcp6 for established connections and matches them against the current process's
 /// file descriptors in /proc/self/fd.
-/// 
-
+///
 
 fn is_socket_connected_unix() -> bool {
     use std::collections::HashSet;
