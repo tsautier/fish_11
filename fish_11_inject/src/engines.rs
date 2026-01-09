@@ -1,10 +1,10 @@
 //! This module handles the registration and management of external engines for the FiSH IRC client.
 
-use std::collections::HashMap;
-use std::ffi::{CStr, CString};
 use fish_11_core::globals::FISH_INJECT_ENGINE_VERSION;
 use log::{error, info, trace, warn};
 use parking_lot::{Mutex, RwLock};
+use std::collections::HashMap;
+use std::ffi::{CStr, CString};
 
 // C structure definition provided by engines
 #[repr(C)]
@@ -418,7 +418,14 @@ pub extern "C" fn RegisterEngine(engine: *const FishInjectEngine) -> i32 {
     // Use the global ENGINES instance from lib.rs
     use crate::ENGINES;
 
-    let engines_lock = ENGINES.lock().unwrap();
+    let engines_lock = match ENGINES.lock() {
+        Ok(guard) => guard,
+        Err(e) => {
+            error!("RegisterEngine() : failed to lock ENGINES: {}", e);
+            // Attempt to recover from poisoned lock
+            e.into_inner()
+        }
+    };
 
     if let Some(ref engines_ref) = *engines_lock {
         if engines_ref.register(engine) {
@@ -437,7 +444,14 @@ pub extern "C" fn RegisterEngine(engine: *const FishInjectEngine) -> i32 {
 pub extern "C" fn UnregisterEngine(engine: *const FishInjectEngine) -> i32 {
     use crate::ENGINES;
 
-    let engines_lock = ENGINES.lock().unwrap();
+    let engines_lock = match ENGINES.lock() {
+        Ok(guard) => guard,
+        Err(e) => {
+            error!("UnregisterEngine() : failed to lock ENGINES: {}", e);
+            // Attempt to recover from poisoned lock
+            e.into_inner()
+        }
+    };
 
     if let Some(ref engines_ref) = *engines_lock {
         if engines_ref.unregister(engine) {

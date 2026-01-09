@@ -155,11 +155,7 @@ pub unsafe extern "system" fn hooked_recv(
 
                 // Log what we're actually returning
                 if let Ok(text) = std::str::from_utf8(&processed_buffer[..bytes_to_copy]) {
-                    info!(
-                        "[RECV] {}: returning to mIRC: {}",
-                        s.0,
-                        text.trim_end()
-                    );
+                    info!("[RECV] {}: returning to mIRC: {}", s.0, text.trim_end());
                 } else {
                     debug!(
                         "[RECV DEBUG] socket {}: returning binary data (first 64 bytes): {:02X?}",
@@ -285,7 +281,7 @@ pub unsafe extern "system" fn hooked_send(
     } else {
         drop(stats);
     }
-    
+
     if let Err(e) = socket_info.on_sending(data_slice) {
         error!("Error processing outgoing data: {:?}", e);
     }
@@ -411,11 +407,25 @@ pub fn get_or_create_socket(socket_id: u32, _is_ssl: bool) -> Arc<SocketInfo> {
         .entry(socket_id)
         .or_insert_with(|| {
             let engines = {
-                let mut engines_guard = ENGINES.lock().unwrap();
+                let mut engines_guard = match ENGINES.lock() {
+                    Ok(guard) => guard,
+                    Err(e) => {
+                        error!("get_or_create_socket() : failed to lock ENGINES: {}", e);
+                        // Attempt to recover from poisoned lock
+                        e.into_inner()
+                    }
+                };
+
                 if engines_guard.is_none() {
                     *engines_guard = Some(Arc::new(InjectEngines::new()));
                 }
-                engines_guard.as_ref().unwrap().clone()
+
+                if let Some(engines_ref) = engines_guard.as_ref() {
+                    Arc::clone(engines_ref)
+                } else {
+                    error!("get_or_create_socket() : ENGINES is None after initialization attempt");
+                    Arc::new(InjectEngines::new())
+                }
             };
 
             Arc::new(SocketInfo::new(socket_id, engines))
@@ -463,9 +473,9 @@ pub fn uninstall_socket_hooks() {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use super::*;
     use crate::engines::InjectEngines;
+    use std::sync::Arc;
 
     #[test]
     fn test_valid_exports() {

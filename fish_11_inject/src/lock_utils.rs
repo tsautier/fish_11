@@ -9,6 +9,10 @@ use std::time::Duration;
 
 use log::{error, warn};
 
+use crate::ENGINES;
+use crate::engines::InjectEngines;
+use std::sync::Arc;
+
 /// Default timeout for lock acquisition (100ms)
 pub const DEFAULT_LOCK_TIMEOUT: Duration = Duration::from_millis(100);
 
@@ -106,6 +110,66 @@ pub fn try_lock_extended<T>(mutex: &Mutex<T>) -> TryLockResult<'_, T> {
 pub fn handle_poison<T>(err: PoisonError<T>) -> T {
     error!("Mutex poisoned: {}", err);
     err.into_inner()
+}
+
+/// Safe access to the global ENGINES mutex with proper error handling.
+///
+/// This function provides a safe way to access the ENGINES global state
+/// with timeout-based locking and proper poison handling.
+///
+/// # Returns
+/// * `Ok(guard)` - Successfully acquired lock
+/// * `Err(e)` - Failed to acquire lock with reason
+pub fn try_lock_engines() -> TryLockResult<'static, Option<Arc<InjectEngines>>> {
+    // Use extended timeout for ENGINES as initialization might take longer
+    match try_lock_timeout(&ENGINES, EXTENDED_LOCK_TIMEOUT) {
+        Ok(guard) => Ok(guard),
+        Err(TryLockError::Timeout) => {
+            error!("ENGINES lock acquisition timed out - possible deadlock");
+            Err(TryLockError::Timeout)
+        }
+        Err(TryLockError::Poisoned) => {
+            error!("ENGINES mutex was poisoned - attempting recovery");
+            // Try to recover by getting the lock with poison recovery
+            match ENGINES.lock() {
+                Ok(guard) => Ok(guard),
+                Err(poisoned) => {
+                    error!("ENGINES mutex poisoned and recovery failed");
+                    Ok(poisoned.into_inner())
+                }
+            }
+        }
+    }
+}
+
+/// Macro for safe ENGINES access with automatic error handling.
+///
+/// This macro simplifies the common pattern of accessing the ENGINES global
+/// with proper error handling and fallback behavior.
+///
+/// # Example
+/// ```ignore
+/// // Get engines with default fallback
+/// let engines = get_engines!(Arc::new(InjectEngines::new()));
+/// ```
+#[macro_export]
+macro_rules! get_engines {
+    ($fallback:expr) => {{
+        match $crate::lock_utils::try_lock_engines() {
+            Ok(guard) => {
+                if let Some(engines) = &*guard {
+                    Arc::clone(engines)
+                } else {
+                    log::warn!("ENGINES global is None, using fallback");
+                    $fallback
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to access ENGINES: {}", e);
+                $fallback
+            }
+        }
+    }};
 }
 
 /// Extract the value from a hook mutex or return a default/error.

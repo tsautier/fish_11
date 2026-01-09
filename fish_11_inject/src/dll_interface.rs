@@ -1,4 +1,4 @@
-use std::ffi::{CString, c_int, c_char};
+use std::ffi::{CString, c_char, c_int};
 use std::sync::atomic::Ordering;
 
 // use fish_11_core::buffer_utils::write_cstring_to_buffer; // Removed as mIRC LoadDll doesn't support returned data
@@ -17,12 +17,12 @@ use crate::{
 
 #[repr(C)]
 pub struct LOADINFO {
-    pub m_version: u32,  // mVersion (DWORD)
-    pub m_hwnd: HWND,    // mHwnd (HWND)
-    pub m_keep: i32,     // mKeep (BOOL)
-    pub m_unicode: i32,  // mUnicode (BOOL)
-    pub m_beta: u32,     // mBeta (DWORD)
-    pub m_bytes: u32,    // mBytes (DWORD)
+    pub m_version: u32, // mVersion (DWORD)
+    pub m_hwnd: HWND,   // mHwnd (HWND)
+    pub m_keep: i32,    // mKeep (BOOL)
+    pub m_unicode: i32, // mUnicode (BOOL)
+    pub m_beta: u32,    // mBeta (DWORD)
+    pub m_bytes: u32,   // mBytes (DWORD)
 }
 
 #[no_mangle]
@@ -151,11 +151,10 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
 
         // Prepare version string as a command
         let version_cmd = format!("*** FiSH_11 inject v{} loaded successfully. ***", BUILD_VERSION);
-        
+
         // Removed logic attempting to write to m_filename as mIRC LOADINFO does not have a filename/data buffer.
         // We rely on scripts calling FiSH11_InjectVersion explicitly or debug info.
         info!("Version info: {}", version_cmd);
-
     } else {
         #[cfg(debug_assertions)]
         info!("LoadDll() : VERSION_SHOWN already true, skipping version message");
@@ -191,8 +190,28 @@ pub extern "system" fn UnloadDll(action: c_int) -> c_int {
         cleanup_hooks();
 
         // Clear global state carefully
-        *ENGINES.lock().unwrap() = None;
-        *DLL_HANDLE_PTR.lock().unwrap() = None;
+        match ENGINES.lock() {
+            Ok(mut engines) => {
+                *engines = None;
+            }
+            Err(e) => {
+                error!("UnloadDll() : failed to lock ENGINES for cleanup: {}", e);
+                // Attempt to recover from poisoned lock
+                let mut engines = e.into_inner();
+                *engines = None;
+            }
+        }
+
+        match DLL_HANDLE_PTR.lock() {
+            Ok(mut handle) => {
+                *handle = None;
+            }
+            Err(e) => {
+                error!("UnloadDll() : failed to lock DLL_HANDLE_PTR for cleanup: {}", e);
+                // Attempt to recover
+                drop(e.into_inner());
+            }
+        }
         LOADED.store(false, Ordering::SeqCst);
         VERSION_SHOWN.store(false, Ordering::Relaxed);
         // HOOKS_INSTALLED should be false after cleanup_hooks
@@ -236,11 +255,24 @@ pub extern "C" fn FiSH11_InjectDebugInfo(
     }
 
     // Get engine list
-    let engines = ENGINES.lock().unwrap();
-    let engine_list = if let Some(ref engines_ref) = *engines {
-        engines_ref.get_engine_list()
-    } else {
-        String::from("no engines")
+    let engine_list = match ENGINES.lock() {
+        Ok(engines) => {
+            if let Some(ref engines_ref) = *engines {
+                engines_ref.get_engine_list()
+            } else {
+                String::from("no engines")
+            }
+        }
+        Err(e) => {
+            error!("FiSH11_InjectDebugInfo() : failed to lock ENGINES: {}", e);
+            // Attempt to recover from poisoned lock
+            let engines = e.into_inner();
+            if let Some(ref engines_ref) = *engines {
+                engines_ref.get_engine_list()
+            } else {
+                String::from("no engines (recovered from poisoned lock)")
+            }
+        }
     };
 
     let command = format!(
