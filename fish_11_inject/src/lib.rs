@@ -31,7 +31,7 @@ use dashmap::DashMap;
 use engines::InjectEngines;
 use fish_11_core::globals::{MIRC_COMMAND, MIRC_HALT, MIRC_IDENTIFIER};
 use lazy_static::lazy_static;
-use log::{error, info};
+use log::{error, info, warn};
 use once_cell::sync::Lazy;
 use socket::info::SocketInfo;
 use std::ffi::c_void;
@@ -112,16 +112,49 @@ pub unsafe extern "system" fn DllMain(
             }
 
             // Initialize the engine container so other DLLs can register themselves.
-            match ENGINES.lock() {
+            let engines_initialized = match ENGINES.lock() {
                 Ok(mut engines) => {
                     if engines.is_none() {
-                        *engines = Some(Arc::new(InjectEngines::new()));
-                        info!("DllMain() : InjectEngines container initialized successfully.");
+                        match std::panic::catch_unwind(|| Arc::new(InjectEngines::new())) {
+                            Ok(new_engines) => {
+                                *engines = Some(new_engines);
+                                info!(
+                                    "DllMain() : InjectEngines container initialized successfully."
+                                );
+                                true
+                            }
+                            Err(panic_err) => {
+                                error!(
+                                    "DllMain() : panic during InjectEngines creation: {:?}",
+                                    panic_err
+                                );
+                                false
+                            }
+                        }
+                    } else {
+                        info!("DllMain() : InjectEngines already initialized.");
+                        true
                     }
                 }
                 Err(e) => {
                     error!("DllMain() : failed to lock ENGINES to initialize: {}", e);
+                    // Attempt to recover from poisoned lock
+                    let mut engines = e.into_inner();
+                    if engines.is_none() {
+                        *engines = Some(Arc::new(InjectEngines::new()));
+                        warn!("DllMain() : InjectEngines initialized after lock recovery.");
+                    }
+                    true
                 }
+            };
+
+            // If ENGINES initialization failed, this is a critical error
+            if !engines_initialized {
+                error!(
+                    "DllMain() : critical error - ENGINES initialization failed, DLL may not function properly"
+                );
+                // Continue loading but log the critical error
+                // TODO : in production, we might want to return 0 here ?
             }
 
             // Store module handle
@@ -148,7 +181,7 @@ pub unsafe extern "system" fn DllMain(
 
             info!("***");
             info!(
-                "FiSH_11 inject v{} (build date : {}, build time : {} ZULU)",
+                "FiSH_11 inject v{} (build date : {}, build time : {} Z)",
                 fish_11_core::globals::CRATE_VERSION,
                 fish_11_core::globals::BUILD_DATE.as_str(),
                 fish_11_core::globals::BUILD_TIME.as_str()
@@ -185,9 +218,6 @@ pub unsafe extern "system" fn DllMain(
 
                 #[cfg(debug_assertions)]
                 info!("DllMain() : uninstalling SSL patches...");
-
-                // NOTE: uninstall for experimental SSL inline patching was previously called here.
-                // The code has been moved to /experimental/ssl_inline_patch.rs for reference.
 
                 #[cfg(debug_assertions)]
                 info!("DllMain : cleaning up hooks...");

@@ -407,11 +407,25 @@ pub fn get_or_create_socket(socket_id: u32, _is_ssl: bool) -> Arc<SocketInfo> {
         .entry(socket_id)
         .or_insert_with(|| {
             let engines = {
-                let mut engines_guard = ENGINES.lock().unwrap();
+                let mut engines_guard = match ENGINES.lock() {
+                    Ok(guard) => guard,
+                    Err(e) => {
+                        error!("get_or_create_socket() : failed to lock ENGINES: {}", e);
+                        // Attempt to recover from poisoned lock
+                        e.into_inner()
+                    }
+                };
+
                 if engines_guard.is_none() {
                     *engines_guard = Some(Arc::new(InjectEngines::new()));
                 }
-                engines_guard.as_ref().unwrap().clone()
+
+                if let Some(engines_ref) = engines_guard.as_ref() {
+                    Arc::clone(engines_ref)
+                } else {
+                    error!("get_or_create_socket() : ENGINES is None after initialization attempt");
+                    Arc::new(InjectEngines::new())
+                }
             };
 
             Arc::new(SocketInfo::new(socket_id, engines))

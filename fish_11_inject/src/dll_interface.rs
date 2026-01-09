@@ -191,8 +191,28 @@ pub extern "system" fn UnloadDll(action: c_int) -> c_int {
         cleanup_hooks();
 
         // Clear global state carefully
-        *ENGINES.lock().unwrap() = None;
-        *DLL_HANDLE_PTR.lock().unwrap() = None;
+        match ENGINES.lock() {
+            Ok(mut engines) => {
+                *engines = None;
+            }
+            Err(e) => {
+                error!("UnloadDll() : failed to lock ENGINES for cleanup: {}", e);
+                // Attempt to recover from poisoned lock
+                let mut engines = e.into_inner();
+                *engines = None;
+            }
+        }
+
+        match DLL_HANDLE_PTR.lock() {
+            Ok(mut handle) => {
+                *handle = None;
+            }
+            Err(e) => {
+                error!("UnloadDll() : failed to lock DLL_HANDLE_PTR for cleanup: {}", e);
+                // Attempt to recover
+                drop(e.into_inner());
+            }
+        }
         LOADED.store(false, Ordering::SeqCst);
         VERSION_SHOWN.store(false, Ordering::Relaxed);
         // HOOKS_INSTALLED should be false after cleanup_hooks
@@ -236,11 +256,24 @@ pub extern "C" fn FiSH11_InjectDebugInfo(
     }
 
     // Get engine list
-    let engines = ENGINES.lock().unwrap();
-    let engine_list = if let Some(ref engines_ref) = *engines {
-        engines_ref.get_engine_list()
-    } else {
-        String::from("no engines")
+    let engine_list = match ENGINES.lock() {
+        Ok(engines) => {
+            if let Some(ref engines_ref) = *engines {
+                engines_ref.get_engine_list()
+            } else {
+                String::from("no engines")
+            }
+        }
+        Err(e) => {
+            error!("FiSH11_InjectDebugInfo() : failed to lock ENGINES: {}", e);
+            // Attempt to recover from poisoned lock
+            let engines = e.into_inner();
+            if let Some(ref engines_ref) = *engines {
+                engines_ref.get_engine_list()
+            } else {
+                String::from("no engines (recovered from poisoned lock)")
+            }
+        }
     };
 
     let command = format!(

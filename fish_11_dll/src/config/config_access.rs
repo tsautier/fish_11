@@ -65,6 +65,7 @@ impl<'a> Drop for ConfigWriteGuard<'a> {
     fn drop(&mut self) {
         if self.modified || self.guard.is_dirty() {
             // Add logging to track potential double-save issues
+            #[cfg(debug_assertions)]
             log_debug!("ConfigWriteGuard::drop - attempting to save modified config");
             // Try to save, but ignore errors since we're in a destructor
             match save_config(&self.guard, None) {
@@ -100,7 +101,7 @@ where
     F: FnOnce(&FishConfig) -> Result<T>,
 {
     #[cfg(debug_assertions)]
-    log_info!("with_config: Attempting to acquire read lock on CONFIG...");
+    log_info!("with_config : attempting to acquire read lock on CONFIG...");
 
     // Use direct lock acquisition instead of try_lock loop
     // parking_lot's Mutex::lock() is blocking and fair
@@ -130,7 +131,7 @@ where
     F: FnOnce(&mut FishConfig) -> Result<T>,
 {
     #[cfg(debug_assertions)]
-    log_info!("with_config_mut: Attempting to acquire write lock on CONFIG...");
+    log_info!("with_config_mut : attempting to acquire write lock on CONFIG...");
 
     // Use direct lock acquisition instead of try_lock loop
     // parking_lot's Mutex::lock() is blocking and fair

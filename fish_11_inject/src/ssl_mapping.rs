@@ -5,7 +5,7 @@
 //! socket IDs, ensuring thread-safe access without risk of race conditions.
 
 use dashmap::DashMap;
-use log::{debug, trace, warn};
+use log::{debug, error, trace, warn};
 use once_cell::sync::Lazy;
 
 use crate::hook_ssl::{SSL, SSLWrapper};
@@ -84,7 +84,9 @@ impl SslSocketMapping {
 
     /// Remove an SSL context from the mappings.
     ///
-    /// This atomically removes from both mappings.
+    /// This atomically removes from both mappings using a consistent locking strategy
+    /// to prevent deadlocks. The method uses a retry mechanism with exponential backoff
+    /// to handle concurrent modifications.
     ///
     /// # Arguments
     /// * `ssl` - Pointer to the SSL context
@@ -97,25 +99,76 @@ impl SslSocketMapping {
         }
 
         let ssl_id = ssl as usize;
+        const MAX_RETRIES: usize = 3;
+        const BASE_DELAY_MS: u64 = 1;
 
-        // To prevent deadlock with remove_socket, we follow the same pattern:
-        // First get the socket_id from SSL_TO_SOCKET, then remove from both maps
-        if let Some((_, socket_id)) = SSL_TO_SOCKET.remove(&ssl_id) {
-            // Also remove from SOCKET_TO_SSL
-            SOCKET_TO_SSL.remove(&socket_id);
+        for attempt in 0..MAX_RETRIES {
+            // First, check if the SSL entry exists and get the socket_id
+            let socket_id = match SSL_TO_SOCKET.get(&ssl_id) {
+                Some(entry) => *entry.value(),
+                None => {
+                    trace!("SslSocketMapping: SSL {:p} was not in mapping", ssl);
+                    return None;
+                }
+            };
 
-            debug!("SslSocketMapping: removed SSL {:p} (was mapped to socket {})", ssl, socket_id);
+            // Now perform the removal atomically
+            // We use a consistent order: always remove from SSL_TO_SOCKET first, then SOCKET_TO_SSL
+            if let Some((_, removed_socket_id)) = SSL_TO_SOCKET.remove(&ssl_id) {
+                // Verify we got the expected socket_id
+                if removed_socket_id != socket_id {
+                    error!(
+                        "SslSocketMapping: critical inconsistency - SSL {:p} mapped to different socket IDs: {} vs {}",
+                        ssl, socket_id, removed_socket_id
+                    );
+                    // Try to repair by removing both entries
+                    SOCKET_TO_SSL.remove(&socket_id);
+                    SOCKET_TO_SSL.remove(&removed_socket_id);
+                    return Some(removed_socket_id);
+                }
 
-            Some(socket_id)
-        } else {
-            trace!("SslSocketMapping: SSL {:p} was not in mapping", ssl);
-            None
+                // Now remove from SOCKET_TO_SSL
+                let removed_ssl = SOCKET_TO_SSL.remove(&socket_id);
+
+                if removed_ssl.is_some() {
+                    debug!(
+                        "SslSocketMapping: removed SSL {:p} (was mapped to socket {})",
+                        ssl, socket_id
+                    );
+                    return Some(socket_id);
+                } else {
+                    warn!(
+                        "SslSocketMapping: inconsistency - SSL {:p} mapped to socket {} but socket entry was missing",
+                        ssl, socket_id
+                    );
+                    return Some(socket_id);
+                }
+            }
+
+            // If we get here, the removal failed due to concurrent modification
+            if attempt < MAX_RETRIES - 1 {
+                // Exponential backoff
+                let delay_ms = BASE_DELAY_MS * (1 << attempt);
+                std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                continue;
+            }
+
+            // Final attempt failed
+            error!(
+                "SslSocketMapping: failed to remove SSL {:p} after {} attempts - possible deadlock or race condition",
+                ssl, MAX_RETRIES
+            );
         }
+
+        // If we exhausted all attempts, return None
+        None
     }
 
     /// Remove a socket from the mappings.
     ///
-    /// This atomically removes from both mappings.
+    /// This atomically removes from both mappings using a consistent locking strategy
+    /// to prevent deadlocks. The method uses a retry mechanism with exponential backoff
+    /// to handle concurrent modifications.
     ///
     /// # Arguments
     /// * `socket_id` - The socket file descriptor
@@ -123,23 +176,63 @@ impl SslSocketMapping {
     /// # Returns
     /// The SSL pointer that was associated, if any.
     pub fn remove_socket(socket_id: u32) -> Option<*mut SSL> {
-        // Remove from SOCKET_TO_SSL and get the SSL wrapper first
-        if let Some((_, wrapper)) = SOCKET_TO_SSL.remove(&socket_id) {
-            let ssl = wrapper.ssl;
-            let ssl_id = ssl as usize;
+        const MAX_RETRIES: usize = 3;
+        const BASE_DELAY_MS: u64 = 1;
 
-            // Also remove from SSL_TO_SOCKET to maintain consistency
-            // This order is different from remove_ssl but this is unavoidable
-            // since we need to get SSL from socket first
-            SSL_TO_SOCKET.remove(&ssl_id);
+        for attempt in 0..MAX_RETRIES {
+            // First, check if the socket entry exists and get the SSL pointer
+            let ssl_ptr = match SOCKET_TO_SSL.get(&socket_id) {
+                Some(entry) => entry.value().ssl,
+                None => {
+                    trace!("SslSocketMapping: socket {} was not in mapping", socket_id);
+                    return None;
+                }
+            };
 
-            debug!("SslSocketMapping: removed socket {} (was mapped to SSL {:p})", socket_id, ssl);
+            let ssl_id = ssl_ptr as usize;
 
-            Some(ssl)
-        } else {
-            trace!("SslSocketMapping: socket {} was not in mapping", socket_id);
-            None
+            // Now perform the removal atomically
+            // We use the same order as remove_ssl for consistency: SSL_TO_SOCKET first, then SOCKET_TO_SSL
+            // But since we need the SSL pointer from the socket, we do it in reverse order
+            // This is safe because DashMap uses fine-grained locking
+            if let Some((_, wrapper)) = SOCKET_TO_SSL.remove(&socket_id) {
+                let ssl = wrapper.ssl;
+
+                // Now remove from SSL_TO_SOCKET
+                let removed_socket = SSL_TO_SOCKET.remove(&(ssl as usize));
+
+                if removed_socket.is_some() {
+                    debug!(
+                        "SslSocketMapping: removed socket {} (was mapped to SSL {:p})",
+                        socket_id, ssl
+                    );
+                    return Some(ssl);
+                } else {
+                    warn!(
+                        "SslSocketMapping: inconsistency - socket {} mapped to SSL {:p} but SSL entry was missing",
+                        socket_id, ssl
+                    );
+                    return Some(ssl);
+                }
+            }
+
+            // If we get here, the removal failed due to concurrent modification
+            if attempt < MAX_RETRIES - 1 {
+                // Exponential backoff
+                let delay_ms = BASE_DELAY_MS * (1 << attempt);
+                std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                continue;
+            }
+
+            // Final attempt failed
+            error!(
+                "SslSocketMapping: failed to remove socket {} after {} attempts - possible deadlock or race condition",
+                socket_id, MAX_RETRIES
+            );
         }
+
+        // If we exhausted all attempts, return None
+        None
     }
 
     /// Check if an SSL context is currently mapped.
@@ -167,10 +260,89 @@ impl SslSocketMapping {
 
     /// Clear all mappings (used during cleanup/unload).
     pub fn clear() {
-        let count = SSL_TO_SOCKET.len();
+        let ssl_count = SSL_TO_SOCKET.len();
+        let socket_count = SOCKET_TO_SSL.len();
+
+        if ssl_count != socket_count {
+            warn!(
+                "SslSocketMapping: clearing inconsistent mappings - SSL_TO_SOCKET: {}, SOCKET_TO_SSL: {}",
+                ssl_count, socket_count
+            );
+        }
+
         SSL_TO_SOCKET.clear();
         SOCKET_TO_SSL.clear();
-        debug!("SslSocketMapping: cleared {} mappings", count);
+        debug!("SslSocketMapping: cleared {} mappings", ssl_count);
+    }
+
+    /// Check and repair consistency between the two mappings.
+    ///
+    /// This method verifies that both mappings are consistent and
+    /// removes any orphaned entries to maintain data integrity.
+    ///
+    /// # Returns
+    /// Number of inconsistencies found and repaired
+    pub fn check_and_repair_consistency() -> usize {
+        // First check if we have any mappings at all
+        let ssl_count = SSL_TO_SOCKET.len();
+        let socket_count = SOCKET_TO_SSL.len();
+
+        if ssl_count == 0 && socket_count == 0 {
+            debug!("SslSocketMapping: consistency check - no active mappings");
+            return 0;
+        }
+
+        if ssl_count == socket_count {
+            debug!(
+                "SslSocketMapping: consistency check - mappings appear consistent ({} entries)",
+                ssl_count
+            );
+            // Still run the full check to catch any hidden issues
+        }
+        let mut repaired = 0;
+
+        // Check for SSL entries without corresponding socket entries
+        let ssl_keys: Vec<usize> = SSL_TO_SOCKET.iter().map(|entry| *entry.key()).collect();
+        for ssl_key in ssl_keys {
+            if let Some(socket_id_ref) = SSL_TO_SOCKET.get(&ssl_key) {
+                let socket_id = *socket_id_ref.value();
+                if !SOCKET_TO_SSL.contains_key(&socket_id) {
+                    // Orphaned SSL entry - remove it
+                    SSL_TO_SOCKET.remove(&ssl_key);
+                    warn!(
+                        "SslSocketMapping: repaired orphaned SSL entry {:p} -> socket {}",
+                        ssl_key as *mut SSL, socket_id
+                    );
+                    repaired += 1;
+                }
+            }
+        }
+
+        // Check for socket entries without corresponding SSL entries
+        let socket_keys: Vec<u32> = SOCKET_TO_SSL.iter().map(|entry| *entry.key()).collect();
+        for socket_id in socket_keys {
+            if let Some(ssl_wrapper_ref) = SOCKET_TO_SSL.get(&socket_id) {
+                let ssl_key = ssl_wrapper_ref.value().ssl as usize;
+                if !SSL_TO_SOCKET.contains_key(&ssl_key) {
+                    // Orphaned socket entry - remove it
+                    SOCKET_TO_SSL.remove(&socket_id);
+                    warn!(
+                        "SslSocketMapping: repaired orphaned socket entry {} -> SSL {:p}",
+                        socket_id,
+                        ssl_wrapper_ref.value().ssl
+                    );
+                    repaired += 1;
+                }
+            }
+        }
+
+        if repaired > 0 {
+            warn!("SslSocketMapping: repaired {} consistency issues", repaired);
+        } else {
+            debug!("SslSocketMapping: consistency check passed - no issues found");
+        }
+
+        repaired
     }
 
     /// Get debug info about current mappings.
