@@ -5,8 +5,6 @@ use crate::{buffer_utils, config, dll_function_identifier, log_debug};
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
-//use base64::{Engine as _, engine::general_purpose};
-
 dll_function_identifier!(FiSH11_FileGetKey, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
 
@@ -16,24 +14,36 @@ dll_function_identifier!(FiSH11_FileGetKey, data, {
     let normalized_input = crate::utils::normalize_target(input_trimmed);
 
     // Then lowercase for case-insensitive lookup
-    let nickname = normalize_nick(normalized_input);
-    if nickname.is_empty() {
-        return Err(DllError::MissingParameter("nickname".to_string()));
+    let target = normalize_nick(normalized_input);
+
+    if target.is_empty() {
+        return Err(DllError::MissingParameter("target".to_string()));
     }
 
+    #[cfg(debug_assertions)]
     log_debug!(
         "Retrieving key for nickname/channel: {} (original input: {})",
-        nickname,
+        target,
         input_trimmed
     );
 
-    // The `?` operator will automatically convert the error from `config::get_key_default`
-    // into our `DllError` type, thanks to the `From<FishError>` implementation.
-    let key = config::get_key_default(&nickname)?;
+    // Check if this is a channel (starts with # or &)
+    if target.starts_with('#') || target.starts_with('&') {
+        // For channels, use the channel key retrieval function
+        let key = config::get_channel_key_with_fallback(&target)?;
 
-    log_debug!("Key found, encoding as base64");
-    let base64_key = base64_encode(&key);
-    Ok(base64_key)
+        #[cfg(debug_assertions)]
+        log_debug!("Channel key found, encoding as base64");
+        let base64_key = base64_encode(&key);
+        Ok(base64_key)
+    } else {
+        // For users, use the existing key retrieval function
+        let key = config::get_key_default(&target)?;
+        #[cfg(debug_assertions)]
+        log_debug!("User key found, encoding as base64");
+        let base64_key = base64_encode(&key);
+        Ok(base64_key)
+    }
 });
 
 #[cfg(test)]

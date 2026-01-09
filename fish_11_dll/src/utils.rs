@@ -1,13 +1,206 @@
-use std::ffi::{CString, c_char};
-
+use crate::dll_interface::NICK_VALIDATOR;
+use crate::error::FishError;
+use crate::{buffer_utils, log_debug, log_error, log_warn};
 use base64;
 use base64::Engine;
 use rand::Rng;
 use rand::rngs::OsRng;
+use std::ffi::{CString, c_char};
 
-use crate::dll_interface::NICK_VALIDATOR;
-use crate::error::FishError;
-use crate::{buffer_utils, log_debug, log_error, log_warn};
+/// Checks if there is an established TCP connection owned by the current process.
+///
+/// This checks for any connection in the `ESTABLISHED` state that belongs to the current PID.
+/// The implementation is platform-specific:
+/// - On Windows, it uses the `GetTcpTable2` API from `iphlpapi.dll`.
+/// - On Unix-like systems, it reads `/proc/net/tcp` and `/proc/self/fd` to find matching sockets.
+/// Returns true if an established connection is found, false otherwise.
+///
+pub fn is_socket_connected() -> bool {
+    #[cfg(windows)]
+    {
+        is_socket_connected_windows()
+    }
+    #[cfg(not(windows))]
+    {
+        is_socket_connected_unix()
+    }
+}
+
+#[cfg(windows)]
+/// Windows implementation using GetTcpTable2 from iphlpapi.dll
+///
+/// This function retrieves the TCP connection table and checks for any established
+/// connections owned by the current process.
+///
+/// It uses unsafe code to call Windows API functions and handle raw pointers.
+/// Returns true if an established connection is found, false otherwise.
+///
+/// TODO: maybe consider caching results or optimizing for frequent calls if performance becomes an issue.
+///
+fn is_socket_connected_windows() -> bool {
+    unsafe {
+        use std::alloc::{Layout, alloc, dealloc};
+        use windows::Win32::Foundation::ERROR_INSUFFICIENT_BUFFER;
+        use windows::Win32::NetworkManagement::IpHelper::{
+            GetTcpTable2, MIB_TCP_STATE_ESTAB, MIB_TCPROW2, MIB_TCPTABLE2,
+        };
+        use windows::Win32::System::Threading::GetCurrentProcessId;
+        let pid = GetCurrentProcessId();
+        let mut size: u32 = 0;
+
+        // First call to get the necessary size
+        // 1 (TRUE) for bOrder (third argument) to sort the table, though sorting doesn't matter for us
+        let res = GetTcpTable2(None, &mut size, true);
+
+        if res != ERROR_INSUFFICIENT_BUFFER.0 && res != 0 {
+            #[cfg(debug_assertions)]
+            log_debug!("GetTcpTable2 failed to get size: {}", res);
+
+            return false;
+        }
+
+        if size == 0 {
+            return false;
+        }
+
+        // Allocate buffer
+        // Align to MIB_TCPTABLE2 alignment which is likely 4 or 8 bytes. 8 is safe.
+        let layout = Layout::from_size_align(size as usize, 8).unwrap();
+        let buffer = alloc(layout);
+
+        if buffer.is_null() {
+            log_error!("Failed to allocate memory for TCP table");
+            return false;
+        }
+
+        let table_ptr = buffer as *mut MIB_TCPTABLE2;
+
+        // Second call to get actual data
+        let res = GetTcpTable2(Some(table_ptr), &mut size, true);
+
+        if res != 0 {
+            log_error!("GetTcpTable2 failed: {}", res);
+            dealloc(buffer, layout);
+            return false;
+        }
+
+        let num_entries = (*table_ptr).dwNumEntries as usize;
+
+        // The table array is at the end of the struct.
+        // In winapi, MIB_TCPTABLE2 includes table: [MIB_TCPROW2; 1]
+        let rows_ptr = &((*table_ptr).table) as *const _ as *const MIB_TCPROW2;
+
+        let mut connected = false;
+
+        if num_entries > 0 {
+            let rows = std::slice::from_raw_parts(rows_ptr, num_entries);
+            
+            for row in rows {
+                // Check for Established state (MIB_TCP_STATE_ESTAB = 5) and matching PID
+                if row.dwOwningPid == pid && row.dwState == MIB_TCP_STATE_ESTAB.0 as u32 {
+                    connected = true;
+                    // We found one, that's enough to say we are connected
+                    break;
+                }
+            }
+        }
+
+        dealloc(buffer, layout);
+
+        if connected {
+            #[cfg(debug_assertions)]
+            log_debug!("is_socket_connected: Found established TCP connection for PID {}", pid);
+        } else {
+            #[cfg(debug_assertions)]
+            log_debug!("is_socket_connected: No established TCP connections found for PID {}", pid);
+        }
+
+        connected
+    }
+}
+
+#[cfg(not(windows))]
+// Other Unix (BSD, macOS): the implementation relies on /proc/net/tcp(6). While its Linux-centric, some BSDs
+// with Linux emulation (linprocfs) might support it. For native BSD/macOS support, sysctl bindings
+// would be required in the future but are out of scope for a basic portable implementation without adding large dependencies.
+//
+// TODO : implement native BSD/macOS support using sysctl.
+//
+/// For now, this function will only work on Linux systems with /proc filesystem.
+/// It checks /proc/net/tcp or /proc/net/tcp6 for established connections and matches them against the current process's
+/// file descriptors in /proc/self/fd.
+///
+
+fn is_socket_connected_unix() -> bool {
+    use std::collections::HashSet;
+    use std::fs::{self, File};
+    use std::io::{BufRead, BufReader};
+
+    // Helper to parse /proc/net/tcp and return a set of established inodes
+    fn get_established_inodes(path: &str) -> HashSet<String> {
+        let mut inodes = HashSet::new();
+        if let Ok(file) = File::open(path) {
+            let reader = BufReader::new(file);
+            // Skip header
+            for line in reader.lines().skip(1) {
+                if let Ok(l) = line {
+                    // Line format:
+                    // sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+                    // 0: 0100007F:13AD 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 33527 1 0000000000000000 100 0 0 10 0
+                    let parts: Vec<&str> = l.split_whitespace().collect();
+                    if parts.len() >= 10 {
+                        let state = parts[3];
+                        let inode = parts[9];
+
+                        // State 01 is ESTABLISHED
+                        if state == "01" {
+                            inodes.insert(inode.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        inodes
+    }
+
+    // FIRST get all inodes for established TCP connections from system tables
+    let mut established_inodes = get_established_inodes("/proc/net/tcp");
+
+    // Optionally check tcp6 as well if desired, but sticking to tcp for basic compat
+    let established_inodes_v6 = get_established_inodes("/proc/net/tcp6");
+    established_inodes.extend(established_inodes_v6);
+
+    if established_inodes.is_empty() {
+        return false; // No established connections at all
+    }
+
+    // THEN Iterate over our own file descriptors to see if we own any of these sockets
+    if let Ok(entries) = fs::read_dir("/proc/self/fd") {
+        for entry in entries {
+            if let Ok(entry) = entry {
+                if let Ok(path) = entry.path().read_link() {
+                    let path_str = path.to_string_lossy();
+                    // format is socket:[inode]
+                    if path_str.starts_with("socket:[") && path_str.ends_with("]") {
+                        let inode_str = &path_str[8..path_str.len() - 1];
+                        if established_inodes.contains(inode_str) {
+                            #[cfg(debug_assertions)]
+                            log_debug!(
+                                "is_socket_connected: found established TCP connection (inode {})",
+                                inode_str
+                            );
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    log_debug!("is_socket_connected: no established TCP connections found in /proc/self/fd");
+    false
+}
 
 /// Encode binary data to a base64 string using the standard Base64 alphabet with padding.
 ///
@@ -118,7 +311,9 @@ pub fn validate_nickname(
     buffer_size: usize,
     trace_id: &str,
 ) -> bool {
+    #[cfg(debug_assertions)]
     log_debug!("FiSH11_ExchangeKey[{}]: validating nickname: '{}'", trace_id, nickname); // Check if nickname is empty
+
     if nickname.is_empty() {
         log_warn!("FiSH11_ExchangeKey[{}]: empty nickname provided", trace_id);
         match CString::new("Usage: /dll fish_11.dll FiSH11_ExchangeKey <nickname>") {

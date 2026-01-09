@@ -1,3 +1,11 @@
+use crate::config::{CONFIG, get_key, get_keypair, save_config, set_key, store_keypair};
+use crate::crypto::x25519::{X25519KeyExchange, X25519KeyPair, format_public_key};
+use crate::crypto::{KeyExchange, KeyPair};
+use crate::dll_interface::KEY_EXCHANGE_TIMEOUT_SECONDS;
+use crate::platform_types::{BOOL, HWND};
+use crate::unified_error::{DllError, DllResult};
+use crate::utils::{is_socket_connected, normalize_nick};
+use crate::{buffer_utils, dll_function_identifier, log_debug, log_info, log_warn};
 use rand::RngCore;
 use rand::rngs::OsRng;
 use secrecy::ExposeSecret;
@@ -6,20 +14,14 @@ use std::os::raw::c_int;
 use std::time::Instant;
 use subtle::ConstantTimeEq;
 
-use crate::config::{CONFIG, get_key, get_keypair, save_config, set_key, store_keypair};
-use crate::crypto::{KeyPair, format_public_key, generate_keypair};
-use crate::dll_interface::KEY_EXCHANGE_TIMEOUT_SECONDS;
-use crate::platform_types::{BOOL, HWND};
-use crate::unified_error::{DllError, DllResult};
-use crate::utils::normalize_nick;
-use crate::{buffer_utils, dll_function_identifier, log_debug, log_info, log_warn};
-
 dll_function_identifier!(FiSH11_ExchangeKey, data, {
     let overall_start = Instant::now();
+
     log_info!("=== Key exchange initiated ===");
 
     // This function is time-sensitive as it's part of an interactive user workflow.
-    // A timeout ensures we don't block mIRC indefinitely if crypto operations hang.
+    // A timeout ensures we don't block the program-caller indefinitely
+    // if crypto operations hang.
     let start_time = Instant::now();
     let timeout = std::time::Duration::from_secs(KEY_EXCHANGE_TIMEOUT_SECONDS as u64);
 
@@ -31,12 +33,15 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan, etc.)
     let normalized_input = crate::utils::normalize_target(input_trimmed);
     let nickname = normalize_nick(normalized_input);
+
+    #[cfg(debug_assertions)]
     log_debug!("Parse input took {:?}", parse_start.elapsed());
 
     if nickname.is_empty() {
         return Err(DllError::MissingParameter("nickname".to_string()));
     }
 
+    #[cfg(debug_assertions)]
     log_debug!(
         "Key exchange initiated for nickname/channel: {} (original: {})",
         nickname,
@@ -50,17 +55,29 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     let mut config_modified = false;
 
     // Check if we're currently connected to IRC
-    // Note: In a real implementation, we would check the socket connection status here
-    // For now, we'll proceed but add better error handling for disconnection scenarios
+    if !is_likely_connected() {
+        log_warn!("Key exchange attempted while not connected to IRC");
 
-    // Step 1: Ensure key exists (may generate new key)
+        return Err(crate::unified_error::DllError::NotConnected(
+            "Cannot perform key exchange when not connected to IRC".to_string(),
+        ));
+    }
+
+    // Step 1: ensure key exists (may generate new key)
     let step1_start = Instant::now();
+
+    #[cfg(debug_assertions)]
     log_debug!("Starting ensure_key_exists...");
+
     let key_was_generated = ensure_key_exists(&nickname)?;
+
     if key_was_generated {
         config_modified = true;
     }
+
     let step1_duration = step1_start.elapsed();
+
+    #[cfg(debug_assertions)]
     log_debug!(
         "Step 1 (ensure_key_exists) took {:?} - key_generated: {}",
         step1_duration,
@@ -75,16 +92,20 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     // Timeout check 2
     check_timeout(start_time, timeout, "before keypair generation")?;
 
-    // Step 2: Get or generate keypair
+    // Step 2: get or generate keypair
     let step2_start = Instant::now();
 
+    #[cfg(debug_assertions)]
     log_debug!("Starting get_or_generate_keypair_internal...");
 
     let (keypair, keypair_was_generated) = get_or_generate_keypair_internal()?;
+
     if keypair_was_generated {
         config_modified = true;
     }
     let step2_duration = step2_start.elapsed();
+
+    #[cfg(debug_assertions)]
     log_debug!(
         "Step 2 (keypair) took {:?} - keypair_generated: {}",
         step2_duration,
@@ -99,15 +120,17 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     // Timeout check 3
     check_timeout(start_time, timeout, "before keypair validation")?;
 
-    // Step 3: Validate keypair
+    // Step 3: validate keypair
     let step3_start = Instant::now();
 
+    #[cfg(debug_assertions)]
     log_debug!("Starting validate_keypair_safety...");
 
     validate_keypair_safety(&keypair)?;
 
     let step3_duration = step3_start.elapsed();
 
+    #[cfg(debug_assertions)]
     log_debug!("Step 3 (validation) took {:?}", step3_duration);
 
     #[cfg(debug_assertions)]
@@ -115,11 +138,16 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
         log_warn!("Step 3 took more than 100ms: {:?}", step3_duration);
     }
 
-    // Step 4: Format public key for sharing
+    // Step 4: format public key for sharing
     let step4_start = Instant::now();
+
+    #[cfg(debug_assertions)]
     log_debug!("Starting format_public_key...");
+
     let formatted_key = format_public_key(&keypair.public_key);
     let step4_duration = step4_start.elapsed();
+
+    #[cfg(debug_assertions)]
     log_debug!("Step 4 (formatting) took {:?}", step4_duration);
 
     if !formatted_key.starts_with("X25519_INIT:") {
@@ -128,11 +156,13 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
         });
     }
 
+    #[cfg(debug_assertions)]
     log_debug!("Public key formatted successfully (length: {})", formatted_key.len());
 
-    // Step 5: Save config ONCE if anything was modified
+    // Step 5: save config ONCE if anything was modified
     if config_modified {
         let save_start = Instant::now();
+
         log_info!("Saving configuration changes...");
 
         // Take a snapshot of the config and release the lock immediately
@@ -145,26 +175,29 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
         save_config(&config_snapshot, None)?;
 
         let save_duration = save_start.elapsed();
+        #[cfg(debug_assertions)]
         log_debug!("Configuration saved in {:?}", save_duration);
 
         if save_duration.as_secs() > 2 {
             log_warn!("Config save took longer than 2 seconds! Check disk I/O performance.");
         }
     } else {
+        #[cfg(debug_assertions)]
         log_debug!("No configuration changes to save");
     }
 
-    // Return the formatted public key token directly so callers (like the mIRC
-    // script) can use it programmatically instead of parsing a verbose /echo
-    // message. Keep logging for UX and debugging.
+    // Return the formatted public key token directly so callers
     let total_duration = overall_start.elapsed();
+
     if key_was_generated {
+        #[cfg(debug_assertions)]
         log_debug!(
             "Key exchange setup completed for {} (generated new key) in {:?}",
             nickname,
             total_duration
         );
     } else {
+        #[cfg(debug_assertions)]
         log_debug!(
             "Key exchange setup completed successfully for {} in {:?}",
             nickname,
@@ -189,23 +222,29 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
 fn ensure_key_exists(nickname: &str) -> DllResult<bool> {
     let lookup_start = Instant::now();
     let existing_key = get_key(nickname, None);
+
+    #[cfg(debug_assertions)]
     log_debug!("get_key_default lookup took {:?}", lookup_start.elapsed());
 
     match existing_key {
         Ok(_) => {
+            #[cfg(debug_assertions)]
             log_debug!("Found existing key for {}", nickname);
             Ok(false) // Key already existed
         }
         Err(_) => {
+            #[cfg(debug_assertions)]
             log_debug!("No existing key found for {}, generating new key", nickname);
 
             let keygen_start = Instant::now();
+            #[cfg(debug_assertions)]
             log_debug!("Starting RNG for key generation...");
 
             // Use the secure random key generator with retry logic
             let key_bytes = generate_secure_random_key()?;
 
             let keygen_duration = keygen_start.elapsed();
+            #[cfg(debug_assertions)]
             log_debug!("RNG key generation took {:?}", keygen_duration);
 
             #[cfg(debug_assertions)]
@@ -217,13 +256,16 @@ fn ensure_key_exists(nickname: &str) -> DllResult<bool> {
             }
 
             let store_start = Instant::now();
+            #[cfg(debug_assertions)]
             log_debug!("Storing key in config...");
 
             // Store the key with overwrite enabled (in-memory only, no disk I/O yet)
             set_key(nickname, &key_bytes, None, true, true)?;
 
+            #[cfg(debug_assertions)]
             log_debug!("set_key_default took {:?}", store_start.elapsed());
 
+            #[cfg(debug_assertions)]
             log_debug!(
                 "Successfully generated and stored new key for {} (not yet saved to disk)",
                 nickname
@@ -235,26 +277,53 @@ fn ensure_key_exists(nickname: &str) -> DllResult<bool> {
 
 /// Get or generate our Curve25519 keypair for Diffie-Hellman key exchange
 /// Returns (keypair, was_generated: bool)
-fn get_or_generate_keypair_internal() -> DllResult<(KeyPair, bool)> {
+fn get_or_generate_keypair_internal() -> DllResult<(X25519KeyPair, bool)> {
     let lookup_start = Instant::now();
     let existing_keypair = get_keypair();
+
+    #[cfg(debug_assertions)]
     log_debug!("get_keypair lookup took {:?}", lookup_start.elapsed());
 
     match existing_keypair {
         Ok(kp) => {
+            #[cfg(debug_assertions)]
             log_debug!("Retrieved existing keypair");
             Ok((kp, false))
         }
         Err(_) => {
+            #[cfg(debug_assertions)]
             log_debug!("No keypair found, generating new one");
 
             let keygen_start = Instant::now();
 
+            #[cfg(debug_assertions)]
             log_debug!("Starting keypair generation...");
 
-            let new_keypair = generate_keypair();
+            // Use Trait for generation
+            let engine = X25519KeyExchange;
+            let boxed_keypair = engine
+                .generate_keypair()
+                .map_err(|e| DllError::KeyExchangeFailed(e.to_string()))?;
+
+            // Downcast to concrete type for storage/return
+            // Note: Unwrapping is safe here because we know X25519KeyExchange produces X25519KeyPair
+            // and we are inside the dll where we know the types.
+            let new_keypair = match boxed_keypair.as_any().downcast_ref::<X25519KeyPair>() {
+                Some(kp) => X25519KeyPair {
+                    private_key: secrecy::Secret::new(*kp.private_key.expose_secret()),
+                    public_key: kp.public_key,
+                    creation_time: kp.creation_time,
+                },
+                None => {
+                    return Err(DllError::KeyExchangeFailed(
+                        "Failed to downcast keypair".to_string(),
+                    ));
+                }
+            };
+
             let keygen_duration = keygen_start.elapsed();
 
+            #[cfg(debug_assertions)]
             log_debug!("Keypair generation took {:?}", keygen_duration);
 
             #[cfg(debug_assertions)]
@@ -264,11 +333,13 @@ fn get_or_generate_keypair_internal() -> DllResult<(KeyPair, bool)> {
 
             let store_start = Instant::now();
 
+            #[cfg(debug_assertions)]
             log_debug!("Storing keypair in config...");
 
             // Store the new keypair (in-memory only, no disk I/O yet)
             store_keypair(&new_keypair)?;
 
+            #[cfg(debug_assertions)]
             log_debug!("store_keypair took {:?}", store_start.elapsed());
 
             log_info!("Successfully generated and stored new keypair (not yet saved to disk)");
@@ -277,13 +348,14 @@ fn get_or_generate_keypair_internal() -> DllResult<(KeyPair, bool)> {
     }
 }
 
-/// Get or generate our Curve25519 keypair (public API, for backward compatibility)
-fn get_or_generate_keypair() -> DllResult<KeyPair> {
+/// Get or generate our Curve25519 keypair
+/// TODO : this is a public API for backward compatibility, need to fix this later
+fn get_or_generate_keypair() -> DllResult<X25519KeyPair> {
     get_or_generate_keypair_internal().map(|(kp, _)| kp)
 }
 
 /// Validate that a keypair is not all zeros (safety check)
-fn validate_keypair_safety(keypair: &KeyPair) -> DllResult<()> {
+fn validate_keypair_safety(keypair: &X25519KeyPair) -> DllResult<()> {
     // Use the comprehensive validation function
     validate_keypair(keypair)
 }
@@ -298,6 +370,7 @@ fn check_timeout(start_time: Instant, timeout: std::time::Duration, stage: &str)
             stage: stage.to_string(),
         })
     } else {
+        #[cfg(debug_assertions)]
         log_debug!("Timeout check passed at stage '{}': {:?} elapsed", stage, elapsed);
         Ok(())
     }
@@ -311,27 +384,38 @@ fn generate_secure_random_key() -> DllResult<[u8; 32]> {
     // return a specific DllError instead of letting the panic propagate.
     for attempt in 1..=3 {
         let attempt_start = Instant::now();
+
+        #[cfg(debug_assertions)]
         log_debug!("RNG attempt {}/3...", attempt);
 
         let generation_result = std::panic::catch_unwind(|| {
             let rng_create_start = Instant::now();
             let mut rng = OsRng;
+
+            #[cfg(debug_assertions)]
             log_debug!("OsRng creation took {:?}", rng_create_start.elapsed());
 
             let mut key_bytes = [0u8; 32];
             let fill_start = Instant::now();
+
             rng.fill_bytes(&mut key_bytes);
+
+            #[cfg(debug_assertions)]
             log_debug!("fill_bytes(32) took {:?}", fill_start.elapsed());
 
             key_bytes
         });
 
         let attempt_duration = attempt_start.elapsed();
+
+        #[cfg(debug_assertions)]
         log_debug!("Attempt {} total duration: {:?}", attempt, attempt_duration);
 
         match generation_result {
             Ok(key_bytes) => {
                 let duration = start.elapsed();
+
+                #[cfg(debug_assertions)]
                 log_debug!(
                     "Successfully generated random key on attempt {} in {:?}",
                     attempt,
@@ -359,15 +443,14 @@ fn generate_secure_random_key() -> DllResult<[u8; 32]> {
 }
 
 /// Validate a keypair using comprehensive checks
-fn validate_keypair(keypair: &KeyPair) -> DllResult<()> {
+fn validate_keypair(keypair: &X25519KeyPair) -> DllResult<()> {
     // Check for all-zero keys
-    let public_zeros = [0u8; 32];
-    let private_zeros = [0u8; 32];
-
-    if bool::from(keypair.public_key.ct_eq(&public_zeros))
-        || bool::from(keypair.private_key.expose_secret().ct_eq(&private_zeros))
-    {
-        return Err(DllError::KeyInvalid { reason: "keypair contains all zeros".to_string() });
+    let zeros = [0u8; 32];
+    if keypair.public_key.ct_eq(&zeros).into() {
+        return Err(DllError::KeyInvalid { reason: "Public key is all zeros".to_string() });
+    }
+    if keypair.private_key.expose_secret().ct_eq(&zeros).into() {
+        return Err(DllError::KeyInvalid { reason: "Private key is all zeros".to_string() });
     }
 
     // Check if public key is on the curve (basic validation)
@@ -381,12 +464,26 @@ fn validate_keypair(keypair: &KeyPair) -> DllResult<()> {
     Ok(())
 }
 
+fn is_likely_connected() -> bool {
+    // Use the robust GetTcpTable2 check implemented in utils
+    // This reliably detects if we have an ESTABLISHED TCP connection
+    if is_socket_connected() {
+        #[cfg(debug_assertions)]
+        log_debug!("is_likely_connected: Verified TCP connection found via GetTcpTable2");
+        return true;
+    }
+
+    // Fallback/Log if not connected
+    #[cfg(debug_assertions)]
+    log_debug!("is_likely_connected: No verified TCP connection found");
+    false
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::ffi::CString;
     use std::ptr;
-
-    use super::*;
 
     // Helper function to create a test buffer
     fn _create_test_buffer(initial_content: &str) -> (*mut c_char, usize) {
@@ -474,6 +571,7 @@ mod tests {
 
     #[test]
     fn test_get_or_generate_keypair_returns_existing() {
+        use crate::crypto::generate_keypair;
         // Generate and store a keypair
         let original_keypair = generate_keypair();
         let _ = store_keypair(&original_keypair);
@@ -491,6 +589,7 @@ mod tests {
 
     #[test]
     fn test_validate_keypair_safety_valid() {
+        use crate::crypto::generate_keypair;
         let keypair = generate_keypair();
 
         let result = validate_keypair_safety(&keypair);
@@ -500,7 +599,7 @@ mod tests {
 
     #[test]
     fn test_validate_keypair_safety_all_zeros() {
-        let keypair = KeyPair {
+        let keypair = X25519KeyPair {
             public_key: [0u8; 32],
             private_key: secrecy::Secret::new([0u8; 32]),
             creation_time: chrono::Utc::now(),
@@ -522,7 +621,7 @@ mod tests {
         let mut private_key = [0u8; 32];
         private_key[0] = 1;
 
-        let keypair = KeyPair {
+        let keypair = X25519KeyPair {
             public_key: [0u8; 32],
             private_key: secrecy::Secret::new(private_key),
             creation_time: chrono::Utc::now(),
@@ -538,7 +637,7 @@ mod tests {
         let mut public_key = [0u8; 32];
         public_key[0] = 1;
 
-        let keypair = KeyPair {
+        let keypair = X25519KeyPair {
             public_key,
             private_key: secrecy::Secret::new([0u8; 32]),
             creation_time: chrono::Utc::now(),
@@ -600,7 +699,7 @@ mod tests {
 
     #[test]
     fn test_validate_keypair_all_zeros() {
-        let keypair = KeyPair {
+        let keypair = X25519KeyPair {
             public_key: [0u8; 32],
             private_key: secrecy::Secret::new([0u8; 32]),
             creation_time: chrono::Utc::now(),
@@ -615,7 +714,7 @@ mod tests {
         let mut private_key = [0u8; 32];
         private_key[0] = 1; // Make it non-zero
 
-        let keypair = KeyPair {
+        let keypair = X25519KeyPair {
             public_key: [0u8; 32],
             private_key: secrecy::Secret::new(private_key),
             creation_time: chrono::Utc::now(),
@@ -630,7 +729,7 @@ mod tests {
         let mut public_key = [0u8; 32];
         public_key[0] = 1; // Make it non-zero
 
-        let keypair = KeyPair {
+        let keypair = X25519KeyPair {
             public_key,
             private_key: secrecy::Secret::new([0u8; 32]),
             creation_time: chrono::Utc::now(),

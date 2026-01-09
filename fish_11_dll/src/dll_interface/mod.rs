@@ -1,7 +1,5 @@
 use std::ffi::CStr;
 use std::ptr;
-//use std::sync::Mutex;
-
 mod fish11_coreversion;
 mod fish11_decryptmsg;
 mod fish11_encryptmsg;
@@ -13,19 +11,28 @@ mod fish11_genkey;
 mod fish11_getconfigpath;
 mod fish11_getkeyttl;
 mod fish11_getratchetstate;
+mod fish11_hasmanualchannelkey;
+mod fish11_hasratchetchannelkey;
 mod fish11_help;
 mod fish11_logdecrypt;
 mod fish11_logdecryptfile;
 mod fish11_logencrypt;
 mod fish11_logsetkey;
+mod fish11_removemanualchannelkey;
+mod fish11_removeratchetchannelkey;
 mod fish11_setencryptionprefix;
 mod fish11_setfishprefix;
 mod fish11_setmanualchannelkey;
+mod fish11_setmanualchannelkeyfrompassword;
 mod fish11_setnetwork;
 mod utility;
 
+pub use crate::channel_encryption::init_key::FiSH11_InitChannelKey;
+pub use crate::channel_encryption::process_key::FiSH11_ProcessChannelKey;
 pub use fish11_getkeyttl::FiSH11_GetKeyTTL;
 pub use fish11_getratchetstate::FiSH11_GetRatchetState;
+pub use fish11_hasmanualchannelkey::FiSH11_HasManualChannelKey;
+pub use fish11_hasratchetchannelkey::FiSH11_HasRatchetChannelKey;
 pub use fish11_logdecrypt::FiSH11_LogDecrypt;
 pub use fish11_logdecryptfile::FiSH11_LogDecryptFile;
 pub use fish11_logencrypt::FiSH11_LogEncrypt;
@@ -34,14 +41,15 @@ pub use fish11_masterkey::{
     FiSH11_MasterKeyChangePassword, FiSH11_MasterKeyInit, FiSH11_MasterKeyIsUnlocked,
     FiSH11_MasterKeyLock, FiSH11_MasterKeyStatus, FiSH11_MasterKeyUnlock,
 };
+pub use fish11_removemanualchannelkey::FiSH11_RemoveManualChannelKey;
+pub use fish11_removeratchetchannelkey::FiSH11_RemoveRatchetChannelKey;
 pub use fish11_setencryptionprefix::FiSH11_SetEncryptionPrefix;
 pub use fish11_setfishprefix::FiSH11_SetFishPrefix;
 pub use fish11_setmanualchannelkey::FiSH11_SetManualChannelKey;
+pub use fish11_setmanualchannelkeyfrompassword::FiSH11_SetManualChannelKeyFromPassword;
+pub use ini_types::{INI_GetBool, INI_GetInt, INI_GetString, INI_SetInt, INI_SetString};
 pub use key_management::{FiSH11_ProcessPublicKey, FiSH11_TestCrypt};
-
-pub use crate::channel_encryption::init_key::FiSH11_InitChannelKey;
-pub use crate::channel_encryption::process_key::FiSH11_ProcessChannelKey;
-
+pub(crate) mod core;
 pub mod dll_error;
 pub mod fish11_exchangekey;
 pub mod fish11_masterkey;
@@ -51,9 +59,6 @@ pub mod fish11_setmircdir;
 pub mod function_template;
 pub mod ini_types;
 pub mod key_management;
-
-pub(crate) mod core;
-
 // Re-export fish_11_core globals for use within fish_11_dll
 pub use fish_11_core::globals::{
     CRATE_VERSION, CURRENT_YEAR, DEFAULT_MIRC_BUFFER_SIZE, FUNCTION_TIMEOUT_SECONDS,
@@ -61,7 +66,6 @@ pub use fish_11_core::globals::{
     MIRC_CONTINUE, MIRC_ERROR, MIRC_HALT, MIRC_IDENTIFIER, MIRC_TYPICAL_BUFFER_SIZE,
     NICK_VALIDATOR,
 };
-
 /// Returns the maximum amount of data that can be written into the output buffer.
 /// This implementation includes fallback to global buffer size if LOAD_INFO is not available.
 pub(crate) fn get_buffer_size() -> usize {

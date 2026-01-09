@@ -437,6 +437,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "winapi",
+ "windows 0.62.2",
  "x25519-dalek",
  "zeroize",
 ]

@@ -1,0 +1,336 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\src\FiSH\fish_11\fish_11_dll\Cargo.toml
+workspace: C:\src\FiSH\fish_11\Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\src\FiSH\fish_11\fish_11_core\Cargo.toml
+workspace: C:\src\FiSH\fish_11\Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\src\FiSH\fish_11\fish_11_cli\Cargo.toml
+workspace: C:\src\FiSH\fish_11\Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\src\FiSH\fish_11\fish_11_inject\Cargo.toml
+workspace: C:\src\FiSH\fish_11\Cargo.toml
+warning: unused imports: `SystemTime` and `UNIX_EPOCH`
+   --> fish_11_core\src\logging\writers\file_writer.rs:164:25
+    |
+164 |         use std::time::{SystemTime, UNIX_EPOCH};
+    |                         ^^^^^^^^^^  ^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `log::LevelFilter`
+  --> fish_11_core\src\logging\mod.rs:18:5
+   |
+18 | use log::LevelFilter;
+   |     ^^^^^^^^^^^^^^^^
+
+warning: value assigned to `rotation_lock` is never read
+   --> fish_11_core\src\logging\writers\file_writer.rs:186:33
+    |
+186 | ...                   rotation_lock = OpenOptions::new()
+    |                       ^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `get_master_key` is never used
+  --> fish_11_core\src\master_key\core\mod.rs:29:4
+   |
+29 | fn get_master_key() -> Option<MasterKey> {
+   |    ^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `fish_11_core` (lib) generated 4 warnings (run `cargo fix --lib -p fish_11_core` to apply 2 suggestions)
+    Checking fish_11 v11.25.0 (C:\src\FiSH\fish_11\fish_11_dll)
+error[E0425]: cannot find value `OsRng` in this scope
+  --> fish_11_dll\src\crypto\x25519.rs:72:48
+   |
+72 |     let secret = StaticSecret::random_from_rng(OsRng);
+   |                                                ^^^^^ not found in this scope
+   |
+help: consider importing this unit struct
+   |
+10 + use rand::rngs::OsRng;
+   |
+
+error[E0425]: cannot find value `NONCE_SIZE_BYTES` in this scope
+   --> fish_11_dll\src\crypto\x25519.rs:733:18
+    |
+733 |     nonce: &[u8; NONCE_SIZE_BYTES],
+    |                  ^^^^^^^^^^^^^^^^ not found in this scope
+    |
+note: constant `crate::crypto::chacha20::NONCE_SIZE_BYTES` exists but is inaccessible
+   --> fish_11_dll\src\crypto\chacha20.rs:17:1
+    |
+ 17 | const NONCE_SIZE_BYTES: usize = 12; // ChaCha20-Poly1305 standard nonce size (96 bits)
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not accessible
+
+error[E0425]: cannot find function `generate_random_bytes` in this scope
+   --> fish_11_dll\src\crypto\x25519.rs:780:23
+    |
+780 |     let nonce_bytes = generate_random_bytes(NONCE_SIZE_BYTES);
+    |                       ^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+    |
+help: consider importing this function
+    |
+ 10 + use crate::utils::generate_random_bytes;
+    |
+
+error[E0425]: cannot find value `NONCE_SIZE_BYTES` in this scope
+   --> fish_11_dll\src\crypto\x25519.rs:780:45
+    |
+780 |     let nonce_bytes = generate_random_bytes(NONCE_SIZE_BYTES);
+    |                                             ^^^^^^^^^^^^^^^^ not found in this scope
+    |
+note: constant `crate::crypto::chacha20::NONCE_SIZE_BYTES` exists but is inaccessible
+   --> fish_11_dll\src\crypto\chacha20.rs:17:1
+    |
+ 17 | const NONCE_SIZE_BYTES: usize = 12; // ChaCha20-Poly1305 standard nonce size (96 bits)
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not accessible
+
+error[E0433]: failed to resolve: use of undeclared type `Nonce`
+   --> fish_11_dll\src\crypto\x25519.rs:783:17
+    |
+783 |     let nonce = Nonce::from(nonce_array);
+    |                 ^^^^^ use of undeclared type `Nonce`
+    |
+help: consider importing this type alias
+    |
+ 10 + use chacha20poly1305::Nonce;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `ChaCha20Poly1305`
+   --> fish_11_dll\src\crypto\x25519.rs:786:18
+    |
+786 |     let cipher = ChaCha20Poly1305::new(shared_key_with_member.into());
+    |                  ^^^^^^^^^^^^^^^^ use of undeclared type `ChaCha20Poly1305`
+    |
+help: consider importing this type alias
+    |
+ 10 + use chacha20poly1305::ChaCha20Poly1305;
+    |
+
+error[E0425]: cannot find value `NONCE_SIZE_BYTES` in this scope
+   --> fish_11_dll\src\crypto\x25519.rs:794:41
+    |
+794 |     let mut result = Vec::with_capacity(NONCE_SIZE_BYTES + ciphertext.len());
+    |                                         ^^^^^^^^^^^^^^^^ not found in this scope
+    |
+note: constant `crate::crypto::chacha20::NONCE_SIZE_BYTES` exists but is inaccessible
+   --> fish_11_dll\src\crypto\chacha20.rs:17:1
+    |
+ 17 | const NONCE_SIZE_BYTES: usize = 12; // ChaCha20-Poly1305 standard nonce size (96 bits)
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not accessible
+
+error[E0425]: cannot find value `NONCE_SIZE_BYTES` in this scope
+   --> fish_11_dll\src\crypto\x25519.rs:833:60
+    |
+833 |     let (nonce_bytes, ciphertext) = wrapped_bytes.split_at(NONCE_SIZE_BYTES);
+    |                                                            ^^^^^^^^^^^^^^^^ not found in this scope
+    |
+note: constant `crate::crypto::chacha20::NONCE_SIZE_BYTES` exists but is inaccessible
+   --> fish_11_dll\src\crypto\chacha20.rs:17:1
+    |
+ 17 | const NONCE_SIZE_BYTES: usize = 12; // ChaCha20-Poly1305 standard nonce size (96 bits)
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not accessible
+
+error[E0433]: failed to resolve: use of undeclared type `Nonce`
+   --> fish_11_dll\src\crypto\x25519.rs:837:17
+    |
+837 |     let nonce = Nonce::from(nonce_array);
+    |                 ^^^^^ use of undeclared type `Nonce`
+    |
+help: consider importing this type alias
+    |
+ 10 + use chacha20poly1305::Nonce;
+    |
+
+error[E0433]: failed to resolve: use of undeclared type `ChaCha20Poly1305`
+   --> fish_11_dll\src\crypto\x25519.rs:840:18
+    |
+840 |     let cipher = ChaCha20Poly1305::new(shared_key_with_coordinator.into());
+    |                  ^^^^^^^^^^^^^^^^ use of undeclared type `ChaCha20Poly1305`
+    |
+help: consider importing this type alias
+    |
+ 10 + use chacha20poly1305::ChaCha20Poly1305;
+    |
+
+warning: unexpected `cfg` condition value: `serde`
+   --> fish_11_dll\src\config\models.rs:169:16
+    |
+169 |     #[cfg_attr(feature = "serde", serde(skip))]
+    |                ^^^^^^^^^^^^^^^^^ help: remove the condition
+    |
+    = note: no expected values for `feature`
+    = help: consider adding `serde` as a feature in `Cargo.toml`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+    = note: `#[warn(unexpected_cfgs)]` on by default
+
+warning: unused import: `derive_master_key`
+ --> fish_11_dll\src\config\encrypted_file_storage.rs:7:53
+  |
+7 |     EncryptedBlob, decrypt_data, derive_config_kek, derive_master_key, encrypt_data,
+  |                                                     ^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `CStr` and `ptr`
+ --> fish_11_dll\src\dll_interface\fish11_getconfigpath.rs:1:28
+  |
+1 | use crate::dll_interface::{CStr, ptr};
+  |                            ^^^^  ^^^
+
+warning: unused variable: `data`
+   --> fish_11_dll\src\unified_error.rs:542:21
+    |
+542 |                   let $data = input_ptr;
+    |                       ^^^^^
+    |
+   ::: fish_11_dll\src\dll_interface\fish11_filelistkeys.rs:7:1
+    |
+  7 | / dll_function_identifier!(FiSH11_FileListKeys, data, {
+  8 | |     log_debug!("Starting key listing");
+...   |
+ 47 | |     Ok(result_string)
+ 48 | | });
+    | |__- in this macro invocation
+    |
+help: `data` is captured in macro and introduced a unused variable
+   --> fish_11_dll\src\unified_error.rs:542:21
+    |
+542 |                   let $data = input_ptr;
+    |                       ^^^^^
+    |
+   ::: fish_11_dll\src\dll_interface\fish11_filelistkeys.rs:7:1
+    |
+  7 | / dll_function_identifier!(FiSH11_FileListKeys, data, {
+  8 | |     log_debug!("Starting key listing");
+...   |
+ 47 | |     Ok(result_string)
+ 48 | | });
+    | |__- in this macro invocation
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+    = note: this warning originates in the macro `dll_function_identifier` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `ret_buffer_size`
+  --> fish_11_dll\src\dll_interface\fish11_logdecrypt.rs:39:5
+   |
+39 |     ret_buffer_size: i32,
+   |     ^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_ret_buffer_size`
+
+warning: unused variable: `ret_buffer_size`
+  --> fish_11_dll\src\dll_interface\fish11_logencrypt.rs:33:5
+   |
+33 |     ret_buffer_size: i32,
+   |     ^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_ret_buffer_size`
+
+warning: value assigned to `buffer_size` is never read
+   --> fish_11_dll\src\dll_interface\core.rs:185:27
+    |
+185 |     let mut buffer_size = DEFAULT_MIRC_BUFFER_SIZE;
+    |                           ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `unicode_mode` is never read
+   --> fish_11_dll\src\dll_interface\core.rs:186:28
+    |
+186 |     let mut unicode_mode = false;
+    |                            ^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: unused variable: `data`
+   --> fish_11_dll\src\unified_error.rs:542:21
+    |
+542 |                   let $data = input_ptr;
+    |                       ^^^^^
+    |
+   ::: fish_11_dll\src\dll_interface\fish11_masterkey.rs:205:1
+    |
+205 | / dll_function_identifier!(FiSH11_MasterKeyLock, data, {
+...   |
+212 | |     Ok("1".to_string())
+213 | | });
+    | |__- in this macro invocation
+    |
+help: `data` is captured in macro and introduced a unused variable
+   --> fish_11_dll\src\unified_error.rs:542:21
+    |
+542 |                   let $data = input_ptr;
+    |                       ^^^^^
+    |
+   ::: fish_11_dll\src\dll_interface\fish11_masterkey.rs:205:1
+    |
+205 | / dll_function_identifier!(FiSH11_MasterKeyLock, data, {
+...   |
+212 | |     Ok("1".to_string())
+213 | | });
+    | |__- in this macro invocation
+    = note: this warning originates in the macro `dll_function_identifier` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `data`
+   --> fish_11_dll\src\unified_error.rs:542:21
+    |
+542 |                   let $data = input_ptr;
+    |                       ^^^^^
+    |
+   ::: fish_11_dll\src\dll_interface\fish11_masterkey.rs:319:1
+    |
+319 | / dll_function_identifier!(FiSH11_MasterKeyStatus, data, {
+...   |
+326 | |     Ok(status.to_string())
+327 | | });
+    | |__- in this macro invocation
+    |
+help: `data` is captured in macro and introduced a unused variable
+   --> fish_11_dll\src\unified_error.rs:542:21
+    |
+542 |                   let $data = input_ptr;
+    |                       ^^^^^
+    |
+   ::: fish_11_dll\src\dll_interface\fish11_masterkey.rs:319:1
+    |
+319 | / dll_function_identifier!(FiSH11_MasterKeyStatus, data, {
+...   |
+326 | |     Ok(status.to_string())
+327 | | });
+    | |__- in this macro invocation
+    = note: this warning originates in the macro `dll_function_identifier` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `data`
+   --> fish_11_dll\src\unified_error.rs:542:21
+    |
+542 |                   let $data = input_ptr;
+    |                       ^^^^^
+    |
+   ::: fish_11_dll\src\dll_interface\fish11_masterkey.rs:329:1
+    |
+329 | / dll_function_identifier!(FiSH11_MasterKeyIsUnlocked, data, {
+...   |
+336 | |     Ok(result.to_string())
+337 | | });
+    | |__- in this macro invocation
+    |
+help: `data` is captured in macro and introduced a unused variable
+   --> fish_11_dll\src\unified_error.rs:542:21
+    |
+542 |                   let $data = input_ptr;
+    |                       ^^^^^
+    |
+   ::: fish_11_dll\src\dll_interface\fish11_masterkey.rs:329:1
+    |
+329 | / dll_function_identifier!(FiSH11_MasterKeyIsUnlocked, data, {
+...   |
+336 | |     Ok(result.to_string())
+337 | | });
+    | |__- in this macro invocation
+    = note: this warning originates in the macro `dll_function_identifier` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+Some errors have detailed explanations: E0425, E0433.
+For more information about an error, try `rustc --explain E0425`.
+warning: `fish_11` (lib) generated 11 warnings
+error: could not compile `fish_11` (lib) due to 10 previous errors; 11 warnings emitted

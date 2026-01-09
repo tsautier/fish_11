@@ -155,6 +155,43 @@ pub use key_management::{
 pub use manual_channel_keys::{
     get_manual_channel_key, list_manual_channel_keys, set_manual_channel_key,
 };
+
+// Helper functions for channel key management
+pub fn has_manual_channel_key(channel_name: &str) -> bool {
+    get_manual_channel_key(channel_name).is_ok()
+}
+
+pub fn has_ratchet_channel_key(channel_name: &str) -> bool {
+    // For now, we'll check if there's a ratchet state for this channel
+    // This is a simplified check - in a real implementation, you'd want to
+    // verify that the ratchet state has a valid current key
+    with_config(|config| {
+        let normalized_channel = channel_name.to_lowercase();
+        Ok(config.channel_ratchet_states.contains_key(&normalized_channel))
+    })
+    .unwrap_or(false)
+}
+
+pub fn remove_manual_channel_key(channel_name: &str) -> Result<(), crate::error::FishError> {
+    let normalized_channel = channel_name.to_lowercase();
+    let safe_channel_name = normalized_channel.replace('#', "hash_");
+    let entry_key = format!("channel_key_{}", safe_channel_name);
+
+    with_config_mut(|config| {
+        config.entries.remove(&entry_key);
+        Ok(())
+    })
+}
+
+pub fn remove_ratchet_channel_key(channel_name: &str) -> Result<(), crate::error::FishError> {
+    let normalized_channel = channel_name.to_lowercase();
+
+    with_config_mut(|config| {
+        // Remove ratchet state for this channel
+        config.channel_ratchet_states.remove(&normalized_channel);
+        Ok(())
+    })
+}
 pub use networks::{
     count_network_mappings, count_unique_networks, delete_network, get_all_network_mappings,
     get_all_networks, get_network_for_nick, get_nicknames_by_network, has_network, merge_networks,

@@ -38,7 +38,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
     // Safety check
     if loadinfo.is_null() {
         error!("LoadDll() called with NULL loadinfo!");
-        #[cfg(debug_assertions)]
+
         error!("LoadDll() : loadinfo pointer is NULL - aborting");
         return MIRC_HALT; // Indicate failure
     }
@@ -112,7 +112,7 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
     info!("Setting up socket hooks...");
 
     #[cfg(debug_assertions)]
-    info!("LoadDll() : Calling install_hooks()...");
+    info!("LoadDll() : calling install_hooks()...");
 
     if let Err(e) = install_hooks() {
         error!("Failed to set up Winsock hooks: {}", e);
@@ -130,7 +130,8 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
                 MB_ICONEXCLAMATION | MB_OK,
             );
         }
-        li.m_keep = 0; // Tell mIRC to unload us
+
+        li.m_keep = 0; // Tell mIRC to unload us !
 
         #[cfg(debug_assertions)]
         error!("LoadDll() : returning MIRC_HALT due to hook installation failure");

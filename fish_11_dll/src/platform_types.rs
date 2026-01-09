@@ -5,9 +5,9 @@
 //! On Unix, we define compatible types.
 
 #[cfg(windows)]
-pub use winapi::shared::minwindef::BOOL;
+pub type BOOL = i32;
 #[cfg(windows)]
-pub use winapi::shared::windef::HWND;
+pub type HWND = *mut std::ffi::c_void;
 
 #[cfg(not(windows))]
 pub type HWND = *mut std::ffi::c_void;
@@ -18,7 +18,7 @@ pub type BOOL = std::os::raw::c_int;
 // Common C types used across platforms
 pub use std::os::raw::{c_char, c_int};
 
-// C string pointer aliases for convenience (used by DLL interface code)
+// C string pointer aliases used by DLL interface code
 pub type PCSTR = *const c_char;
 pub type PSTR = *mut c_char;
 

@@ -1,16 +1,14 @@
 //! engine_registration.rs
 //! Handles the registration of the fish_11_dll as an engine within fish_11_inject.
 
-use std::ffi::{CString, c_char};
-use std::ptr;
-
-use once_cell::sync::OnceCell;
-use winapi::shared::minwindef::{FARPROC, HMODULE};
-use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
-
 use crate::config::settings::get_encryption_prefix;
 use crate::crypto::{decrypt_message, encrypt_message};
-//use crate::{log_debug, log_error, log_info, log_warn};
+use once_cell::sync::OnceCell;
+use std::ffi::{CString, c_char};
+use std::ptr;
+use windows::Win32::Foundation::HMODULE;
+use windows::Win32::System::LibraryLoader::{GetModuleHandleA, GetProcAddress};
+use windows::core::PCSTR;
 
 type GetNetworkNameFn = unsafe extern "C" fn(u32) -> *mut c_char;
 static GET_NETWORK_NAME_FN: OnceCell<GetNetworkNameFn> = OnceCell::new();
@@ -42,6 +40,7 @@ unsafe extern "C" fn get_network_name_impl(socket: u32) -> *mut c_char {
 // Callback for outgoing messages (encryption)
 unsafe extern "C" fn on_outgoing(socket: u32, line: *const c_char, _len: usize) -> *mut c_char {
     if line.is_null() {
+        #[cfg(debug_assertions)]
         log_debug!("Engine: received null line pointer, ignoring");
         return ptr::null_mut();
     }
@@ -59,12 +58,14 @@ unsafe extern "C" fn on_outgoing(socket: u32, line: *const c_char, _len: usize) 
 
     // Validate line is not empty or truncated
     if c_str.is_empty() {
+        #[cfg(debug_assertions)]
         log_debug!("Engine: received empty line, ignoring");
         return ptr::null_mut();
     }
 
     // Check for truncated lines (should end with \r\n for IRC protocol)
     if !c_str.ends_with("\r\n") && !c_str.ends_with("\n") {
+        #[cfg(debug_assertions)]
         log_warn!(
             "Engine: received potentially truncated line (missing IRC line ending): {}",
             c_str
@@ -95,6 +96,7 @@ unsafe extern "C" fn on_outgoing(socket: u32, line: *const c_char, _len: usize) 
 // Callback for incoming messages (decryption)
 unsafe extern "C" fn on_incoming(socket: u32, line: *const c_char, _len: usize) -> *mut c_char {
     if line.is_null() {
+        #[cfg(debug_assertions)]
         log_debug!("Engine: received null line pointer for incoming message, ignoring");
         return ptr::null_mut();
     }
@@ -112,12 +114,14 @@ unsafe extern "C" fn on_incoming(socket: u32, line: *const c_char, _len: usize) 
 
     // Validate line is not empty or truncated
     if c_str.is_empty() {
+        #[cfg(debug_assertions)]
         log_debug!("Engine: received empty incoming line, ignoring");
         return ptr::null_mut();
     }
 
     // Check for truncated lines (should end with \r\n for IRC protocol)
     if !c_str.ends_with("\r\n") && !c_str.ends_with("\n") {
+        #[cfg(debug_assertions)]
         log_warn!(
             "Engine: received potentially truncated incoming line (missing IRC line ending): {}",
             c_str
@@ -132,6 +136,8 @@ unsafe extern "C" fn on_incoming(socket: u32, line: *const c_char, _len: usize) 
     let network_name = get_network_name_from_inject(socket);
     if let Some(ref net) = network_name {
         crate::set_current_network(net);
+
+        #[cfg(debug_assertions)]
         log_debug!("Engine: set current network to '{}' for socket {}", net, socket);
     }
 
@@ -180,6 +186,7 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
         return None;
     }
 
+    #[cfg(debug_assertions)]
     log_debug!("Engine: attempting to encrypt outgoing line");
 
     // Parse the line to extract target and message
@@ -204,10 +211,12 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
     } else if let Some(topic_pos) = cmd_part.find(" TOPIC ") {
         (cmd_part[topic_pos + 7..].trim(), true)
     } else {
+        #[cfg(debug_assertions)]
         log_warn!("Engine: could not extract target from command part");
         return None;
     };
 
+    #[cfg(debug_assertions)]
     log_debug!("Engine: target={}, message_len={}", target, message.len());
 
     // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan, etc.)
@@ -218,6 +227,7 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
     // For private messages, we use standard key lookup
     let encrypted = if is_topic {
         // Handle topic encryption using the channel key but without ratchet advancement
+        #[cfg(debug_assertions)]
         log_debug!("Engine: attempting topic encryption for '{}'", target);
 
         // First try to get a channel key (either manual or ratchet-based)
@@ -249,22 +259,20 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
         };
 
         // Log message content if DEBUG flag is enabled for sensitive content
-        if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-            log_debug!("Engine: topic encryption input for channel '{}': '{}'", target, &message);
-        }
+        #[cfg(debug_assertions)]
+        log_debug!("Engine: topic encryption input for channel '{}': '{}'", target, &message);
 
         // Encrypt the message with the channel name as Associated Data (to prevent cross-channel replay)
         let encrypted =
             match encrypt_message(key_array, &message, Some(target), Some(target.as_bytes())) {
                 Ok(enc) => {
-                    // Log encrypted result if DEBUG flag is enabled for sensitive content
-                    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                        log_debug!(
-                            "Engine: topic encrypted output for channel '{}': '{}'",
-                            target,
-                            &enc
-                        );
-                    }
+                    #[cfg(debug_assertions)]
+                    log_debug!(
+                        "Engine: topic encrypted output for channel '{}': '{}'",
+                        target,
+                        &enc
+                    );
+
                     enc
                 }
                 Err(e) => {
@@ -275,6 +283,7 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
 
         encrypted
     } else if target.starts_with('#') || target.starts_with('&') {
+        #[cfg(debug_assertions)]
         log_debug!("Engine: attempting channel message encryption for '{}'", target);
 
         // For channels, first check if we have a manual key. If so, use it for simple encryption (no ratchet)
@@ -285,25 +294,23 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
             match crate::config::get_channel_key_with_fallback(target) {
                 Ok(key) => {
                     // Log message content if DEBUG flag is enabled for sensitive content
-                    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                        log_debug!(
-                            "Engine: channel message encryption input for channel '{}': '{}'",
-                            target,
-                            &message
-                        );
-                    }
+                    #[cfg(debug_assertions)]
+                    log_debug!(
+                        "Engine: channel message encryption input for channel '{}': '{}'",
+                        target,
+                        &message
+                    );
 
                     // Encrypt with the fixed key, using the channel name as Associated Data.
                     match encrypt_message(&key, &message, Some(target), Some(target.as_bytes())) {
                         Ok(encrypted_b64) => {
-                            // Log encrypted result if DEBUG flag is enabled for sensitive content
-                            if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                                log_debug!(
-                                    "Engine: channel message encrypted output for channel '{}': '{}'",
-                                    target,
-                                    &encrypted_b64
-                                );
-                            }
+                            #[cfg(debug_assertions)]
+                            log_debug!(
+                                "Engine: channel message encrypted output for channel '{}': '{}'",
+                                target,
+                                &encrypted_b64
+                            );
+
                             encrypted_b64
                         }
                         Err(e) => {
@@ -326,28 +333,24 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
             match crate::config::with_ratchet_state_mut(target, |state| {
                 let current_key = state.current_key;
 
-                // Log message content if DEBUG flag is enabled for sensitive content
-                if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                    log_debug!(
-                        "Engine: ratchet channel encryption input for channel '{}': '{}'",
-                        target,
-                        &message
-                    );
-                }
+                #[cfg(debug_assertions)]
+                log_debug!(
+                    "Engine: ratchet channel encryption input for channel '{}': '{}'",
+                    target,
+                    &message
+                );
 
                 // Encrypt with the current key, using the channel name as Associated Data.
                 let encrypted_b64 =
                     encrypt_message(&current_key, &message, Some(target), Some(target.as_bytes()))
                         .map_err(crate::unified_error::DllError::from)?;
 
-                // Log encrypted result if DEBUG flag is enabled for sensitive content
-                if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                    log_debug!(
-                        "Engine: ratchet channel encrypted output for channel '{}': '{}'",
-                        target,
-                        &encrypted_b64
-                    );
-                }
+                #[cfg(debug_assertions)]
+                log_debug!(
+                    "Engine: ratchet channel encrypted output for channel '{}': '{}'",
+                    target,
+                    &encrypted_b64
+                );
 
                 // Extract the nonce from the encrypted payload to derive the next key.
                 let encrypted_bytes = crate::utils::base64_decode(&encrypted_b64)
@@ -386,6 +389,7 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
             Ok(k) => k,
             Err(_) => {
                 // No key = no encryption, pass through
+                #[cfg(debug_assertions)]
                 log_debug!(
                     "Engine: no key for target '{}' on network '{:?}', not encrypting",
                     target,
@@ -403,26 +407,23 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
             }
         };
 
-        // Log message content if DEBUG flag is enabled for sensitive content
-        if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-            log_debug!(
-                "Engine: private message encryption input for target '{}': '{}'",
-                target,
-                &message
-            );
-        }
+        #[cfg(debug_assertions)]
+        log_debug!(
+            "Engine: private message encryption input for target '{}': '{}'",
+            target,
+            &message
+        );
 
         // Encrypt the message (no AD for private messages).
         let encrypted = match encrypt_message(key_array, &message, Some(target), None) {
             Ok(enc) => {
-                // Log encrypted result if DEBUG flag is enabled for sensitive content
-                if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                    log_debug!(
-                        "Engine: private message encrypted output for target '{}': '{}'",
-                        target,
-                        &enc
-                    );
-                }
+                #[cfg(debug_assertions)]
+                log_debug!(
+                    "Engine: private message encrypted output for target '{}': '{}'",
+                    target,
+                    &enc
+                );
+
                 enc
             }
             Err(e) => {
@@ -441,6 +442,8 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
     } else {
         "private message"
     };
+
+    #[cfg(debug_assertions)]
     log_info!("Engine: successfully encrypted {} to '{}'", msg_type, target);
 
     // Get the encryption prefix from config (defaults to "+FiSH")
@@ -457,10 +460,12 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
 
 // Function to attempt decryption
 fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
+    #[cfg(debug_assertions)]
     log_debug!("Engine: attempt_decryption called for line: {}, network: {:?}", line, network);
 
     // Handle RPL_TOPIC (332) for encrypted channel topics (when joining a channel)
     if line.contains(" 332 ") && line.contains(":+FCEP_TOPIC+") {
+        #[cfg(debug_assertions)]
         log_info!("Engine: processing encrypted RPL_TOPIC (332) for channel topic");
 
         let parts: Vec<&str> = line.split_whitespace().collect();
@@ -470,6 +475,8 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
         }
 
         let key_identifier = parts[3]; // Channel name is the key identifier
+
+        #[cfg(debug_assertions)]
         log_debug!(
             "Engine: RPL_TOPIC detected - channel: {}, parts count: {}",
             key_identifier,
@@ -486,6 +493,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
         };
         let encrypted_data = line[topic_start..].trim();
 
+        #[cfg(debug_assertions)]
         log_debug!(
             "Engine: topic_key_identifier={}, encrypted_data_len={}, encrypted_data='{}'",
             key_identifier,
@@ -496,6 +504,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
         // Try to get a channel key (either manual or ratchet-based) first
         let key = match crate::config::get_channel_key_with_fallback(key_identifier) {
             Ok(k) => {
+                #[cfg(debug_assertions)]
                 log_debug!(
                     "Engine: found channel key for topic channel '{}', length: {}",
                     key_identifier,
@@ -507,6 +516,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
                 // If no channel key exists, try the regular key lookup (for backward compatibility)
                 match crate::config::get_key(key_identifier, network) {
                     Ok(k) => {
+                        #[cfg(debug_assertions)]
                         log_debug!(
                             "Engine: found regular key for topic channel '{}', length: {}",
                             key_identifier,
@@ -515,6 +525,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
                         k
                     }
                     Err(e) => {
+                        #[cfg(debug_assertions)]
                         log_warn!(
                             "Engine: no key found for topic channel '{}': {}",
                             key_identifier,
@@ -537,19 +548,20 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
         let decrypted =
             match decrypt_message(key_array, encrypted_data, Some(key_identifier.as_bytes())) {
                 Ok(msg) => {
+                    #[cfg(debug_assertions)]
                     log_debug!(
                         "Engine: successfully decrypted topic for channel '{}', length: {}",
                         key_identifier,
                         msg.len()
                     );
-                    // Log decrypted content if DEBUG flag is enabled for sensitive content
-                    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                        log_debug!(
-                            "Engine: decrypted topic content for channel '{}': '{}'",
-                            key_identifier,
-                            &msg
-                        );
-                    }
+
+                    #[cfg(debug_assertions)]
+                    log_debug!(
+                        "Engine: decrypted topic content for channel '{}': '{}'",
+                        key_identifier,
+                        &msg
+                    );
+
                     msg
                 }
                 Err(e) => {
@@ -574,6 +586,8 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
 
         let prefix_and_command = &line[..message_part_start];
         let reconstructed = format!("{} :{}\r\n", prefix_and_command, decrypted);
+
+        #[cfg(debug_assertions)]
         log_debug!("Engine: reconstructed topic line length: {}", reconstructed.len());
         return Some(reconstructed);
     }
@@ -581,7 +595,9 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
     // Handle incoming TOPIC notifications (when someone changes the topic)
     // Format: :nick!user@host TOPIC #channel :+FCEP_TOPIC+ encrypted_data
     if line.starts_with(':') && line.contains(" TOPIC ") && line.contains(":+FCEP_TOPIC+") {
+        #[cfg(debug_assertions)]
         log_info!("Engine: processing encrypted incoming TOPIC notification");
+        #[cfg(debug_assertions)]
         log_debug!("Engine: detected encrypted incoming TOPIC notification: {}", line);
 
         // Find where the actual topic data begins
@@ -589,6 +605,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
         let topic_start = match line.find(topic_marker) {
             Some(pos) => pos + topic_marker.len(),
             None => {
+                #[cfg(debug_assertions)]
                 log_warn!("Engine: FCEP_TOPIC marker not found in TOPIC notification: {}", line);
                 return None;
             }
@@ -599,20 +616,25 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
         let topic_pos = match line.find(" TOPIC ") {
             Some(pos) => pos,
             None => {
+                #[cfg(debug_assertions)]
                 log_warn!("Engine: could not find TOPIC command in line: {}", line);
                 return None;
             }
         };
 
         // The channel follows the " TOPIC " part
-        let after_topic_cmd = &line[topic_pos + 7..]; // " TOPIC " is 7 chars
+        let after_topic_cmd = &line[topic_pos + 7..]; // TOPIC is 7 chars
         let parts: Vec<&str> = after_topic_cmd.split_whitespace().collect();
+
         if parts.is_empty() {
+            #[cfg(debug_assertions)]
             log_warn!("Engine: no channel found after TOPIC command in line: {}", line);
+
             return None;
         }
         let key_identifier = parts[0]; // First token after " TOPIC " is the channel
 
+        #[cfg(debug_assertions)]
         log_debug!(
             "Engine: incoming_topic_key_identifier={}, encrypted_data_len={}, encrypted_data='{}'",
             key_identifier,
@@ -623,6 +645,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
         // Try to get a channel key (either manual or ratchet-based) first
         let key = match crate::config::get_channel_key_with_fallback(key_identifier) {
             Ok(k) => {
+                #[cfg(debug_assertions)]
                 log_debug!(
                     "Engine: found channel key for incoming topic channel '{}', length: {}",
                     key_identifier,
@@ -634,6 +657,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
                 // If no channel key exists, try the regular key lookup (for backward compatibility)
                 match crate::config::get_key(key_identifier, network) {
                     Ok(k) => {
+                        #[cfg(debug_assertions)]
                         log_debug!(
                             "Engine: found regular key for incoming topic channel '{}', length: {}",
                             key_identifier,
@@ -642,6 +666,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
                         k
                     }
                     Err(e) => {
+                        #[cfg(debug_assertions)]
                         log_warn!(
                             "Engine: no key found for incoming topic channel '{}': {}",
                             key_identifier,
@@ -670,19 +695,20 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
             Some(key_identifier.as_bytes()),
         ) {
             Ok(msg) => {
+                #[cfg(debug_assertions)]
                 log_debug!(
                     "Engine: successfully decrypted incoming topic for channel '{}', length: {}",
                     key_identifier,
                     msg.len()
                 );
-                // Log decrypted content if DEBUG flag is enabled for sensitive content
-                if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                    log_debug!(
-                        "Engine: decrypted incoming topic content for channel '{}': '{}'",
-                        key_identifier,
-                        &msg
-                    );
-                }
+
+                #[cfg(debug_assertions)]
+                log_debug!(
+                    "Engine: decrypted incoming topic content for channel '{}': '{}'",
+                    key_identifier,
+                    &msg
+                );
+
                 msg
             }
             Err(e) => {
@@ -695,6 +721,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
             }
         };
 
+        #[cfg(debug_assertions)]
         log_info!("Engine: successfully decrypted incoming topic for channel '{}'", key_identifier);
 
         let message_part_start = match line.find(" :+FCEP_TOPIC+") {
@@ -707,7 +734,10 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
 
         let prefix_and_command = &line[..message_part_start];
         let reconstructed = format!("{} :{}\r\n", prefix_and_command, decrypted);
+
+        #[cfg(debug_assertions)]
         log_debug!("Engine: reconstructed incoming topic line length: {}", reconstructed.len());
+
         return Some(reconstructed);
     }
 
@@ -716,7 +746,9 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
 
     // Check if line contains FiSH encrypted data with the configured prefix
     let fish_marker = format!(":{}", encryption_prefix);
+
     if !line.contains(&fish_marker) {
+        #[cfg(debug_assertions)]
         log_debug!("Engine: line does not contain '{} ', skipping", fish_marker);
         return None;
     }
@@ -724,15 +756,19 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
     // CRITICAL: do NOT decrypt key exchange messages !#@
     // X25519_INIT and X25519_FINISH must pass through unchanged so mIRC can handle them
     if line.contains("X25519_INIT:") || line.contains("X25519_FINISH") {
+        #[cfg(debug_assertions)]
         log_debug!("Engine: ignoring key exchange message (X25519_INIT/FINISH)");
         return None;
     }
 
+    #[cfg(debug_assertions)]
     log_debug!("Engine: attempting to decrypt line: {}", line);
 
     // Parse IRC line format: ":nick!user@host PRIVMSG target :+FiSH <data>"
     let parts: Vec<&str> = line.split_whitespace().collect();
+
     if parts.len() < 4 {
+        #[cfg(debug_assertions)]
         log_warn!("Engine: malformed IRC line (not enough parts): {}", line);
         return None;
     }
@@ -753,7 +789,8 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
     let fish_start = match line.find(&fish_marker_search) {
         Some(pos) => pos + fish_marker_search.len(),
         None => {
-            log_warn!("Engine: FiSH11 marker found but position parse failed");
+            #[cfg(debug_assertions)]
+            log_warn!("Engine: FiSH_11 marker found but position parse failed");
             return None;
         }
     };
@@ -768,6 +805,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
         sender.to_lowercase()
     };
 
+    #[cfg(debug_assertions)]
     log_debug!(
         "Engine: sender={}, target={}, key_identifier={}, encrypted_data_len={}",
         sender,
@@ -781,6 +819,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
         // For channel messages, try channel key (manual or ratchet-based) first
         match crate::config::get_channel_key_with_fallback(&key_identifier) {
             Ok(k) => {
+                #[cfg(debug_assertions)]
                 log_debug!("Engine: using channel key for '{}'", key_identifier);
                 k.to_vec() // Convert to vec for compatibility with existing code
             }
@@ -788,10 +827,12 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
                 // If no channel key, try the regular key lookup
                 match crate::config::get_key(&key_identifier, network) {
                     Ok(k) => {
+                        #[cfg(debug_assertions)]
                         log_debug!("Engine: using regular key for '{}'", key_identifier);
                         k
                     }
                     Err(e) => {
+                        #[cfg(debug_assertions)]
                         log_warn!("Engine: no key found for '{}': {}", key_identifier, e);
                         return None;
                     }
@@ -802,10 +843,12 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
         // For private messages, use regular key lookup with normalized key_identifier
         match crate::config::get_key(&key_identifier, network) {
             Ok(k) => {
+                #[cfg(debug_assertions)]
                 log_debug!("Engine: using private key for '{}'", key_identifier);
                 k
             }
             Err(e) => {
+                #[cfg(debug_assertions)]
                 log_warn!("Engine: no key found for '{}': {}", key_identifier, e);
                 return None;
             }
@@ -829,12 +872,11 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
         }
     };
 
+    #[cfg(debug_assertions)]
     log_info!("Engine: successfully decrypted message from '{}'", sender);
 
-    // Log decrypted content if DEBUG flag is enabled for sensitive content
-    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-        log_debug!("Engine: decrypted content from '{}': '{}'", sender, &decrypted);
-    }
+    #[cfg(debug_assertions)]
+    log_debug!("Engine: decrypted content from '{}': '{}'", sender, &decrypted);
 
     // Reconstruct the IRC line with decrypted plaintext
     // Format: ":nick!user@host COMMAND target :decrypted_message\r\n"
@@ -852,7 +894,6 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
 
     // The part of the line before the message is the full prefix, command, and target
     let prefix_and_command = &line[..message_part_start];
-
     let reconstructed = format!("{} :{}\r\n", prefix_and_command, decrypted);
 
     Some(reconstructed)
@@ -861,44 +902,51 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
 type RegisterEngineFn = extern "C" fn(*const FishInjectEngine) -> i32;
 
 pub fn register_engine() {
+    #[cfg(debug_assertions)]
     log_info!("Attempting to register FiSH_11 engine with inject0r...");
     unsafe {
         let inject_dll_name = CString::new("fish_11_inject.dll").unwrap();
-        let h_module: HMODULE = GetModuleHandleA(inject_dll_name.as_ptr());
+        let h_module: HMODULE =
+            GetModuleHandleA(PCSTR(inject_dll_name.as_ptr() as *const u8)).unwrap_or_default();
 
-        if h_module.is_null() {
+        if h_module.0.is_null() {
+            #[cfg(debug_assertions)]
             log_warn!("fish_11_inject.dll not found in process. Engine not registered.");
             return;
         }
 
         let get_network_name_fn_name = CString::new("GetNetworkName").unwrap();
-        let get_network_name_fn: FARPROC =
-            GetProcAddress(h_module, get_network_name_fn_name.as_ptr());
+        let get_network_name_fn =
+            GetProcAddress(h_module, PCSTR(get_network_name_fn_name.as_ptr() as *const u8));
 
-        if get_network_name_fn.is_null() {
+        if get_network_name_fn.is_none() {
             log_error!("GetNetworkName function not found in fish_11_inject.dll.");
         } else {
             let get_network_name_fn_ptr: GetNetworkNameFn =
-                std::mem::transmute(get_network_name_fn);
+                std::mem::transmute(get_network_name_fn.unwrap());
             if let Err(_) = GET_NETWORK_NAME_FN.set(get_network_name_fn_ptr) {
+                #[cfg(debug_assertions)]
                 log_error!("GetNetworkName function already set, this should not happen.");
             }
         }
 
         let register_fn_name = CString::new("RegisterEngine").unwrap();
-        let register_fn: FARPROC = GetProcAddress(h_module, register_fn_name.as_ptr());
+        let register_fn = GetProcAddress(h_module, PCSTR(register_fn_name.as_ptr() as *const u8));
 
-        if register_fn.is_null() {
+        if register_fn.is_none() {
+            #[cfg(debug_assertions)]
             log_error!("RegisterEngine function not found in fish_11_inject.dll.");
             return;
         }
 
-        let register_engine_fn: RegisterEngineFn = std::mem::transmute(register_fn);
+        let register_engine_fn: RegisterEngineFn = std::mem::transmute(register_fn.unwrap());
         let result = register_engine_fn(&FISH_INJECT_ENGINE);
 
         if result == 0 {
+            #[cfg(debug_assertions)]
             log_info!("Successfully registered FiSH_11 engine.");
         } else {
+            #[cfg(debug_assertions)]
             log_error!("Failed to register FiSH_11 engine. Error code : {}", result);
         }
     }
@@ -908,8 +956,10 @@ pub fn get_network_name_from_inject(socket_id: u32) -> Option<String> {
     unsafe {
         if let Some(get_network_name_fn) = GET_NETWORK_NAME_FN.get() {
             let c_char_ptr = get_network_name_fn(socket_id);
+
             if !c_char_ptr.is_null() {
                 let c_string = CString::from_raw(c_char_ptr);
+
                 if let Ok(rust_string) = c_string.into_string() {
                     return Some(rust_string);
                 }
