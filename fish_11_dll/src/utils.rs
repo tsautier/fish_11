@@ -94,7 +94,7 @@ fn is_socket_connected_windows() -> bool {
 
         if num_entries > 0 {
             let rows = std::slice::from_raw_parts(rows_ptr, num_entries);
-            
+
             for row in rows {
                 // Check for Established state (MIB_TCP_STATE_ESTAB = 5) and matching PID
                 if row.dwOwningPid == pid && row.dwState == MIB_TCP_STATE_ESTAB.0 as u32 {
