@@ -10,6 +10,7 @@ dll_function_identifier!(FiSH11_FileListKeysItem, data, {
 
     // Parse index (default to 0 if not provided or invalid)
     let index = input.trim().parse::<usize>().unwrap_or_else(|_| {
+        #[cfg(debug_assertions)]
         log_debug!("Invalid index provided, defaulting to 0");
         0
     });
@@ -24,6 +25,7 @@ dll_function_identifier!(FiSH11_FileListKeysItem, data, {
 
     // Check if we're done
     if index >= keys_vec.len() {
+        #[cfg(debug_assertions)]
         log::info!(
             "Reached end of keys list (requested index {} is beyond size {})",
             index,
@@ -36,7 +38,7 @@ dll_function_identifier!(FiSH11_FileListKeysItem, data, {
     let (nickname, network, _key_type, date) = &keys_vec[index];
     let net_display = if network.is_empty() || network == "default" { "default" } else { network };
 
-    log::info!("Returning key info for nickname '{}' at index {}", nickname, index);
+    #[cfg(debug_assertions)]
     log_debug!("Key details - Network: {}, Date: {:?}", net_display, date);
 
     // Format the message with date if available (plain text, no /echo)

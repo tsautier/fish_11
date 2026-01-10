@@ -4,7 +4,7 @@
 [![Release](https://github.com/ggielly/fish_11/workflows/Build%20Release/badge.svg)](https://github.com/ggielly/fish_11/releases)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-FiSH_11 is a modern implementation of an IRC encryption plugin/addon, fully written in Rust. It provides strong, end-to-end encryption for both private messages and multi-user channels, based on [X25519](https://en.wikipedia.org/wiki/Curve25519) and [ChaCha20-Poly1305](https://en.wikipedia.org/wiki/ChaCha20-Poly1305) without external libraries. With a primary focus on the mIRC client for Windows (with WinSock DLL hooks for transparent operation coz it's fun) but also libraries and CLI for Linux.
+FiSH_11 is an IRC encryption plugin/addon, fully written in Rust without external libraries. It provides strong, end-to-end encryption for both private messages and multi-user channels, based on [X25519](https://en.wikipedia.org/wiki/Curve25519) and [ChaCha20-Poly1305](https://en.wikipedia.org/wiki/ChaCha20-Poly1305). With a primary focus on the mIRC client for Windows (with WinSock DLL hooks for transparent operation coz it's fun) but also libraries and CLI for Linux.
 
 ## Development status, bugs and roadmap
 
@@ -13,7 +13,7 @@ FiSH_11 is a modern implementation of an IRC encryption plugin/addon, fully writ
 #### DLL
 
 - [x] DLL loading in mIRC : core encryption library (`fish_11_core`, `fish_11_dll`) fully loaded
-- [x] DLL loading in mIRC : Windows WinSock hooking for transparent operation (`fish_11_inject`) : hook all `SSL_Read` and `SSL_Write` silently
+- [x] DLL loading in mIRC : Windows `WinSock` hooking for transparent operation (`fish_11_inject`) : hook all `SSL_Read` and `SSL_Write` silently
 
 #### mIRC client
 
@@ -37,7 +37,6 @@ FiSH_11 is a modern implementation of an IRC encryption plugin/addon, fully writ
 - [x] Memory zeroization and other security hardening features
 - [x] Session key expiration/TTL management: automatic expiration of exchange keys after configurable interval (default 24h).
 
-
 ### Work in progress features and/or still bugged
 
 - [ ] Full working mIRC script integration (`fish_11.mrc`)
@@ -47,7 +46,6 @@ FiSH_11 is a modern implementation of an IRC encryption plugin/addon, fully writ
 - [x] cross-platform library : mature the `fish_11_core` library and provide stable C-APIs for easy integration on Linux and other systems
 - [x] WiP : refactor the logging engine for fish11_core, fish11_dll and fish11_inject
 - [x] WiP : master password : implement an option to encrypt the `fish_11.ini` key storage file with a user-provided master password 
-
 - [ ] irc bnc parsing/detection support
 
 ### Current limitations

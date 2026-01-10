@@ -13,10 +13,12 @@ dll_function_identifier!(FiSH11_FileDelKey, data, {
     // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan, etc.)
     let normalized_input = crate::utils::normalize_target(input_trimmed);
     let nickname = normalize_nick(normalized_input);
+
     if nickname.is_empty() {
         return Err(DllError::MissingParameter("nickname".to_string()));
     }
 
+    #[cfg(debug_assertions)]
     log::info!(
         "Key deletion requested for nickname/channel: {} (original: {})",
         nickname,
@@ -27,6 +29,8 @@ dll_function_identifier!(FiSH11_FileDelKey, data, {
     config::delete_key_default(&nickname)?;
 
     let message = format!("Key deleted for {}", nickname);
+
+    #[cfg(debug_assertions)]
     log::info!("{}", message);
 
     // Return success message (raw format, script will format display)
@@ -35,10 +39,9 @@ dll_function_identifier!(FiSH11_FileDelKey, data, {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::ffi::{CStr, CString};
     use std::ptr;
-
-    use super::*;
 
     fn call_delkey(input: &str, buffer_size: usize) -> (c_int, String) {
         let mut buffer = vec![0i8; buffer_size];

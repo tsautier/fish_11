@@ -45,6 +45,7 @@ dll_function_identifier!(FiSH11_SetKeyFromPlaintext, data, {
         });
     }
 
+    #[cfg(debug_assertions)]
     log_debug!(
         "Setting key from plaintext for nickname/channel: {} on network: {} (key length: {})",
         nickname,
@@ -57,14 +58,17 @@ dll_function_identifier!(FiSH11_SetKeyFromPlaintext, data, {
     let salt = format!("{}:{}", network.unwrap_or("default"), nickname);
     let hk = Hkdf::<Sha256>::new(Some(salt.as_bytes()), plaintext_key.as_bytes());
     let mut derived_key = [0u8; 32];
+
     hk.expand(&[], &mut derived_key).map_err(|_| DllError::KeyDerivationFailed)?;
 
+    #[cfg(debug_assertions)]
     log_debug!("Key derived successfully, storing...");
 
     // Then store the key, allowing overwrite.
     config::set_key(&nickname, &derived_key, network, true, false)?;
 
-    log::info!(
+    #[cfg(debug_assertions)]
+    log_debug!(
         "Successfully set key from plaintext for {} on network {}",
         nickname,
         network.unwrap_or("auto")

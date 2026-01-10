@@ -3,10 +3,6 @@ use crate::hook_socket::get_or_create_socket;
 use crate::pointer_validation::validate_function_pointer;
 use crate::socket::state::SocketState;
 use crate::ssl_mapping::SslSocketMapping;
-//use fish_11_core::globals::{
-//    ENCRYPTION_PREFIX_FISH, ENCRYPTION_PREFIX_MCPS, ENCRYPTION_PREFIX_OK,
-// KEY_EXCHANGE_INIT, KEY_EXCHANGE_PUBKEY removed
-//};
 use lazy_static::lazy_static;
 use log::{debug, error, info, trace, warn};
 use retour::GenericDetour;
@@ -89,8 +85,11 @@ unsafe extern "C" fn hooked_ssl_set_fd(ssl: *mut SSL, fd: c_int) -> c_int {
 
     if result > 0 && !ssl.is_null() {
         SslSocketMapping::associate(ssl, fd as u32);
+
         let socket_info = get_or_create_socket(fd as u32, true);
         socket_info.set_ssl(true);
+
+        #[cfg(debug_assertions)]
         trace!("Socket {} marked as using SSL", fd);
     }
 
@@ -137,6 +136,7 @@ pub fn find_ssl_function(function_name: &str) -> FARPROC {
                                 warn!("validation failed for found ssl function: {}", e);
                                 continue;
                             }
+                            #[cfg(debug_assertions)]
                             info!(
                                 "Found {} ({}) in {}",
                                 function_name,
@@ -166,6 +166,7 @@ pub fn find_ssl_function(function_name: &str) -> FARPROC {
                                 warn!("validation failed for loaded ssl function: {}", e);
                                 continue;
                             }
+                            #[cfg(debug_assertions)]
                             info!(
                                 "Loaded {} and found {} ({}) in {}",
                                 String::from_utf8_lossy(
@@ -192,7 +193,10 @@ pub fn find_ssl_function(function_name: &str) -> FARPROC {
 pub unsafe fn store_ssl_mapping(ssl: *mut SSL, socket: SOCKET) {
     if let Some(fd_fn) = *SSL_GET_FD.lock().unwrap_or_else(handle_poison) {
         let fd = fd_fn(ssl);
+
         SslSocketMapping::associate(ssl, socket.0 as u32);
+
+        #[cfg(debug_assertions)]
         debug!("Mapped SSL {:p} to socket {} (fd={})", ssl, socket.0, fd);
     }
 }
@@ -240,6 +244,7 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
         }
 
         if let Ok(text) = std::str::from_utf8(data_slice) {
+            #[cfg(debug_assertions)]
             info!(
                 "[TLS IN] {}: {} bytes: {}",
                 get_or_create_socket(socket_id, true).get_stats(),
@@ -247,6 +252,7 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
                 text.trim_end()
             );
         } else {
+            #[cfg(debug_assertions)]
             info!(
                 "[TLS IN] {}: {} bytes (non-UTF8): {:02X?}",
                 get_or_create_socket(socket_id, true).get_stats(),
@@ -254,6 +260,7 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
                 &data_slice[..std::cmp::min(32, data_slice.len())]
             );
         }
+        #[cfg(debug_assertions)]
         trace!(
             "[h00k] hooked_ssl_read() decrypted data for socket {} ({} bytes): {:02X?}",
             socket_id,
@@ -274,9 +281,11 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
     };
     if let Some(ssl_init_fn) = ssl_init_fn {
         let handshake_status = ssl_init_fn(ssl);
+
         if handshake_status != 0 {
             let socket_info = get_or_create_socket(socket_id, true);
             if socket_info.get_state() == SocketState::TlsHandshake {
+                #[cfg(debug_assertions)]
                 debug!(
                     "[HANDSHAKE] Socket {}: state changing TlsHandshake -> Connected",
                     socket_id
@@ -292,7 +301,9 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
 
     let socket_info = get_or_create_socket(socket_id, true);
     let data_slice = std::slice::from_raw_parts(buf, bytes_read as usize);
+
     socket_info.write_received_data(data_slice);
+
     if let Err(e) = socket_info.process_received_lines() {
         error!("Error processing received SSL lines: {:?}", e);
     }
@@ -301,12 +312,15 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
 }
 
 unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int) -> c_int {
+    #[cfg(debug_assertions)]
     trace!("[h00k] hooked_ssl_write() called: ssl={:p}, buf={:p}, num={}", ssl, buf, num);
 
     let socket_id = match SslSocketMapping::get_socket(ssl) {
         Some(socket_id) => socket_id,
         None => {
+            #[cfg(debug_assertions)]
             trace!("SSL_write(): no socket ID found for SSL {:p}", ssl);
+
             let original_fn: SslWriteFn = {
                 let lock = match ORIGINAL_SSL_WRITE.lock() {
                     Ok(guard) => guard,
@@ -327,12 +341,14 @@ unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int)
         }
     };
 
+    #[cfg(debug_assertions)]
     trace!("SSL_write: socket {}, {} bytes", socket_id, num);
 
     if num > 0 && !buf.is_null() {
         let data_slice = std::slice::from_raw_parts(buf, num as usize);
 
         if let Ok(text) = std::str::from_utf8(data_slice) {
+            #[cfg(debug_assertions)]
             info!(
                 "[TLS OUT] {}: {} bytes: {}",
                 get_or_create_socket(socket_id, true).get_stats(),
@@ -340,6 +356,7 @@ unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int)
                 text.trim_end()
             );
         } else {
+            #[cfg(debug_assertions)]
             info!(
                 "[TLS OUT] {}: {} bytes (non-UTF8): {:02X?}",
                 get_or_create_socket(socket_id, true).get_stats(),
@@ -354,9 +371,8 @@ unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int)
             error!("Error processing outgoing SSL data: {:?}", e);
         }
 
-        if log::log_enabled!(log::Level::Trace) {
-            trace!("SSL_write() data: {:?}", data_slice);
-        }
+        #[cfg(debug_assertions)]
+        trace!("SSL_write() data: {:?}", data_slice);
     }
 
     let original_fn: SslWriteFn = {
@@ -391,10 +407,12 @@ unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int)
         };
         if let Some(ssl_is_init_finished_fn) = ssl_is_init_finished_fn {
             let handshake_status = ssl_is_init_finished_fn(ssl);
+
             if handshake_status != 0 {
                 if let Some(handshake_sock_id) = get_socket_from_ssl_context(ssl) {
                     let handshake_info = get_or_create_socket(handshake_sock_id, true);
                     if handshake_info.get_state() == SocketState::TlsHandshake {
+                        #[cfg(debug_assertions)]
                         debug!(
                             "[HANDSHAKE] Socket {}: state changing TlsHandshake -> Connected",
                             handshake_sock_id
@@ -409,11 +427,12 @@ unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int)
     result
 }
 
-// Retaining hooked_ssl_connect and others as placeholders or used by potential future features
+// TODO : retaining hooked_ssl_connect and others. Maybea potential future features
 // The current installation only actively uses read/write/get_fd
 unsafe extern "C" fn hooked_ssl_connect(ssl: *mut SSL) -> c_int {
+    #[cfg(debug_assertions)]
     debug!("SSL_connect() called for SSL {:p}", ssl);
-    // ... Simplified
+
     let original_fn: SslConnectFn = {
         if let Some(func) = *ORIGINAL_SSL_CONNECT.lock().unwrap_or_else(handle_poison) {
             func
@@ -462,10 +481,12 @@ pub unsafe fn install_ssl_hooks(
 }
 
 pub fn uninstall_ssl_hooks() {
+    #[cfg(debug_assertions)]
     info!("Uninstalling SSL hooks...");
 
     {
         let mut hook_opt = SSL_READ_HOOK.lock().unwrap_or_else(handle_poison);
+
         if let Some(hook) = hook_opt.take() {
             unsafe {
                 if let Err(e) = hook.disable() {
@@ -477,6 +498,7 @@ pub fn uninstall_ssl_hooks() {
 
     {
         let mut hook_opt = SSL_WRITE_HOOK.lock().unwrap_or_else(handle_poison);
+
         if let Some(hook) = hook_opt.take() {
             unsafe {
                 if let Err(e) = hook.disable() {
@@ -488,6 +510,7 @@ pub fn uninstall_ssl_hooks() {
 
     {
         let mut hook_opt = SSL_CONNECT_HOOK.lock().unwrap_or_else(handle_poison);
+
         if let Some(hook) = hook_opt.take() {
             unsafe {
                 let _ = hook.disable();
@@ -496,6 +519,7 @@ pub fn uninstall_ssl_hooks() {
     }
     {
         let mut hook_opt = SSL_NEW_HOOK.lock().unwrap_or_else(handle_poison);
+
         if let Some(hook) = hook_opt.take() {
             unsafe {
                 let _ = hook.disable();
@@ -504,6 +528,7 @@ pub fn uninstall_ssl_hooks() {
     }
     {
         let mut hook_opt = SSL_FREE_HOOK.lock().unwrap_or_else(handle_poison);
+
         if let Some(hook) = hook_opt.take() {
             unsafe {
                 let _ = hook.disable();

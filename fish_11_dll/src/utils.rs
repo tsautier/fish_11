@@ -316,6 +316,7 @@ pub fn validate_nickname(
 
     if nickname.is_empty() {
         log_warn!("FiSH11_ExchangeKey[{}]: empty nickname provided", trace_id);
+
         match CString::new("Usage: /dll fish_11.dll FiSH11_ExchangeKey <nickname>") {
             Ok(error_msg) => unsafe {
                 let _ = buffer_utils::write_cstring_to_buffer(data, buffer_size, &error_msg);
@@ -330,11 +331,14 @@ pub fn validate_nickname(
 
     // Basic validation first
     if let Err(_) = validate_nick_basic(nickname) {
-        log_error!(
+        /*log_error!(
             "FiSH11_ExchangeKey[{}]: nickname contains invalid characters: {}",
             trace_id,
             nickname
-        );
+        );*/
+
+        log_error!("FiSH11_ExchangeKey[{}]: nickname contains invalid characters", trace_id);
+
         match CString::new("Error: nickname contains invalid characters") {
             Ok(error_msg) => unsafe {
                 let _ = buffer_utils::write_cstring_to_buffer(data, buffer_size, &error_msg);
@@ -352,10 +356,14 @@ pub fn validate_nickname(
 
     // RFC 1459 compliant validation
     if !NICK_VALIDATOR.is_match(nickname) {
-        log_error!(
+        /*  log_error!(
             "FiSH11_ExchangeKey[{}]: invalid nickname format: {} (must be 1-16 chars, start with letter/special, contain only valid IRC chars)",
             trace_id,
             nickname
+        );*/
+        log_error!(
+            "FiSH11_ExchangeKey[{}]: invalid nickname format. It must be 1-16 chars, start with letter/special, contain only valid IRC chars.",
+            trace_id,
         );
 
         // Safe CString creation with fallback
@@ -475,4 +483,19 @@ mod tests {
         let result = validate_nick_basic("nické");
         assert!(matches!(result, Err(FishError::NonAsciiCharacter('é'))));
     }
+}
+/// Securely clears a String by converting it to bytes and zeroizing them.
+/// This is used to ensure sensitive data (like plaintext messages) is removed from memory.
+pub fn secure_clear_string(s: &mut String) {
+    if s.is_empty() {
+        return;
+    }
+    // We iterate over the capacity to clear everything, not just the length
+    // But we can only safely access up to len via as_bytes_mut check (if we use that).
+    // The standard replacement trick is:
+    let old_string = std::mem::take(s);
+    let mut bytes = old_string.into_bytes();
+
+    use zeroize::Zeroize;
+    bytes.zeroize();
 }

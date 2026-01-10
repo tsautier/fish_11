@@ -1,7 +1,7 @@
 use std::ffi::{c_char, c_int};
 
-use base64::Engine as _;
-use base64::engine::general_purpose;
+// Note: base64 imports removed as we now pass the base64 string directly
+// to unwrap_key() without intermediate decoding/encoding
 
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
@@ -44,19 +44,22 @@ dll_function_identifier!(FiSH11_ProcessChannelKey, data, {
         DllError::ConfigError(format!("Invalid key length for coordinator {}", coordinator_nick))
     })?;
 
-    // Decode the base64-encoded wrapped key
-    let wrapped_key_bytes =
-        general_purpose::STANDARD.decode(b64_wrapped_key).map_err(|e| DllError::InvalidInput {
-            param: "wrapped_key".to_string(),
-            reason: format!("Invalid base64: {}", e),
-        })?;
+    // OPTIMIZATION: Pass the base64-encoded wrapped key directly to unwrap_key
+    // The unwrap_key function internally handles the base64 decoding, so we avoid
+    // the redundant decode-encode cycle that was previously done here.
+    // This improves performance and reduces potential encoding/decoding mismatches.
 
-    // Note: The wrapped_key_bytes are already in binary format (nonce + ciphertext + tag)
-    // We need to re-encode them as base64 string for the unwrap_key function which expects &str
-    let wrapped_key_b64 = general_purpose::STANDARD.encode(&wrapped_key_bytes);
+    // IMPORTANT: b64_wrapped_key should contain ONLY the base64 part (without +FiSH prefix)
+    // If the input includes the prefix, we need to extract just the base64 portion
+    let wrapped_key_only = if b64_wrapped_key.starts_with("+FiSH ") {
+        // Extract the part after "+FiSH " (6 characters)
+        &b64_wrapped_key[6..]
+    } else {
+        b64_wrapped_key
+    };
 
     // Unwrap (decrypt) the channel key using the shared key
-    let channel_key = crypto::unwrap_key(&wrapped_key_b64, &shared_key)?;
+    let channel_key = crypto::unwrap_key(wrapped_key_only, &shared_key)?;
 
     // Store the channel key for this channel
     config::set_channel_key(channel_name, &channel_key)?;

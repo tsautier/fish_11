@@ -4,7 +4,7 @@ use std::os::raw::c_int;
 use crate::dll_interface::utility;
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
-use crate::{buffer_utils, config, crypto, dll_function_identifier, log_debug};
+use crate::{buffer_utils, config, crypto, dll_function_identifier, log_debug, log_info};
 
 /* list of stuff we possibly need to decrypt:
         :nick!ident@host PRIVMSG #chan :+FISH 2T5zD0mPgMn
@@ -28,7 +28,7 @@ use crate::{buffer_utils, config, crypto, dll_function_identifier, log_debug};
 
 dll_function_identifier!(FiSH11_DecryptMsg, data, {
     // Parse input: <target> <encrypted_message>
-    let input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
+    let mut input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
     let parsed = utility::parse_input(&input_str)?;
 
     let target = parsed.target;
@@ -37,6 +37,7 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
     // Strip the "+FiSH " prefix if present.
     if let Some(stripped) = encrypted_message.strip_prefix("+FiSH ") {
         encrypted_message = stripped;
+
         #[cfg(debug_assertions)]
         log_debug!("Stripped +FiSH prefix from encrypted message");
     }
@@ -48,7 +49,8 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
 
         // Check if we have a manual channel key set. If so, try it with simple decryption (no ratchet).
         if config::has_channel_key(target) {
-            let key = config::get_channel_key_with_fallback(target)?;
+            use zeroize::Zeroizing;
+            let key = Zeroizing::new(config::get_channel_key_with_fallback(target)?);
 
             // Log encrypted content if DEBUG flag is enabled for sensitive content
             #[cfg(debug_assertions)]
@@ -59,12 +61,15 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
             );
 
             // Decrypt with the fixed key, using the channel name as Associated Data.
-            let decrypted =
-                crypto::chacha20::decrypt_message(&key, encrypted_message, Some(target.as_bytes()))
-                    .map_err(|e| DllError::DecryptionFailed {
-                        context: format!("decrypting for channel {} with manual key", target),
-                        cause: e.to_string(),
-                    })?;
+            let decrypted = crypto::chacha20::decrypt_message(
+                &*key,
+                encrypted_message,
+                Some(target.as_bytes()),
+            )
+            .map_err(|e| DllError::DecryptionFailed {
+                context: format!("decrypting for channel {} with manual key", target),
+                cause: e.to_string(),
+            })?;
 
             #[cfg(debug_assertions)]
             log_debug!(
@@ -73,7 +78,12 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
                 &decrypted
             );
 
-            log::info!("Successfully decrypted message for channel {} using manual key", target);
+            //#[cfg(debug_assertions)]
+            //log_debug!("Successfully decrypted message for channel {} using manual key", target);
+
+            // SECURITY: Clear the source buffer from memory
+            crate::utils::secure_clear_string(&mut input_str);
+
             return Ok(decrypted);
         } else {
             // Use the ratchet-based decryption (FCEP-1 with forward secrecy)
@@ -160,7 +170,12 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
                 // Add nonce to cache ONLY after successful decryption
                 crypto::chacha20::mark_nonce_seen(&nonce)?;
                 // Config automatic save is not triggered for nonce cache as it's memory-only/lazy_static in chacha20.rs
-                log::info!("Successfully decrypted ratchet message for {}", target);
+                #[cfg(debug_assertions)]
+                log_debug!("Successfully decrypted ratchet message for {}", target);
+
+                // SECURITY: Clear the source buffer from memory
+                crate::utils::secure_clear_string(&mut input_str);
+
                 return Ok(plaintext);
             } else {
                 return Err(DllError::DecryptionFailed {
@@ -173,9 +188,13 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
 
     // Private message decryption logic
     let nickname = utility::normalize_private_target(target)?;
+
+    #[cfg(debug_assertions)]
     log_debug!("Decrypting for nickname: {}", nickname);
 
-    let key = utility::get_private_key(&nickname)?;
+    // 2. Retrieve the encryption key for the target.
+    use zeroize::Zeroizing;
+    let key = Zeroizing::new(utility::get_private_key(&nickname)?);
     let key_ref = &key;
 
     #[cfg(debug_assertions)]
@@ -190,7 +209,7 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
 
     // Decrypt the message (no AD for private messages).
     let decrypted =
-        crypto::chacha20::decrypt_message(key_ref, encrypted_message, None).map_err(|e| {
+        crypto::chacha20::decrypt_message(&*key, encrypted_message, None).map_err(|e| {
             DllError::DecryptionFailed {
                 context: format!("decrypting for {}", nickname),
                 cause: e.to_string(),
@@ -201,8 +220,10 @@ dll_function_identifier!(FiSH11_DecryptMsg, data, {
     #[cfg(debug_assertions)]
     log_debug!("DLL_Interface: decrypted private message for '{}': '{}'", nickname, &decrypted);
 
-    #[cfg(debug_assertions)]
-    log::debug!("Successfully decrypted message for {}", nickname);
+    //log_info!("Successfully decrypted message for {}", nickname);
+
+    // SECURITY: Clear the source buffer from memory
+    crate::utils::secure_clear_string(&mut input_str);
 
     Ok(decrypted)
 });

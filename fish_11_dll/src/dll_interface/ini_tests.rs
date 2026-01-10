@@ -1,13 +1,12 @@
 #[cfg(test)]
 mod tests {
-    use std::ffi::CString;
-    use std::os::raw::{c_char, c_int};
-    use std::ptr;
-
     use crate::config::{self, Fish11Section};
     use crate::dll_interface::MIRC_HALT;
     use crate::dll_interface::ini_types::*;
     use crate::platform_types::HWND;
+    use std::ffi::CString;
+    use std::os::raw::{c_char, c_int};
+    use std::ptr;
 
     // Helper to set up a clean config for each test
     fn setup_test_config() {

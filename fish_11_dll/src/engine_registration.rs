@@ -863,8 +863,15 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
         }
     };
 
-    // Decrypt the message
-    let decrypted = match decrypt_message(key_array, encrypted_data, None) {
+    // Decrypt the message with the same Associated Data used during encryption
+    // For channel messages, the channel name is used as AD
+    let associated_data = if key_identifier.starts_with('#') || key_identifier.starts_with('&') {
+        Some(key_identifier.as_bytes())
+    } else {
+        None
+    };
+
+    let decrypted = match decrypt_message(key_array, encrypted_data, associated_data) {
         Ok(msg) => msg,
         Err(e) => {
             log_error!("Engine: decryption failed for sender '{}': {}", sender, e);

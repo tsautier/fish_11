@@ -21,6 +21,7 @@ dll_function_identifier!(FiSH11_GenKey, data, {
 
     let network = parts.get(1).map(|s| s.trim());
 
+    #[cfg(debug_assertions)]
     log_debug!(
         "Generating key for nickname/channel: {} (network: {:?}, original: {})",
         nickname,
@@ -31,6 +32,7 @@ dll_function_identifier!(FiSH11_GenKey, data, {
     // 1. Generate a cryptographically secure random key.
     let mut key = [0u8; 32];
     let random_bytes = utils::generate_random_bytes(32);
+
     key.copy_from_slice(&random_bytes);
 
     // 2. Store the key, with overwrite disabled to prevent accidental data loss.

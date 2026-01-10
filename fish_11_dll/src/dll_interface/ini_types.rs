@@ -1,10 +1,9 @@
-use std::ffi::c_char;
-use std::os::raw::c_int;
-
 use crate::config::{get_fish11_config, update_fish11_config};
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::{config, dll_function_identifier, log_debug};
+use std::ffi::c_char;
+use std::os::raw::c_int;
 
 // Gets a boolean value from the config file.
 // Input: <key> [default_value]

@@ -1,6 +1,5 @@
-use log::{debug, info, warn};
-
 use super::info::SocketInfo;
+use log::{debug, info, warn};
 
 impl SocketInfo {
     pub fn write_received_data(&self, data: &[u8]) {

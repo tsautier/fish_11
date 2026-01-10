@@ -1,7 +1,6 @@
-use log::Record;
-
 use crate::logging::context::LogContext;
 use crate::logging::security;
+use log::Record;
 
 pub fn format_record(
     record: &Record,
@@ -20,6 +19,7 @@ pub fn format_record(
     }
 
     let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+
     format!("[{}] {} [{}] {}\n", timestamp, record.level(), record.target(), message)
 }
 

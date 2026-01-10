@@ -22,6 +22,8 @@ dll_function_identifier!(FiSH11_GetRatchetState, data, {
     }
 
     let channel = parts[0];
+
+    use crate::dll_interface::{CStr, ptr};
     log_debug!("FiSH11_GetRatchetState: retrieving ratchet state for channel '{}'", channel);
 
     let result = with_config(|config| {
@@ -51,10 +53,12 @@ dll_function_identifier!(FiSH11_GetRatchetState, data, {
 
     match result {
         Ok(info) => {
+            use crate::dll_interface::{CStr, ptr};
             log_info!("FiSH11_GetRatchetState: retrieved state for channel '{}'", channel);
             Ok(info)
         }
         Err(e) => {
+            use crate::dll_interface::{CStr, ptr};
             log_warn!(
                 "FiSH11_GetRatchetState: error retrieving state for channel '{}': {}",
                 channel,

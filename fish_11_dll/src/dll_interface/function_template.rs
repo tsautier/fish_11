@@ -1,12 +1,11 @@
 //! Template for DLL interface functions to reduce boilerplate
 
-use std::ffi::c_char;
-use std::os::raw::c_int;
-use std::time::{Duration, Instant};
-
 use crate::buffer_utils;
 use crate::dll_function_utils::generate_trace_id;
 use crate::dll_interface::{MIRC_HALT, get_buffer_size};
+use std::ffi::c_char;
+use std::os::raw::c_int;
+use std::time::{Duration, Instant};
 
 /// Configuration for DLL function execution
 pub struct FunctionConfig {
@@ -41,6 +40,7 @@ where
 
     // Validate buffer and data pointer
     let buffer_size = get_buffer_size() as usize;
+
     if buffer_size <= 1 || data.is_null() {
         if config.log_entry_exit {
             crate::logging::log_function_exit::<i32>(config.name, Some(MIRC_HALT));

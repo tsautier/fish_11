@@ -2,7 +2,7 @@
 
 use crate::buffer_utils::{BufferError, write_error_to_buffer};
 use crate::dll_interface::{MIRC_COMMAND, MIRC_HALT, get_buffer_size};
-use crate::{log_debug, log_error, log_info};
+use crate::{log_debug, log_error, log_info, log_warn};
 use std::ffi::{CStr, c_char};
 use std::os::raw::c_int;
 use std::time::SystemTime;
@@ -59,7 +59,8 @@ impl DllFunctionContext {
 
     /// Log function completion
     pub fn log_completion(&self, return_code: c_int) {
-        log_info!(
+        #[cfg(debug_assertions)]
+        log_debug!(
             "{}[{}]: Function completed with return code {}",
             self.function_name,
             self.trace_id,
@@ -75,6 +76,7 @@ impl DllFunctionContext {
 
     /// Log debug information with trace ID
     pub fn log_debug(&self, message: &str) {
+        #[cfg(debug_assertions)]
         log_debug!("{}[{}]: {}", self.function_name, self.trace_id, message);
     }
 
@@ -85,7 +87,7 @@ impl DllFunctionContext {
 
     /// Log warning with trace ID
     pub fn log_warn(&self, message: &str) {
-        crate::log_warn!("{}[{}]: {}", self.function_name, self.trace_id, message);
+        log_warn!("{}[{}]: {}", self.function_name, self.trace_id, message);
     }
 }
 
@@ -217,7 +219,9 @@ impl TimeoutChecker {
     pub fn check_timeout(&self, stage: &str) -> DllResult<()> {
         if self.start_time.elapsed() > self.timeout_duration {
             let msg = format!("Function timed out at stage: {}", stage);
+
             log_error!("{}: {}", self.ctx, msg);
+
             return Err(DllError::TimeoutError);
         }
         Ok(())

@@ -5,7 +5,8 @@ use crate::dll_interface::KEY_EXCHANGE_TIMEOUT_SECONDS;
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::{DllError, DllResult};
 use crate::utils::{is_socket_connected, normalize_nick};
-use crate::{buffer_utils, dll_function_identifier, log_debug, log_info, log_warn};
+use crate::{buffer_utils, dll_function_identifier, log_debug, log_error, log_info, log_warn};
+
 use rand::RngCore;
 use rand::rngs::OsRng;
 use secrecy::ExposeSecret;
@@ -17,17 +18,17 @@ use subtle::ConstantTimeEq;
 dll_function_identifier!(FiSH11_ExchangeKey, data, {
     let overall_start = Instant::now();
 
-    log_info!("=== Key exchange initiated ===");
-
     // This function is time-sensitive as it's part of an interactive user workflow.
     // A timeout ensures we don't block the program-caller indefinitely
     // if crypto operations hang.
     let start_time = Instant::now();
     let timeout = std::time::Duration::from_secs(KEY_EXCHANGE_TIMEOUT_SECONDS as u64);
 
+    log_info!("=== Key exchange (serial {:?}) initiated ===", start_time);
+
     // Parse and validate input
     let parse_start = Instant::now();
-    let input = unsafe { buffer_utils::parse_buffer_input(data)? };
+    let mut input = unsafe { buffer_utils::parse_buffer_input(data)? };
     let input_trimmed = input.trim();
 
     // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan, etc.)
@@ -79,14 +80,14 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
 
     #[cfg(debug_assertions)]
     log_debug!(
-        "Step 1 (ensure_key_exists) took {:?} - key_generated: {}",
+        "Step 1 (ensure_key_exists) took {:?} - key_generated : {}",
         step1_duration,
         key_was_generated
     );
 
     #[cfg(debug_assertions)]
     if step1_duration.as_millis() > 500 {
-        log_warn!("Step 1 took more than 500ms: {:?}", step1_duration);
+        log_warn!("Step 1 took more than 500ms : {:?}", step1_duration);
     }
 
     // Timeout check 2
@@ -107,14 +108,14 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
 
     #[cfg(debug_assertions)]
     log_debug!(
-        "Step 2 (keypair) took {:?} - keypair_generated: {}",
+        "Generate or get a keypair took {:?} - keypair_generated: {}",
         step2_duration,
         keypair_was_generated
     );
 
     #[cfg(debug_assertions)]
     if step2_duration.as_millis() > 500 {
-        log_warn!("Step 2 took more than 500ms: {:?}", step2_duration);
+        log_warn!("Get or Generate a keypair 2 took more than 500ms : {:?}", step2_duration);
     }
 
     // Timeout check 3
@@ -131,11 +132,11 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     let step3_duration = step3_start.elapsed();
 
     #[cfg(debug_assertions)]
-    log_debug!("Step 3 (validation) took {:?}", step3_duration);
+    log_debug!("SValidate keypair took {:?}", step3_duration);
 
     #[cfg(debug_assertions)]
     if step3_duration.as_millis() > 100 {
-        log_warn!("Step 3 took more than 100ms: {:?}", step3_duration);
+        log_warn!("Validate keypair took more than 100ms : {:?}", step3_duration);
     }
 
     // Step 4: format public key for sharing
@@ -175,11 +176,12 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
         save_config(&config_snapshot, None)?;
 
         let save_duration = save_start.elapsed();
+
         #[cfg(debug_assertions)]
         log_debug!("Configuration saved in {:?}", save_duration);
 
         if save_duration.as_secs() > 2 {
-            log_warn!("Config save took longer than 2 seconds! Check disk I/O performance.");
+            log_warn!("Config save took longer than 2 seconds ! Check disk I/O performance.");
         }
     } else {
         #[cfg(debug_assertions)]
@@ -206,10 +208,13 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     }
 
     if total_duration.as_secs() > 3 {
-        log_warn!("Key exchange took longer than 3 seconds! Duration: {:?}", total_duration);
+        log_warn!("Key exchange took longer than 3 seconds ! Duration: {:?}", total_duration);
     }
 
-    log_info!("=== Key exchange completed ===");
+    log_info!("=== Key exchange (serial {:?}) completed ===", start_time);
+
+    // SECURITY: Clear the source buffer from memory
+    crate::utils::secure_clear_string(&mut input);
 
     // Return only the token, e.g. "FiSH11-PubKey:BASE64..."
     Ok(formatted_key)
@@ -376,70 +381,35 @@ fn check_timeout(start_time: Instant, timeout: std::time::Duration, stage: &str)
     }
 }
 
-/// Generate a secure random key with enhanced error recovery
+/// Generate a secure random key.
+///
+/// This function attempts to generate a random key using the system's RNG.
+/// If the RNG fails, it returns a critical error immediately rather than retrying,
+/// as RNG failures usually indicate a systemic issue that retries won't fix.
 fn generate_secure_random_key() -> DllResult<[u8; 32]> {
     let start = Instant::now();
 
-    // Use a local OsRng instance and retry a few times. If RNG panics or fails,
-    // return a specific DllError instead of letting the panic propagate.
-    for attempt in 1..=3 {
-        let attempt_start = Instant::now();
+    let result = std::panic::catch_unwind(|| {
+        let mut key_bytes = [0u8; 32];
+        let mut rng = OsRng;
+        rng.fill_bytes(&mut key_bytes);
+        key_bytes
+    });
 
-        #[cfg(debug_assertions)]
-        log_debug!("RNG attempt {}/3...", attempt);
-
-        let generation_result = std::panic::catch_unwind(|| {
-            let rng_create_start = Instant::now();
-            let mut rng = OsRng;
-
+    match result {
+        Ok(k) => {
             #[cfg(debug_assertions)]
-            log_debug!("OsRng creation took {:?}", rng_create_start.elapsed());
-
-            let mut key_bytes = [0u8; 32];
-            let fill_start = Instant::now();
-
-            rng.fill_bytes(&mut key_bytes);
-
-            #[cfg(debug_assertions)]
-            log_debug!("fill_bytes(32) took {:?}", fill_start.elapsed());
-
-            key_bytes
-        });
-
-        let attempt_duration = attempt_start.elapsed();
-
-        #[cfg(debug_assertions)]
-        log_debug!("Attempt {} total duration: {:?}", attempt, attempt_duration);
-
-        match generation_result {
-            Ok(key_bytes) => {
-                let duration = start.elapsed();
-
-                #[cfg(debug_assertions)]
-                log_debug!(
-                    "Successfully generated random key on attempt {} in {:?}",
-                    attempt,
-                    duration
-                );
-
-                #[cfg(debug_assertions)]
-                if duration.as_millis() > 100 {
-                    log_warn!("RNG took longer than 100ms: {:?}", duration);
-                }
-
-                return Ok(key_bytes);
-            }
-            Err(_) => {
-                log_warn!("RNG failed on attempt {}/3", attempt);
-                if attempt < 3 {
-                    // Use a very short sleep to avoid blocking mIRC
-                    std::thread::sleep(std::time::Duration::from_millis(5));
-                }
-            }
+            log_debug!("RNG generation took {:?}", start.elapsed());
+            Ok(k)
+        }
+        Err(_) => {
+            // This is a critical security failure
+            log_error!("CRITICAL : system RNG failed (panic caught).");
+            Err(DllError::RngFailed {
+                context: "System random number generator failed (OsRng panic)".to_string(),
+            })
         }
     }
-
-    Err(DllError::RngFailed { context: "generating random key after 3 attempts".to_string() })
 }
 
 /// Validate a keypair using comprehensive checks
@@ -469,13 +439,13 @@ fn is_likely_connected() -> bool {
     // This reliably detects if we have an ESTABLISHED TCP connection
     if is_socket_connected() {
         #[cfg(debug_assertions)]
-        log_debug!("is_likely_connected: Verified TCP connection found via GetTcpTable2");
+        log_debug!("is_likely_connected: verified TCP connection found via GetTcpTable2");
         return true;
     }
 
     // Fallback/Log if not connected
     #[cfg(debug_assertions)]
-    log_debug!("is_likely_connected: No verified TCP connection found");
+    log_debug!("is_likely_connected: no verified TCP connection found");
     false
 }
 

@@ -34,6 +34,7 @@ dll_function_identifier!(FiSH11_GetKeyTTL, data, {
         return Err(DllError::MissingParameter("nickname".to_string()));
     }
 
+    #[cfg(debug_assertions)]
     log_debug!("Getting key TTL for nickname: {}", nickname);
 
     // 2. Get the TTL from the config.

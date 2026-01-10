@@ -1,3 +1,4 @@
+use crate::log_error;
 use std::ffi::CStr;
 use std::ptr;
 mod fish11_coreversion;
@@ -26,7 +27,6 @@ mod fish11_setmanualchannelkey;
 mod fish11_setmanualchannelkeyfrompassword;
 mod fish11_setnetwork;
 mod utility;
-
 pub use crate::channel_encryption::init_key::FiSH11_InitChannelKey;
 pub use crate::channel_encryption::process_key::FiSH11_ProcessChannelKey;
 pub use fish11_getkeyttl::FiSH11_GetKeyTTL;
@@ -59,7 +59,6 @@ pub mod fish11_setmircdir;
 pub mod function_template;
 pub mod ini_types;
 pub mod key_management;
-// Re-export fish_11_core globals for use within fish_11_dll
 pub use fish_11_core::globals::{
     CRATE_VERSION, CURRENT_YEAR, DEFAULT_MIRC_BUFFER_SIZE, FUNCTION_TIMEOUT_SECONDS,
     KEY_EXCHANGE_TIMEOUT_SECONDS, MAX_MIRC_BUFFER_SIZE, MIRC_BUFFER_SIZE, MIRC_COMMAND,
@@ -76,7 +75,7 @@ pub(crate) fn get_buffer_size() -> usize {
         let guard_result = LOAD_INFO.lock();
 
         if guard_result.is_err() {
-            log::error!(
+            log_error!(
                 "FATAL: Failed to acquire LOAD_INFO mutex lock in get_buffer_size. DLL may be in corrupted state. Returning default size."
             );
             return DEFAULT_MIRC_BUFFER_SIZE as usize; // Return a default if mutex fails

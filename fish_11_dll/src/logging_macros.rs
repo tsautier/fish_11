@@ -1,5 +1,4 @@
 //! Logging macros to eliminate redundant is_logger_initialized() checks
-// TODO : remove this file once all logging is converted to use these macros
 
 #[macro_export]
 macro_rules! log_info {

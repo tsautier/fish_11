@@ -1,13 +1,6 @@
-use std::thread;
-use std::time::Duration as StdDuration;
-
-use chrono::{Duration, Local, NaiveDateTime};
-use fish_11::config::config_access::{read_config, write_config};
-use fish_11::config::key_management::KeyStatus;
-use fish_11::config::models::EntryData;
-use fish_11::config::{
-    get_configured_key_ttl, get_key, get_key_status, set_configured_key_ttl, set_key,
-};
+use chrono::{Duration, Local};
+use fish_11::config::config_access::write_config;
+use fish_11::config::{get_key, set_configured_key_ttl, set_key};
 use fish_11::error::FishError;
 use fish_11::utils::generate_random_bytes;
 

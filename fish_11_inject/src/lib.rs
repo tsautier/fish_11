@@ -6,16 +6,14 @@
 
   Author: GuY
   License: GNU GPL-v3
-  Date: 2025
+  Date: 2025-2026
 
 1. Windows calls DllMain() when the DLL is loaded
 2. mIRC calls LoadDll() in dll_interface.rs
 ===============================================================================
 */
-
-// This DLL is only for Windows
 #![cfg(windows)]
-// Here we define all the necessary imports and modules (files)
+mod buffer_pool;
 mod dll_interface;
 mod engines;
 mod helpers_inject;
@@ -27,9 +25,10 @@ pub mod socket;
 mod ssl_detection;
 pub mod ssl_mapping;
 use crate::helpers_inject::{cleanup_hooks, init_logger};
+use buffer_pool::BufferPool;
 use dashmap::DashMap;
 use engines::InjectEngines;
-use fish_11_core::globals::{MIRC_COMMAND, MIRC_HALT, MIRC_IDENTIFIER};
+use fish_11_core::globals::{MIRC_HALT, MIRC_IDENTIFIER};
 use lazy_static::lazy_static;
 use log::{error, info, warn};
 use once_cell::sync::Lazy;
@@ -40,12 +39,14 @@ use std::sync::{Arc, Mutex};
 use windows::Win32::Foundation::HMODULE;
 use windows::Win32::System::Threading::GetCurrentThreadId;
 
-// Wrapper to make HMODULE Send + Sync
 #[derive(Clone, Copy)]
 struct SendHMODULE(HMODULE);
 
 unsafe impl Send for SendHMODULE {}
 unsafe impl Sync for SendHMODULE {}
+
+/// Global buffer pool for efficient memory management
+pub static BUFFER_POOL: Lazy<Arc<BufferPool>> = Lazy::new(|| BufferPool::new());
 
 /// Thread-safe socket tracking using DashMap for better concurrency
 pub static ACTIVE_SOCKETS: Lazy<DashMap<u32, Arc<SocketInfo>>> = Lazy::new(DashMap::new);
@@ -107,6 +108,7 @@ pub unsafe extern "system" fn DllMain(
                 if !LOGGER_INITIALIZED.load(Ordering::SeqCst) {
                     init_logger();
                 }
+
                 info!("=== DllMain : DLL_PROCESS_ATTACH ===");
                 info!("DllMain() : h_module = {:?}", h_module);
             }
@@ -118,6 +120,8 @@ pub unsafe extern "system" fn DllMain(
                         match std::panic::catch_unwind(|| Arc::new(InjectEngines::new())) {
                             Ok(new_engines) => {
                                 *engines = Some(new_engines);
+
+                                #[cfg(debug_assertions)]
                                 info!(
                                     "DllMain() : InjectEngines container initialized successfully."
                                 );
@@ -132,7 +136,8 @@ pub unsafe extern "system" fn DllMain(
                             }
                         }
                     } else {
-                        info!("DllMain() : InjectEngines already initialized.");
+                        #[cfg(debug_assertions)]
+                        info!("DllMain() : InjectEngines is already initialized.");
                         true
                     }
                 }
@@ -140,6 +145,7 @@ pub unsafe extern "system" fn DllMain(
                     error!("DllMain() : failed to lock ENGINES to initialize: {}", e);
                     // Attempt to recover from poisoned lock
                     let mut engines = e.into_inner();
+
                     if engines.is_none() {
                         *engines = Some(Arc::new(InjectEngines::new()));
                         warn!("DllMain() : InjectEngines initialized after lock recovery.");
@@ -164,11 +170,11 @@ pub unsafe extern "system" fn DllMain(
             match DLL_HANDLE_PTR.lock() {
                 Ok(mut handle) => {
                     *handle = Some(SendHMODULE(h_module));
+
                     #[cfg(debug_assertions)]
                     info!("DllMain() : module handle stored successfully");
                 }
                 Err(e) => {
-                    #[cfg(debug_assertions)]
                     error!("DllMain() : failed to lock DLL_HANDLE_PTR: {}", e);
                     return 0; // Return FALSE
                 }
@@ -179,22 +185,22 @@ pub unsafe extern "system" fn DllMain(
 
             init_logger();
 
+            #[cfg(debug_assertions)]
             info!("***");
+            #[cfg(debug_assertions)]
             info!(
                 "FiSH_11 inject v{} (build date : {}, build time : {} Z)",
                 fish_11_core::globals::CRATE_VERSION,
                 fish_11_core::globals::BUILD_DATE.as_str(),
                 fish_11_core::globals::BUILD_TIME.as_str()
             );
+            #[cfg(debug_assertions)]
             info!("***");
+            #[cfg(debug_assertions)]
             info!("The DLL is loaded successfully. Now it's time to h00k some calls bayby !");
 
             #[cfg(debug_assertions)]
             info!("DllMain() : and how about to install SSL patches ?");
-
-            // NOTE: experimental SSL inline patching was previously called here.
-            // It has been disabled due to instability and the code has been moved to /experimental/ssl_inline_patch.rs for reference.
-            // The stable hooking mechanism in hook_ssl.rs is used instead.
 
             #[cfg(debug_assertions)]
             info!("DllMain() : setting LOADED flag to true...");
@@ -214,6 +220,7 @@ pub unsafe extern "system" fn DllMain(
 
             // Cleanup
             if LOADED.swap(false, Ordering::SeqCst) {
+                #[cfg(debug_assertions)]
                 info!("DllMain() : process is detaching. Cleaning up...");
 
                 #[cfg(debug_assertions)]
@@ -241,6 +248,8 @@ pub unsafe extern "system" fn DllMain(
             #[cfg(debug_assertions)]
             {
                 let thread_id = GetCurrentThreadId();
+
+                #[cfg(debug_assertions)]
                 info!(
                     "DllMain() : DLL_THREAD_ATTACH - a new thread is being created (Thread ID: {}).",
                     thread_id

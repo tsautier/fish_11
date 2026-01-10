@@ -1,10 +1,8 @@
-use std::collections::VecDeque;
-use std::sync::Arc;
-
-use parking_lot::{Mutex, RwLock};
-
 use super::state::{SocketFlags, SocketState, SocketStats};
 use crate::engines::InjectEngines;
+use parking_lot::{Mutex, RwLock};
+use std::collections::VecDeque;
+use std::sync::Arc;
 
 pub struct SocketInfo {
     pub socket: u32,

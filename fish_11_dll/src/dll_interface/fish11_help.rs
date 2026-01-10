@@ -1,10 +1,9 @@
-use std::ffi::c_char;
-use std::os::raw::c_int;
-
 use crate::dll_function_identifier;
 use crate::dll_interface::{CRATE_VERSION, CURRENT_YEAR};
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
+use std::ffi::c_char;
+use std::os::raw::c_int;
 
 // Displays help information about the DLL, including version and available commands.
 //

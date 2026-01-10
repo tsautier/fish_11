@@ -1,19 +1,16 @@
-use std::ffi::{CString, c_char, c_int};
-use std::sync::atomic::Ordering;
-
-// use fish_11_core::buffer_utils::write_cstring_to_buffer; // Removed as mIRC LoadDll doesn't support returned data
+use crate::helpers_inject::install_hooks;
+use crate::{
+    ACTIVE_SOCKETS, DISCARDED_SOCKETS, DLL_HANDLE_PTR, ENGINES, LOADED, MAX_MIRC_RETURN_BYTES,
+    MIRC_HALT, MIRC_IDENTIFIER, VERSION_SHOWN, cleanup_hooks,
+};
 use fish_11_core::globals::{
     BUILD_DATE, BUILD_NUMBER, BUILD_TIME, BUILD_VERSION, MIRC_RETURN_DATA_COMMAND,
 };
 use log::{debug, error, info, warn};
+use std::ffi::{CString, c_char, c_int};
+use std::sync::atomic::Ordering;
 use windows::Win32::Foundation::{HMODULE, HWND};
 use windows::Win32::UI::WindowsAndMessaging::{MB_ICONEXCLAMATION, MB_OK, MessageBoxW};
-
-use crate::helpers_inject::install_hooks;
-use crate::{
-    ACTIVE_SOCKETS, DISCARDED_SOCKETS, DLL_HANDLE_PTR, ENGINES, LOADED, MAX_MIRC_RETURN_BYTES,
-    MIRC_COMMAND, MIRC_HALT, MIRC_IDENTIFIER, VERSION_SHOWN, cleanup_hooks,
-};
 
 #[repr(C)]
 pub struct LOADINFO {

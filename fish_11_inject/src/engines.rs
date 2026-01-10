@@ -260,11 +260,17 @@ impl InjectEngines {
         // Add to the appropriate engine list based on postprocessor flag
         if safe_engine.is_postprocessor {
             let mut post = self.post_engines.write();
+
+            #[cfg(debug_assertions)]
             info!("Registering POST-processor engine: {}", safe_engine.engine_name);
+
             post.push(safe_engine);
         } else {
             let mut pre = self.pre_engines.write();
+
+            #[cfg(debug_assertions)]
             info!("Registering PRE-processor engine: {}", safe_engine.engine_name);
+
             pre.push(safe_engine);
         }
 
@@ -281,6 +287,7 @@ impl InjectEngines {
 
         // Lock pointers map to check existence and remove
         let mut ptrs = self.registered_ptrs.lock();
+
         let engine_name = match ptrs.remove(&engine_addr) {
             Some(name) => name,
             None => {
@@ -372,6 +379,7 @@ impl InjectEngines {
 
     /// Notify all engines that a socket has closed
     pub fn on_socket_closed(&self, socket: u32) {
+        #[cfg(debug_assertions)]
         trace!("Notifying engines about closure of socket {}", socket);
 
         let pre = self.pre_engines.read();
@@ -473,7 +481,7 @@ pub extern "C" fn UnregisterEngine(engine: *const FishInjectEngine) -> i32 {
 #[no_mangle]
 pub unsafe extern "C" fn GetNetworkName(socket_id: u32) -> *mut std::ffi::c_char {
     use crate::ACTIVE_SOCKETS;
-    // DashMap - no lock needed, just get() returns a Ref guard
+
     if let Some(socket_info) = ACTIVE_SOCKETS.get(&socket_id) {
         let network_name_guard = socket_info.network_name.read();
         if let Some(network_name) = &*network_name_guard {

@@ -1,6 +1,5 @@
 // Master Key Management Functions for FiSH_11
 // These functions provide secure master key initialization, unlocking, and management
-
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::{buffer_utils, dll_function_identifier};
@@ -67,12 +66,15 @@ dll_function_identifier!(FiSH11_MasterKeyInit, data, {
 
             // Create password verifier : SHA-256 hash of the derived key
             use sha2::{Digest, Sha256};
+
             let mut hasher = Sha256::new();
             hasher.update(&key);
+
             let verifier = format!("{:x}", hasher.finalize());
             keystore.set_password_verifier(&verifier);
 
             if let Err(e) = keystore.save() {
+                use crate::dll_interface::{CStr, ptr};
                 log::warn!("Failed to save keystore: {}", e);
             }
 
@@ -134,6 +136,8 @@ dll_function_identifier!(FiSH11_MasterKeyUnlock, data, {
                     // Save the salt to keystore for future use
                     let mut keystore = Keystore::new();
                     keystore.set_master_salt(&salt);
+
+                    #[cfg(debug_assertions)]
                     if let Err(e) = keystore.save() {
                         log::warn!("Failed to save keystore: {}", e);
                     }
@@ -292,11 +296,14 @@ dll_function_identifier!(FiSH11_MasterKeyChangePassword, data, {
 
                     // Create new password verifier for the new key
                     use sha2::{Digest, Sha256};
+
                     let mut hasher = Sha256::new();
                     hasher.update(&new_key);
+
                     let new_verifier = format!("{:x}", hasher.finalize());
                     new_keystore.set_password_verifier(&new_verifier);
 
+                    #[cfg(debug_assertions)]
                     if let Err(e) = new_keystore.save() {
                         log::warn!("Failed to save updated keystore: {}", e);
                     }

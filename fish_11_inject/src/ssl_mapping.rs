@@ -4,11 +4,10 @@
 //! This module provides atomic operations for associating SSL* pointers with
 //! socket IDs, ensuring thread-safe access without risk of race conditions.
 
+use crate::hook_ssl::{SSL, SSLWrapper};
 use dashmap::DashMap;
 use log::{debug, error, trace, warn};
 use once_cell::sync::Lazy;
-
-use crate::hook_ssl::{SSL, SSLWrapper};
 
 /// Global thread-safe mapping from SSL pointer (as usize) to socket ID
 static SSL_TO_SOCKET: Lazy<DashMap<usize, u32>> = Lazy::new(DashMap::new);
@@ -45,6 +44,7 @@ impl SslSocketMapping {
         SSL_TO_SOCKET.insert(ssl_id, socket_id);
         SOCKET_TO_SSL.insert(socket_id, SSLWrapper { ssl });
 
+        #[cfg(debug_assertions)]
         trace!(
             "SslSocketMapping: associated SSL {:p} (id={}) with socket {}",
             ssl, ssl_id, socket_id
@@ -124,6 +124,7 @@ impl SslSocketMapping {
                     // Try to repair by removing both entries
                     SOCKET_TO_SSL.remove(&socket_id);
                     SOCKET_TO_SSL.remove(&removed_socket_id);
+
                     return Some(removed_socket_id);
                 }
 
@@ -131,6 +132,7 @@ impl SslSocketMapping {
                 let removed_ssl = SOCKET_TO_SSL.remove(&socket_id);
 
                 if removed_ssl.is_some() {
+                    #[cfg(debug_assertions)]
                     debug!(
                         "SslSocketMapping: removed SSL {:p} (was mapped to socket {})",
                         ssl, socket_id
@@ -149,7 +151,9 @@ impl SslSocketMapping {
             if attempt < MAX_RETRIES - 1 {
                 // Exponential backoff
                 let delay_ms = BASE_DELAY_MS * (1 << attempt);
+
                 std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+
                 continue;
             }
 
@@ -202,6 +206,7 @@ impl SslSocketMapping {
                 let removed_socket = SSL_TO_SOCKET.remove(&(ssl as usize));
 
                 if removed_socket.is_some() {
+                    #[cfg(debug_assertions)]
                     debug!(
                         "SslSocketMapping: removed socket {} (was mapped to SSL {:p})",
                         socket_id, ssl
@@ -220,6 +225,7 @@ impl SslSocketMapping {
             if attempt < MAX_RETRIES - 1 {
                 // Exponential backoff
                 let delay_ms = BASE_DELAY_MS * (1 << attempt);
+
                 std::thread::sleep(std::time::Duration::from_millis(delay_ms));
                 continue;
             }
@@ -272,6 +278,8 @@ impl SslSocketMapping {
 
         SSL_TO_SOCKET.clear();
         SOCKET_TO_SSL.clear();
+
+        #[cfg(debug_assertions)]
         debug!("SslSocketMapping: cleared {} mappings", ssl_count);
     }
 
@@ -288,11 +296,13 @@ impl SslSocketMapping {
         let socket_count = SOCKET_TO_SSL.len();
 
         if ssl_count == 0 && socket_count == 0 {
+            #[cfg(debug_assertions)]
             debug!("SslSocketMapping: consistency check - no active mappings");
             return 0;
         }
 
         if ssl_count == socket_count {
+            #[cfg(debug_assertions)]
             debug!(
                 "SslSocketMapping: consistency check - mappings appear consistent ({} entries)",
                 ssl_count
@@ -303,9 +313,11 @@ impl SslSocketMapping {
 
         // Check for SSL entries without corresponding socket entries
         let ssl_keys: Vec<usize> = SSL_TO_SOCKET.iter().map(|entry| *entry.key()).collect();
+
         for ssl_key in ssl_keys {
             if let Some(socket_id_ref) = SSL_TO_SOCKET.get(&ssl_key) {
                 let socket_id = *socket_id_ref.value();
+
                 if !SOCKET_TO_SSL.contains_key(&socket_id) {
                     // Orphaned SSL entry - remove it
                     SSL_TO_SOCKET.remove(&ssl_key);
@@ -323,6 +335,7 @@ impl SslSocketMapping {
         for socket_id in socket_keys {
             if let Some(ssl_wrapper_ref) = SOCKET_TO_SSL.get(&socket_id) {
                 let ssl_key = ssl_wrapper_ref.value().ssl as usize;
+
                 if !SSL_TO_SOCKET.contains_key(&ssl_key) {
                     // Orphaned socket entry - remove it
                     SOCKET_TO_SSL.remove(&socket_id);
@@ -339,6 +352,7 @@ impl SslSocketMapping {
         if repaired > 0 {
             warn!("SslSocketMapping: repaired {} consistency issues", repaired);
         } else {
+            #[cfg(debug_assertions)]
             debug!("SslSocketMapping: consistency check passed - no issues found");
         }
 

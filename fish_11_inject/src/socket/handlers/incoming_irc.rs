@@ -28,10 +28,27 @@ impl SocketInfo {
                     );
                 }
 
-                // Clone the data and immediately release the lock
-                let data_copy = buffer.clone();
+                // Process data in chunks to avoid large memory allocations
+                // and release the lock as soon as possible
+                let data_copy = if buffer.len() > 4096 {
+                    // For large buffers, process in chunks
+                    let mut result = Vec::with_capacity(buffer.len());
 
-                // Clear buffer now that we've copied the data
+                    // Process in 4KB chunks
+                    const CHUNK_SIZE: usize = 4096;
+                    for chunk in buffer.chunks(CHUNK_SIZE) {
+                        result.extend_from_slice(chunk);
+                    }
+
+                    // Compact memory to save space
+                    result.shrink_to_fit();
+                    result
+                } else {
+                    // For small buffers, clone is efficient enough
+                    buffer.clone()
+                };
+
+                // Clear buffer now that we've processed the data
                 buffer.clear();
 
                 data_copy
@@ -96,8 +113,10 @@ impl SocketInfo {
                 let mut lines_processed = 0;
                 let mut bytes_processed = 0;
 
-                // Pre-allocate a buffer for lines with CRLF
-                let mut line_buffer = String::with_capacity(128);
+                // Pre-allocate a buffer for lines with adaptive capacity
+                // Estimate initial capacity based on data size
+                let estimated_capacity = std::cmp::min(4096, data.len().saturating_add(64));
+                let mut line_buffer = String::with_capacity(estimated_capacity);
 
                 // Process each line with controlled lock acquisition
                 for line in data_str.split("\r\n") {

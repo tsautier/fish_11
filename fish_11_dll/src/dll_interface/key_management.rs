@@ -1,10 +1,9 @@
-use std::ffi::c_char;
-use std::os::raw::c_int;
-
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 use crate::{buffer_utils, config, crypto, dll_function_identifier, log_debug};
+use std::ffi::c_char;
+use std::os::raw::c_int;
 
 dll_function_identifier!(FiSH11_ProcessPublicKey, data, {
     // Parse input: accept either "<nickname> <received_key>" or "<received_key> <nickname>"
@@ -13,6 +12,7 @@ dll_function_identifier!(FiSH11_ProcessPublicKey, data, {
 
     // Split into words and try to detect which token looks like a public key
     let parts: Vec<&str> = input.split_whitespace().collect();
+
     if parts.len() < 2 {
         return Err(DllError::InvalidInput {
             param: "input".to_string(),
@@ -53,13 +53,15 @@ dll_function_identifier!(FiSH11_ProcessPublicKey, data, {
         return Err(DllError::MissingParameter("received_key".to_string()));
     }
 
-    log::info!("Processing public key for nickname: {}", nickname);
+    #[cfg(debug_assertions)]
+    log_debug!("Processing public key for nickname: {}", nickname);
 
     // Extract the received public key
     let their_public_key = crypto::extract_public_key(received_pubkey_str).map_err(|e| {
         DllError::KeyInvalid { reason: format!("invalid public key format: {}", e) }
     })?;
 
+    #[cfg(debug_assertions)]
     log_debug!("Successfully extracted public key");
 
     // Get our keypair
@@ -69,6 +71,7 @@ dll_function_identifier!(FiSH11_ProcessPublicKey, data, {
         )
     })?;
 
+    #[cfg(debug_assertions)]
     log_debug!("Retrieved local keypair");
 
     // Compute the shared secret using Curve25519 Diffie-Hellman
@@ -77,6 +80,7 @@ dll_function_identifier!(FiSH11_ProcessPublicKey, data, {
             DllError::KeyExchangeFailed(format!("failed to compute shared secret: {}", e))
         })?;
 
+    #[cfg(debug_assertions)]
     log_debug!("Computed shared secret successfully");
 
     // Store the shared secret with intelligent duplicate handling:
@@ -99,7 +103,8 @@ dll_function_identifier!(FiSH11_ProcessPublicKey, data, {
         _ => DllError::ConfigMalformed(format!("error storing key: {}", e)),
     })?;
 
-    log::info!("Successfully completed key exchange with {}", nickname);
+    #[cfg(debug_assertions)]
+    log_debug!("Successfully completed key exchange with {}", nickname);
 
     // Return a truthy identifier value (no leading /echo) so mIRC treats this as data
     // The script checks the truthiness of $dll(..., FiSH11_ProcessPublicKey, ...)
@@ -114,52 +119,42 @@ dll_function_identifier!(FiSH11_TestCrypt, data, {
         return Err(DllError::MissingParameter("message".to_string()));
     }
 
+    #[cfg(debug_assertions)]
     log_debug!("Testing encryption/decryption cycle with message: {}", input);
 
     // Generate a random 32-byte key for testing
     let key_bytes = crate::utils::generate_random_bytes(32);
     let mut key = [0u8; 32];
+
     key.copy_from_slice(&key_bytes);
 
+    #[cfg(debug_assertions)]
     log_debug!("Generated random test key: {:02x?}", &key[..8]); // Log first 8 bytes only
 
-    // Log message content if DEBUG flag is enabled for sensitive content
-    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-        log_debug!("Key_Management: testing encryption input: '{}'", input);
-    }
+    #[cfg(debug_assertions)]
+    log_debug!("Key_Management: testing encryption input: '{}'", input);
 
     // Encrypt the message
     let encrypted = crypto::encrypt_message(&key, &input, None, None).map_err(|e| {
         DllError::EncryptionFailed { context: "test encryption".to_string(), cause: e.to_string() }
     })?;
 
-    log_debug!("Successfully encrypted message");
-
-    // Log encrypted result if DEBUG flag is enabled for sensitive content
-    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-        log_debug!("Key_Management: testing encrypted output: '{}'", &encrypted);
-    }
-
-    // Log encrypted content if DEBUG flag is enabled for sensitive content
-    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-        log_debug!("Key_Management: testing decryption input: '{}'", &encrypted);
-    }
+    #[cfg(debug_assertions)]
+    log_debug!("Key_Management: testing encrypted output: '{}'", &encrypted);
 
     // Decrypt the message to verify the cycle
     let decrypted = crypto::decrypt_message(&key, &encrypted, None).map_err(|e| {
         DllError::DecryptionFailed { context: "test decryption".to_string(), cause: e.to_string() }
     })?;
 
-    // Log decrypted result if DEBUG flag is enabled for sensitive content
-    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-        log_debug!("Key_Management: testing decrypted output: '{}'", &decrypted);
-    }
-
-    log_debug!("Successfully decrypted message");
+    #[cfg(debug_assertions)]
+    log_debug!("Key_Management: testing decrypted output: '{}'", &decrypted);
 
     // Verify that decryption matches original
     if decrypted != input {
-        log::warn!("Decryption mismatch: expected '{}', got '{}'", input, decrypted);
+        #[cfg(debug_assertions)]
+        log_debug!("Decryption mismatch: expected '{}', got '{}'", input, decrypted);
+
         return Err(DllError::DecryptionFailed {
             context: "verification".to_string(),
             cause: "decrypted message does not match original".to_string(),
@@ -179,7 +174,8 @@ dll_function_identifier!(FiSH11_TestCrypt, data, {
     let encrypted_safe = safe_display(&encrypted, max_display_len);
     let decrypted_safe = safe_display(&decrypted, max_display_len);
 
-    log::info!("Encryption test completed successfully");
+    #[cfg(debug_assertions)]
+    log_debug!("Encryption test completed successfully");
 
     Ok(format!(
         "[TestCrypt] Original: {} | Encrypted: {} | Decrypted: {}",

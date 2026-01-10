@@ -24,6 +24,7 @@ dll_function_identifier!(FiSH11_RemoveManualChannelKey, data, {
     // Remove the manual channel key
     config::remove_manual_channel_key(&channel_name)?;
 
+    #[cfg(debug_assertions)]
     log_debug!("Successfully removed manual channel key for {}", channel_name);
 
     Ok(format!("Manual channel key removed for {}", channel_name))
@@ -74,6 +75,7 @@ mod tests {
     #[test]
     fn test_remove_manual_channel_key_invalid_channel() {
         let (code, msg) = call_remove_manual_channel_key("invalid", 256);
+
         assert_eq!(code, MIRC_COMMAND);
         assert!(msg.to_lowercase().contains("channel name must start with"));
     }

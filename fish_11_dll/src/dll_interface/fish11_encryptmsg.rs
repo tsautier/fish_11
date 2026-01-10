@@ -1,7 +1,7 @@
 use crate::dll_interface::utility;
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
-use crate::{buffer_utils, config, crypto, dll_function_identifier, log_debug};
+use crate::{buffer_utils, config, crypto, dll_function_identifier, log_debug, log_info};
 ///! Provides the DLL interface for encrypting messages using the FiSH protocol, including key management and encryption logic.
 use std::ffi::c_char;
 use std::os::raw::c_int;
@@ -16,7 +16,7 @@ use std::os::raw::c_int;
 //
 dll_function_identifier!(FiSH11_EncryptMsg, data, {
     // 1. Parse input: <target> <message>
-    let input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
+    let mut input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
     let parsed = utility::parse_input(&input_str)?;
 
     let target = parsed.target;
@@ -29,8 +29,11 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
 
         // Attempt to get a channel key. This will succeed for both manual keys and ratchet keys.
         if let Ok(key) = config::get_channel_key_with_fallback(target) {
-            // A key was found, proceed with encryption.
+            // SECURITY: Key must be zeroized on drop
+            use zeroize::Zeroizing;
+            let key = Zeroizing::new(key);
 
+            // A key was found, proceed with encryption.
             #[cfg(debug_assertions)]
             log_debug!(
                 "DLL_Interface: channel message encryption input for channel '{}': '{}'",
@@ -40,7 +43,7 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
 
             // Encrypt with the key, using the channel name as Associated Data.
             let encrypted_b64 = crypto::chacha20::encrypt_message(
-                &key,
+                &*key,
                 message,
                 Some(target),
                 Some(target.as_bytes()),
@@ -61,7 +64,12 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
             }
 
             let result = format!("+FiSH {}", encrypted_b64);
-            log::info!("Successfully encrypted message for channel {}", target);
+            #[cfg(debug_assertions)]
+            log_debug!("Successfully encrypted message for channel {}", target);
+
+            // SECURITY: Clear the source buffer from memory
+            crate::utils::secure_clear_string(&mut input_str);
+
             return Ok(result);
         }
         // If no key is found (manual or ratchet), fall through and send as plaintext.
@@ -74,8 +82,8 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
     log_debug!("Encrypting for nickname: {}", nickname);
 
     // 2. Retrieve the encryption key for the target.
-    let key = utility::get_private_key(&nickname)?;
-    let key_ref = &key;
+    use zeroize::Zeroizing;
+    let key = Zeroizing::new(utility::get_private_key(&nickname)?);
 
     #[cfg(debug_assertions)]
     log_debug!("Successfully retrieved encryption key");
@@ -89,13 +97,11 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
     );
 
     // Encrypt the message using the retrieved key (no AD for private messages).
-    let encrypted_base64 =
-        crypto::chacha20::encrypt_message(key_ref, message, Some(&nickname), None).map_err(
-            |e| DllError::EncryptionFailed {
-                context: format!("encrypting for {}", nickname),
-                cause: e.to_string(),
-            },
-        )?;
+    let encrypted_base64 = crypto::chacha20::encrypt_message(&*key, message, Some(&nickname), None)
+        .map_err(|e| DllError::EncryptionFailed {
+            context: format!("encrypting for {}", nickname),
+            cause: e.to_string(),
+        })?;
 
     #[cfg(debug_assertions)]
     log_debug!(
@@ -107,7 +113,10 @@ dll_function_identifier!(FiSH11_EncryptMsg, data, {
     // Format the result with the FiSH protocol prefix and return.
     let result = format!("+FiSH {}", encrypted_base64);
 
-    log::info!("Successfully encrypted message for {}", nickname);
+    log_info!("Successfully encrypted message for {}", nickname);
+
+    // SECURITY: Clear the source buffer from memory
+    crate::utils::secure_clear_string(&mut input_str);
 
     Ok(result)
 });

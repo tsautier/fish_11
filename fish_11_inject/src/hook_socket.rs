@@ -40,6 +40,7 @@ pub unsafe extern "system" fn hooked_recv(
     len: c_int,
     flags: c_int,
 ) -> c_int {
+    #[cfg(debug_assertions)]
     info!("* hooked_recv() called for socket {}", s.0);
 
     let socket_info = get_or_create_socket(s.0 as u32, true);
@@ -76,6 +77,7 @@ pub unsafe extern "system" fn hooked_recv(
         #[cfg(debug_assertions)]
         {
             // Detailed debug logging for received socket data
+            #[cfg(debug_assertions)]
             debug!("[RECV DEBUG] socket {}: received {} bytes from recv()", s.0, bytes_received);
 
             // Log hex preview of first 64 bytes
@@ -108,6 +110,8 @@ pub unsafe extern "system" fn hooked_recv(
                         if c.is_control() && c != '\r' && c != '\n' && c != '\t' { '.' } else { c }
                     })
                     .collect();
+
+                #[cfg(debug_assertions)]
                 debug!("[RECV DEBUG] socket {}: UTF-8 content (sanitized): {:?}", s.0, sanitized);
 
                 // Check for IRC protocol markers
@@ -115,14 +119,17 @@ pub unsafe extern "system" fn hooked_recv(
                     || text.contains(CMD_NOTICE)
                     || text.contains(CMD_JOIN)
                 {
+                    #[cfg(debug_assertions)]
                     debug!("[RECV DEBUG] socket {}: detected IRC protocol command", s.0);
                 }
 
                 // Check for FiSH key exchange markers
                 if text.contains(KEY_EXCHANGE_INIT) || text.contains(KEY_EXCHANGE_PUBKEY) {
+                    #[cfg(debug_assertions)]
                     debug!("[RECV DEBUG] socket {}: detected FiSH key exchange data", s.0);
                 }
             } else {
+                #[cfg(debug_assertions)]
                 debug!("[RECV DEBUG] socket {}: non-UTF8 binary data", s.0);
             }
         }
@@ -182,6 +189,7 @@ pub unsafe extern "system" fn hooked_send(
     len: c_int,
     flags: c_int,
 ) -> c_int {
+    #[cfg(debug_assertions)]
     info!("* hooked_send() called for socket {}", s.0);
 
     let socket_info = get_or_create_socket(s.0 as u32, false);
@@ -244,15 +252,15 @@ pub unsafe extern "system" fn hooked_send(
             &data_slice[..preview_len]
         );
 
-        if let Ok(text) = std::str::from_utf8(data_slice) {
-            // ... (Sanitized logging omitted for brevity, logic preserved)
-        }
+        if let Ok(text) = std::str::from_utf8(data_slice) {}
     }
 
     if data_slice.len() > 128 {
         let mut hasher = Sha256::new();
         hasher.update(data_slice);
         let hash = hasher.finalize();
+
+        #[cfg(debug_assertions)]
         trace!(
             "Socket {}: [SEND HOOK] large buffer: len={} SHA256={:x}",
             s.0,
@@ -263,6 +271,7 @@ pub unsafe extern "system" fn hooked_send(
 
     // Check first packet for protocol detection
     let stats = socket_info.stats.lock();
+
     if stats.bytes_sent == 0 && socket_info.get_state() == SocketState::Initializing {
         drop(stats);
 
@@ -271,11 +280,15 @@ pub unsafe extern "system" fn hooked_send(
             if current_state == SocketState::Initializing || current_state == SocketState::Connected
             {
                 socket_info.set_state(SocketState::IrcIdentified);
+
+                #[cfg(debug_assertions)]
                 debug!("Socket {}: identified as IRC connection", s.0);
             }
         } else if protocol_detection::is_tls_handshake_packet(data_slice) {
             socket_info.set_ssl(true);
             socket_info.set_state(SocketState::TlsHandshake);
+
+            #[cfg(debug_assertions)]
             debug!("Socket {}: identified as TLS handshake", s.0);
         }
     } else {
@@ -316,7 +329,9 @@ pub unsafe extern "system" fn hooked_connect(
     name: *const SOCKADDR,
     namelen: c_int,
 ) -> c_int {
+    #[cfg(debug_assertions)]
     info!("* hooked_connect() called for socket {}", s.0);
+
     // Get or create socket info
     let _socket_info = get_or_create_socket(s.0 as u32, true);
 
@@ -343,14 +358,19 @@ pub unsafe extern "system" fn hooked_connect(
     let socket_info = get_or_create_socket(s.0 as u32, false);
 
     if result == 0 {
+        #[cfg(debug_assertions)]
         debug!("Socket {}: connection established", s.0);
+
         let current_state = socket_info.get_state();
+
         if current_state == SocketState::Initializing {
             socket_info.set_state(SocketState::Connected);
         }
     } else if result == SOCKET_ERROR {
         let error = WSAGetLastError();
+
         if error != WSAEINTR {
+            #[cfg(debug_assertions)]
             debug!("Socket {}: connection failed with error {:?}", s.0, error);
             socket_info.set_state(SocketState::Closed);
         }
@@ -361,6 +381,7 @@ pub unsafe extern "system" fn hooked_connect(
 
 /// Hook implementation for closesocket
 pub unsafe extern "system" fn hooked_closesocket(s: SOCKET) -> c_int {
+    #[cfg(debug_assertions)]
     info!("* hooked_closesocket() called for socket {}", s.0);
     let socket_id = s.0 as u32;
 
@@ -370,6 +391,7 @@ pub unsafe extern "system" fn hooked_closesocket(s: SOCKET) -> c_int {
     }
 
     if ACTIVE_SOCKETS.remove(&socket_id).is_some() {
+        #[cfg(debug_assertions)]
         debug!("Socket {} removed from tracking", socket_id);
     }
 
@@ -435,7 +457,9 @@ pub fn get_or_create_socket(socket_id: u32, _is_ssl: bool) -> Arc<SocketInfo> {
 
 pub(crate) fn _remove_socket(socket_id: u32) {
     ACTIVE_SOCKETS.remove(&socket_id);
+
     let mut discarded = DISCARDED_SOCKETS.lock().unwrap();
+
     discarded.push(socket_id);
 }
 
@@ -473,13 +497,13 @@ pub fn uninstall_socket_hooks() {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::engines::InjectEngines;
-    use std::sync::Arc;
+    //use super::*;
+    //use crate::engines::InjectEngines;
+    //use std::sync::Arc;
 
     #[test]
     fn test_valid_exports() {
-        // Ensure that types compile, simple syntax check
+        // Ensure that types compile, simple syntax check :D
         assert!(true);
     }
 }

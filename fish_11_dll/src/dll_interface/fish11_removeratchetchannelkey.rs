@@ -24,6 +24,7 @@ dll_function_identifier!(FiSH11_RemoveRatchetChannelKey, data, {
     // Remove the ratchet channel key
     config::remove_ratchet_channel_key(&channel_name)?;
 
+    #[cfg(debug_assertions)]
     log_debug!("Successfully removed ratchet channel key for {}", channel_name);
 
     Ok(format!("Ratchet channel key removed for {}", channel_name))

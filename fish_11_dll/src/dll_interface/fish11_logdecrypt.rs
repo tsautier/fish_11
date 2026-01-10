@@ -1,5 +1,4 @@
 use crate::dll_interface::dll_error::DllError;
-// use buffer_utils for writing results into caller buffer
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use chacha20poly1305::{

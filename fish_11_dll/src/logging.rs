@@ -269,9 +269,10 @@ pub fn is_logger_initialized() -> bool {
 /// Log a module initialization event
 pub fn log_module_init(module_name: &str, version: &str) {
     if is_logger_initialized() {
-        log_info!("Module initialized: {} (version: {})", module_name, version);
-        log_debug!(
-            "Module initialization details - build date: {}, build time: {}",
+        log_info!(
+            "Module initialized: {} (version: {} - build date: {} - build time: {}",
+            module_name,
+            version,
             BUILD_DATE.as_str(),
             BUILD_TIME.as_str()
         );
@@ -290,9 +291,11 @@ pub fn log_function_entry<T: std::fmt::Debug>(function_name: &str, params: Optio
     if is_logger_initialized() {
         match params {
             Some(p) => {
+                #[cfg(debug_assertions)]
                 log_debug!("ENTER: {} - params: {:?}", function_name, p);
             }
             None => {
+                #[cfg(debug_assertions)]
                 log_debug!("ENTER: {}", function_name);
             }
         }
@@ -304,9 +307,11 @@ pub fn log_function_exit<T: std::fmt::Debug>(function_name: &str, return_value: 
     if is_logger_initialized() {
         match return_value {
             Some(r) => {
+                #[cfg(debug_assertions)]
                 log_debug!("EXIT: {} - returned: {:?}", function_name, r);
             }
             None => {
+                #[cfg(debug_assertions)]
                 log_debug!("EXIT: {}", function_name);
             }
         }
@@ -316,6 +321,7 @@ pub fn log_function_exit<T: std::fmt::Debug>(function_name: &str, return_value: 
 /// Log a configuration update or reading
 pub fn log_config(context: &str, key: &str, value: &dyn std::fmt::Debug) {
     if is_logger_initialized() {
+        #[cfg(debug_assertions)]
         log_debug!("CONFIG [{}]: {} = {:?}", context, key, value);
     }
 }
