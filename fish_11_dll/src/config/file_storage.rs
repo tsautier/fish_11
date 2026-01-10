@@ -1,9 +1,8 @@
 //! File storage operations for configuration
+use ini::Ini;
+use secrecy::ExposeSecret;
 use std::fs;
 use std::path::PathBuf;
-
-use configparser::ini::Ini;
-use secrecy::ExposeSecret;
 
 use crate::config::models::{EntryData, FishConfig};
 use crate::error::{FishError, Result};
@@ -18,28 +17,33 @@ pub fn init_config_file() -> Result<()> {
     }
 
     let mut ini = Ini::new();
-    ini.set("FiSH11", "process_incoming", Some("true".to_string()));
-    ini.set("FiSH11", "plain_prefix", Some("+p ".to_string()));
-    ini.set("FiSH11", "encryption_prefix", Some("+FiSH".to_string()));
-    ini.set("FiSH11", "fish_prefix", Some("0".to_string()));
+    ini.with_section(Some("FiSH11"))
+        .set("process_incoming", "true")
+        .set("plain_prefix", "+p ")
+        .set("encryption_prefix", "+FiSH")
+        .set("fish_prefix", "0");
 
     if let Some(parent) = config_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    ini.write(&config_path)?;
+    ini.write_to_file(&config_path)?;
     Ok(())
 }
 
 /// Get the path to the config file
 pub fn get_config_path() -> Result<PathBuf> {
+    #[cfg(debug_assertions)]
     log_debug!("get_config_path: Determining configuration file path");
 
     // Use environment variable for mIRC directory
     match std::env::var("MIRCDIR") {
         Ok(mirc_path) => {
+            #[cfg(debug_assertions)]
             log_debug!("get_config_path: Found MIRCDIR environment variable: {}", mirc_path);
 
             let mut path = PathBuf::from(mirc_path);
+
+            #[cfg(debug_assertions)]
             log_debug!("get_config_path: Created path from MIRCDIR: {}", path.display());
 
             // Validate path - detect directory traversal attempts
@@ -54,7 +58,9 @@ pub fn get_config_path() -> Result<PathBuf> {
             }
 
             path.push("fish_11.ini");
-            log_info!("get_config_path: Using config path from MIRCDIR: {}", path.display());
+
+            #[cfg(debug_assertions)]
+            log_info!("get_config_path: using config path from MIRCDIR: {}", path.display());
 
             Ok(path)
         }
@@ -95,6 +101,7 @@ pub fn get_config_path() -> Result<PathBuf> {
 /// - `Result<FishConfig>` - The loaded configuration or an error
 pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
     let total_start = std::time::Instant::now();
+
     log_warn!("=== load_config: starting configuration load ===");
 
     // Set a timeout to prevent hanging
@@ -106,6 +113,7 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
     let path_start = std::time::Instant::now();
     let config_path = match path_override {
         Some(path) => {
+            #[cfg(debug_assertions)]
             log_debug!("load_config: using override path: {}", path.display());
             path
         }
@@ -113,6 +121,7 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
     };
     log_warn!("load_config: get_config_path took {:?}", path_start.elapsed());
 
+    #[cfg(debug_assertions)]
     log_debug!("load_config: config path: {}", config_path.display());
 
     // Check if we've timed out already
@@ -127,11 +136,13 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
     log_warn!("load_config: path.exists() took {:?}", exists_start.elapsed());
 
     if !file_exists {
+        #[cfg(debug_assertions)]
         log_info!("load_config: config file does not exist, generating new keypair");
 
         // Generate a keypair using crypto module
         let keypair_start = std::time::Instant::now();
         let keypair = crypto::generate_keypair();
+
         log_warn!("load_config: generate_keypair took {:?}", keypair_start.elapsed());
 
         // Store the keypair in the config
@@ -162,19 +173,15 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
 
     let ini_start = std::time::Instant::now();
 
-    match ini.load(&config_path) {
-        Ok(_) => {
-            log_warn!("load_config: ini.load() took {:?}", ini_start.elapsed());
-        }
-        Err(e) => {
-            log_error!(
-                "load_config: failed to load INI file from {}: {}",
-                config_path.display(),
-                e
-            );
-            return Err(FishError::ConfigError(format!("Failed to load config: {}", e)));
-        }
-    };
+    let ini = Ini::load_from_file(&config_path).map_err(|e| {
+        FishError::ConfigError(format!(
+            "Failed to load INI file from {}: {}",
+            config_path.display(),
+            e
+        ))
+    })?;
+
+    log_warn!("load_config: ini.load() took {:?}", ini_start.elapsed());
 
     // Check if we've timed out after loading ini
     if start_time.elapsed() > timeout {
@@ -186,97 +193,104 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
     let cache_start = std::time::Instant::now();
     // OPTIMISATION: Build case-insensitive section lookup cache ONCE
     let sections_lower: std::collections::HashMap<String, String> =
-        ini.sections().iter().map(|s| (s.to_lowercase(), s.clone())).collect();
+        ini.sections().filter_map(|s| s.map(|s| (s.to_lowercase(), s.to_string()))).collect();
 
+    #[cfg(debug_assertions)]
     log_debug!("load_config: section cache built in {:?}", cache_start.elapsed());
-    log_trace!("load_config: processing [KeyPair] section...");
+
+    #[cfg(debug_assertions)]
+    log_debug!("load_config: processing [KeyPair] section...");
 
     let keypair_section_start = std::time::Instant::now();
 
     // Load [KeyPair] section (case-insensitive, optimized)
     if let Some(section_name) = sections_lower.get("keypair") {
-        if let Some(private) = ini.get(section_name, "private") {
+        if let Some(private) = ini.get_from(Some(section_name), "private") {
             config.our_private_key = Some(private.to_string());
         }
-        if let Some(public) = ini.get(section_name, "public") {
+        if let Some(public) = ini.get_from(Some(section_name), "public") {
             config.our_public_key = Some(public.to_string());
         }
     }
     log_warn!("load_config: [KeyPair] processed in {:?}", keypair_section_start.elapsed());
 
+    #[cfg(debug_assertions)]
     log_trace!("load_config: processing [NickNetworks] section...");
 
     let nick_start = std::time::Instant::now();
+
     // Load [NickNetworks] section (case-insensitive, optimized)
     if let Some(section_name) = sections_lower.get("nicknetworks") {
-        if let Some(section_map) = ini.get_map_ref().get(section_name) {
-            for (k, v_opt) in section_map.iter() {
-                if let Some(v) = v_opt {
-                    config.nick_networks.insert(k.clone(), v.clone());
-                }
+        // Get all properties from the section
+        if let Some(section) = ini.section(Some(section_name)) {
+            for (k, v) in section.iter() {
+                config.nick_networks.insert(k.to_string(), v.to_string());
             }
         }
     }
-    log_warn!("load_config: [NickNetworks] processed in {:?}", nick_start.elapsed());
-    log_trace!("load_config: processing [FiSH11] section...");
+    #[cfg(debug_assertions)]
+    log_debug!("load_config: [NickNetworks] processed in {:?}", nick_start.elapsed());
+    #[cfg(debug_assertions)]
+    log_debug!("load_config: processing [FiSH11] section...");
 
     let fish11_start = std::time::Instant::now();
 
     // Load [FiSH11] section (case-insensitive, optimized)
     if let Some(section_name) = sections_lower.get("fish11") {
-        if let Some(value) = ini.get(section_name, "process_incoming") {
+        if let Some(value) = ini.get_from(Some(section_name), "process_incoming") {
             config.fish11.process_incoming = value.eq_ignore_ascii_case("true") || value == "1";
         }
 
-        if let Some(value) = ini.get(section_name, "process_outgoing") {
+        if let Some(value) = ini.get_from(Some(section_name), "process_outgoing") {
             config.fish11.process_outgoing = value.eq_ignore_ascii_case("true") || value == "1";
         }
 
-        if let Some(value) = ini.get(section_name, "plain_prefix") {
+        if let Some(value) = ini.get_from(Some(section_name), "plain_prefix") {
             config.fish11.plain_prefix = value.to_string();
         }
 
-        if let Some(value) = ini.get(section_name, "encrypt_notice") {
+        if let Some(value) = ini.get_from(Some(section_name), "encrypt_notice") {
             config.fish11.encrypt_notice = value.eq_ignore_ascii_case("true") || value == "1";
         }
 
-        if let Some(value) = ini.get(section_name, "encrypt_action") {
+        if let Some(value) = ini.get_from(Some(section_name), "encrypt_action") {
             config.fish11.encrypt_action = value.eq_ignore_ascii_case("true") || value == "1";
         }
 
-        if let Some(value) = ini.get(section_name, "mark_position") {
+        if let Some(value) = ini.get_from(Some(section_name), "mark_position") {
             if let Ok(pos) = value.parse() {
                 config.fish11.mark_position = pos;
             }
         }
 
-        if let Some(value) = ini.get(section_name, "mark_encrypted") {
+        if let Some(value) = ini.get_from(Some(section_name), "mark_encrypted") {
             config.fish11.mark_encrypted = value.to_string();
         }
 
-        if let Some(value) = ini.get(section_name, "no_fish10_legacy") {
+        if let Some(value) = ini.get_from(Some(section_name), "no_fish10_legacy") {
             config.fish11.no_fish10_legacy = value.eq_ignore_ascii_case("true") || value == "1";
         }
 
-        if let Some(value) = ini.get(section_name, "key_ttl") {
+        if let Some(value) = ini.get_from(Some(section_name), "key_ttl") {
             if let Ok(ttl) = value.parse::<i64>() {
                 config.fish11.key_ttl = Some(ttl);
             }
         }
 
-        if let Some(value) = ini.get(section_name, "encryption_prefix") {
+        if let Some(value) = ini.get_from(Some(section_name), "encryption_prefix") {
             config.fish11.encryption_prefix = value.to_string();
         }
 
-        if let Some(value) = ini.get(section_name, "fish_prefix") {
+        if let Some(value) = ini.get_from(Some(section_name), "fish_prefix") {
             config.fish11.fish_prefix = value.eq_ignore_ascii_case("true") || value == "1";
         }
     }
     log_warn!("load_config: [FiSH11] processed in {:?}", fish11_start.elapsed());
+
     let startup_start = std::time::Instant::now();
     // Load [Startup] section (case-insensitive, optimized)
     if let Some(section_name) = sections_lower.get("startup") {
-        if let Some(value) = ini.get(section_name, "date") {
+        if let Some(value) = ini.get_from(Some(section_name), "date") {
             if let Ok(date) = value.parse() {
                 config.startup_data.date = Some(date);
             }
@@ -292,35 +306,33 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
     let dates_section_name = sections_lower.get("dates").cloned();
 
     if let Some(keys_section) = keys_section_name {
-        if let Some(keys_map) = ini.get_map_ref().get(&keys_section) {
-            // Get dates map if it exists, for efficient lookup
-            let dates_map = if let Some(dates_section) = &dates_section_name {
-                ini.get_map_ref().get(dates_section).cloned().unwrap_or_default()
-            } else {
-                Default::default()
-            };
+        // Get the keys section
+        if let Some(keys_section_data) = ini.section(Some(&keys_section)) {
+            // Get dates section if it exists, for efficient lookup
+            let dates_section_data =
+                dates_section_name.and_then(|dates_section| ini.section(Some(&dates_section)));
 
-            for (entry_key, key_val_opt) in keys_map.iter() {
-                if let Some(key_val) = key_val_opt {
-                    // New format: entry with network information
-                    let date_val = dates_map.get(entry_key).and_then(|v| v.clone());
-                    let entry_data = EntryData {
-                        key: Some(key_val.clone()),
-                        date: date_val,
-                        is_exchange: Some(false),
-                    };
-                    config.entries.insert(entry_key.clone(), entry_data);
-                }
+            for (entry_key, key_val) in keys_section_data.iter() {
+                // New format: entry with network information
+                let date_val = dates_section_data
+                    .as_ref()
+                    .and_then(|dates| dates.get(entry_key).map(|s| s.to_string()));
+                let entry_data = EntryData {
+                    key: Some(key_val.to_string()),
+                    date: date_val,
+                    is_exchange: Some(false),
+                };
+                config.entries.insert(entry_key.to_string(), entry_data);
             }
         }
     }
+    
     log_warn!(
         "load_config: entries processed in {:?} ({} entries)",
         entries_start.elapsed(),
         config.entries.len()
     );
 
-    #[cfg(debug_assertions)]
     // println!("DEBUG: finished processing sections. Total entries loaded: {}", config.entries.len());
 
     log_warn!("=== load_config: TOTAL {:?} ===", total_start.elapsed());
@@ -343,6 +355,7 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
 pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Result<()> {
     let start_time = std::time::Instant::now();
 
+    #[cfg(debug_assertions)]
     log_debug!(
         "save_config: starting (entries: {}, keys: {})",
         config.entries.len(),
@@ -353,40 +366,45 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
 
     // Save [KeyPair] section
     if let Some(private) = &config.our_private_key {
-        ini.set("KeyPair", "private", Some(private.to_string()));
+        ini.with_section(Some("KeyPair")).set("private", private);
     }
     if let Some(public) = &config.our_public_key {
-        ini.set("KeyPair", "public", Some(public.to_string()));
+        ini.with_section(Some("KeyPair")).set("public", public);
     }
 
     // Save [NickNetworks] section
     let nick_section = "NickNetworks";
+
     // Sort entries by key to ensure consistent order in the INI file
     let mut sorted_nick_networks: Vec<(&String, &String)> = config.nick_networks.iter().collect();
     sorted_nick_networks.sort_by(|a, b| a.0.cmp(b.0));
 
     for (k, v) in sorted_nick_networks {
-        ini.set(nick_section, k, Some(v.clone()));
+        ini.with_section(Some(nick_section)).set(k, v);
     }
 
     // Save [FiSH11] section
-    ini.set("FiSH11", "process_incoming", Some(config.fish11.process_incoming.to_string()));
-    ini.set("FiSH11", "process_outgoing", Some(config.fish11.process_outgoing.to_string()));
-    ini.set("FiSH11", "plain_prefix", Some(config.fish11.plain_prefix.clone()));
-    ini.set("FiSH11", "encrypt_notice", Some(config.fish11.encrypt_notice.to_string()));
-    ini.set("FiSH11", "encrypt_action", Some(config.fish11.encrypt_action.to_string()));
-    ini.set("FiSH11", "mark_position", Some(config.fish11.mark_position.to_string()));
-    ini.set("FiSH11", "mark_encrypted", Some(config.fish11.mark_encrypted.clone()));
-    ini.set("FiSH11", "no_fish10_legacy", Some(config.fish11.no_fish10_legacy.to_string()));
+    ini.with_section(Some("FiSH11"))
+        .set("process_incoming", config.fish11.process_incoming.to_string())
+        .set("process_outgoing", config.fish11.process_outgoing.to_string())
+        .set("plain_prefix", config.fish11.plain_prefix.clone())
+        .set("encrypt_notice", config.fish11.encrypt_notice.to_string())
+        .set("encrypt_action", config.fish11.encrypt_action.to_string())
+        .set("mark_position", config.fish11.mark_position.to_string())
+        .set("mark_encrypted", config.fish11.mark_encrypted.clone())
+        .set("no_fish10_legacy", config.fish11.no_fish10_legacy.to_string());
+
     if let Some(ttl) = config.fish11.key_ttl {
-        ini.set("FiSH11", "key_ttl", Some(ttl.to_string()));
+        ini.with_section(Some("FiSH11")).set("key_ttl", ttl.to_string());
     }
-    ini.set("FiSH11", "encryption_prefix", Some(config.fish11.encryption_prefix.clone()));
-    ini.set("FiSH11", "fish_prefix", Some(config.fish11.fish_prefix.to_string()));
+
+    ini.with_section(Some("FiSH11"))
+        .set("encryption_prefix", config.fish11.encryption_prefix.clone())
+        .set("fish_prefix", config.fish11.fish_prefix.to_string());
 
     // Save [Startup] section
     if let Some(date) = config.startup_data.date {
-        ini.set("Startup", "date", Some(date.to_string()));
+        ini.with_section(Some("Startup")).set("date", date.to_string());
     }
 
     // Save entries from config.entries to [Keys] and [Dates] sections
@@ -403,10 +421,10 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
         // The entry_key is already in "name@network" format.
         // It is now a key in a section, so special characters are not a problem.
         if let Some(key_val) = &entry_data.key {
-            ini.set(keys_section, entry_key, Some(key_val.clone()));
+            ini.with_section(Some(keys_section)).set(entry_key, key_val);
         }
         if let Some(date_val) = &entry_data.date {
-            ini.set(dates_section, entry_key, Some(date_val.clone()));
+            ini.with_section(Some(dates_section)).set(entry_key, date_val);
         }
     }
 
@@ -424,12 +442,16 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
         Some(path) => path,
         None => get_config_path()?,
     };
+
+    #[cfg(debug_assertions)]
     log_debug!("save_config: Config path: {}", config_path.display());
 
     // Create parent directories if they don't exist
     if let Some(parent) = config_path.parent() {
         if !parent.exists() {
+            #[cfg(debug_assertions)]
             log_debug!("save_config: creating parent directory: {}", parent.display());
+
             fs::create_dir_all(parent)?;
         }
     }
@@ -440,7 +462,7 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
     // Write to the temp file first
     let write_start = std::time::Instant::now();
 
-    match ini.write(&temp_path) {
+    match ini.write_to_file(&temp_path) {
         Ok(_) => {
             let write_duration = write_start.elapsed();
 
@@ -449,6 +471,7 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
                 Ok(_) => {
                     let total_duration = start_time.elapsed();
 
+                    #[cfg(debug_assertions)]
                     log_debug!(
                         "save_config: completed in {:?} (write: {:?}, entries: {:?})",
                         total_duration,
@@ -486,11 +509,10 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
 
 #[cfg(test)]
 mod tests {
-    use tempfile::NamedTempFile;
-
     use super::*;
     use crate::config::models::{EntryData, FishConfig};
     use crate::utils::generate_random_bytes;
+    use tempfile::NamedTempFile;
 
     // Helper to create a dummy config for testing
     fn create_dummy_config() -> FishConfig {

@@ -27,7 +27,7 @@ base64 = "0.22.1"
 configparser = "3.1.0"
 log = { version = "0.4.26", features = ["std"] }
 chrono = "0.4.40"
-ini = "1.3.0"
+rust-ini = "0.21.3"
 
 # Security enhancements
 subtle = "2.5"

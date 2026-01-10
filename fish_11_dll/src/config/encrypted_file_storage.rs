@@ -1,12 +1,15 @@
 //! Encrypted file storage operations for configuration
 use crate::config::models::{EntryData, FishConfig};
+use crate::dll_interface::fish11_masterkey::is_master_key_unlocked;
 use crate::error::{FishError, Result};
+use crate::log_debug;
 use base64::{Engine as _, engine::general_purpose};
-use configparser::ini::Ini;
 use fish_11_core::master_key::{
-    EncryptedBlob, decrypt_data, derive_config_kek, derive_master_key, encrypt_data,
+    EncryptedBlob, decrypt_data, derive_config_kek, encrypt_data,
 };
+use ini::Ini;
 use std::fs;
+use std::io::Cursor;
 use std::path::PathBuf;
 
 /// Configuration header for encrypted files
@@ -21,16 +24,17 @@ pub fn init_encrypted_config_file() -> Result<()> {
 
     let mut ini = Ini::new();
 
-    ini.set("FiSH11", "process_incoming", Some("true".to_string()));
-    ini.set("FiSH11", "plain_prefix", Some("+p ".to_string()));
-    ini.set("FiSH11", "encryption_prefix", Some("+FiSH".to_string()));
-    ini.set("FiSH11", "fish_prefix", Some("0".to_string()));
+    ini.with_section(Some("FiSH11"))
+        .set("process_incoming", "true")
+        .set("plain_prefix", "+p ")
+        .set("encryption_prefix", "+FiSH")
+        .set("fish_prefix", "0");
 
     if let Some(parent) = config_path.parent() {
         fs::create_dir_all(parent)?;
     }
 
-    ini.write(&config_path)?;
+    ini.write_to_file(&config_path)?;
 
     Ok(())
 }
@@ -55,7 +59,8 @@ pub fn load_encrypted_config(path_override: Option<PathBuf>) -> Result<FishConfi
         None => get_config_path()?,
     };
 
-    crate::log_debug!("load_encrypted_config: config path: {}", config_path.display());
+    #[cfg(debug_assertions)]
+    log_debug!("load_encrypted_config: config path: {}", config_path.display());
 
     // Check if file exists
     if !config_path.exists() {
@@ -65,11 +70,12 @@ pub fn load_encrypted_config(path_override: Option<PathBuf>) -> Result<FishConfi
 
     // Check if the file is encrypted
     if is_encrypted_config(&config_path)? {
-        crate::log_debug!("load_encrypted_config: detected encrypted config file");
+        #[cfg(debug_assertions)]
+        log_debug!("load_encrypted_config: detected encrypted config file");
 
         load_encrypted_config_from_file(&config_path)
     } else {
-        crate::log_debug!("load_encrypted_config: detected regular config file");
+        log_debug!("load_encrypted_config: detected regular config file");
 
         // Fall back to regular loading
         crate::config::file_storage::load_config(path_override)
@@ -84,6 +90,7 @@ fn load_encrypted_config_from_file(config_path: &PathBuf) -> Result<FishConfig> 
 
     // Parse the header and extract encrypted data
     let lines: Vec<&str> = content.lines().collect();
+
     if lines.is_empty() || !lines[0].starts_with(ENCRYPTED_CONFIG_HEADER) {
         return Err(FishError::ConfigError("Invalid encrypted config header".to_string()));
     }
@@ -98,6 +105,7 @@ fn load_encrypted_config_from_file(config_path: &PathBuf) -> Result<FishConfig> 
     let encrypted_bytes = general_purpose::STANDARD
         .decode(encrypted_data)
         .map_err(|e| FishError::ConfigError(format!("Failed to decode encrypted data: {}", e)))?;
+
     let encrypted_blob = EncryptedBlob::from_bytes(&encrypted_bytes)
         .ok_or_else(|| FishError::ConfigError("Failed to parse encrypted blob".to_string()))?;
 
@@ -127,7 +135,7 @@ fn load_encrypted_config_from_file(config_path: &PathBuf) -> Result<FishConfig> 
 
     // Parse the decrypted content as INI
     let mut ini = Ini::new();
-    ini.read(decrypted_content).map_err(|e| {
+    let ini = Ini::load_from_str(&decrypted_content).map_err(|e| {
         FishError::ConfigError(format!("Failed to parse decrypted INI content: {}", e))
     })?;
 
@@ -135,69 +143,67 @@ fn load_encrypted_config_from_file(config_path: &PathBuf) -> Result<FishConfig> 
     let mut config = FishConfig::new();
 
     // Load [KeyPair] section
-    if let Some(private) = ini.get("KeyPair", "private") {
+    if let Some(private) = ini.get_from(Some("KeyPair"), "private") {
         config.our_private_key = Some(private.to_string());
     }
-    if let Some(public) = ini.get("KeyPair", "public") {
+    if let Some(public) = ini.get_from(Some("KeyPair"), "public") {
         config.our_public_key = Some(public.to_string());
     }
 
     // Load [NickNetworks] section
     let nick_section = "NickNetworks";
-    if let Some(section_map) = ini.get_map_ref().get(nick_section) {
-        for (k, v_opt) in section_map.iter() {
-            if let Some(v) = v_opt {
-                config.nick_networks.insert(k.clone(), v.clone());
-            }
+    if let Some(section) = ini.section(Some(nick_section)) {
+        for (k, v) in section.iter() {
+            config.nick_networks.insert(k.to_string(), v.to_string());
         }
     }
 
     // Load [FiSH11] section
-    if let Some(process_incoming) = ini.get("FiSH11", "process_incoming") {
+    if let Some(process_incoming) = ini.get_from(Some("FiSH11"), "process_incoming") {
         config.fish11.process_incoming =
             process_incoming.eq_ignore_ascii_case("true") || process_incoming == "1";
     }
-    if let Some(process_outgoing) = ini.get("FiSH11", "process_outgoing") {
+    if let Some(process_outgoing) = ini.get_from(Some("FiSH11"), "process_outgoing") {
         config.fish11.process_outgoing =
             process_outgoing.eq_ignore_ascii_case("true") || process_outgoing == "1";
     }
-    if let Some(plain_prefix) = ini.get("FiSH11", "plain_prefix") {
+    if let Some(plain_prefix) = ini.get_from(Some("FiSH11"), "plain_prefix") {
         config.fish11.plain_prefix = plain_prefix.to_string();
     }
-    if let Some(encrypt_notice) = ini.get("FiSH11", "encrypt_notice") {
+    if let Some(encrypt_notice) = ini.get_from(Some("FiSH11"), "encrypt_notice") {
         config.fish11.encrypt_notice =
             encrypt_notice.eq_ignore_ascii_case("true") || encrypt_notice == "1";
     }
-    if let Some(encrypt_action) = ini.get("FiSH11", "encrypt_action") {
+    if let Some(encrypt_action) = ini.get_from(Some("FiSH11"), "encrypt_action") {
         config.fish11.encrypt_action =
             encrypt_action.eq_ignore_ascii_case("true") || encrypt_action == "1";
     }
-    if let Some(mark_position) = ini.get("FiSH11", "mark_position") {
+    if let Some(mark_position) = ini.get_from(Some("FiSH11"), "mark_position") {
         if let Ok(pos) = mark_position.parse() {
             config.fish11.mark_position = pos;
         }
     }
-    if let Some(mark_encrypted) = ini.get("FiSH11", "mark_encrypted") {
+    if let Some(mark_encrypted) = ini.get_from(Some("FiSH11"), "mark_encrypted") {
         config.fish11.mark_encrypted = mark_encrypted.to_string();
     }
-    if let Some(no_fish10_legacy) = ini.get("FiSH11", "no_fish10_legacy") {
+    if let Some(no_fish10_legacy) = ini.get_from(Some("FiSH11"), "no_fish10_legacy") {
         config.fish11.no_fish10_legacy =
             no_fish10_legacy.eq_ignore_ascii_case("true") || no_fish10_legacy == "1";
     }
-    if let Some(key_ttl) = ini.get("FiSH11", "key_ttl") {
+    if let Some(key_ttl) = ini.get_from(Some("FiSH11"), "key_ttl") {
         if let Ok(ttl) = key_ttl.parse() {
             config.fish11.key_ttl = Some(ttl);
         }
     }
-    if let Some(encryption_prefix) = ini.get("FiSH11", "encryption_prefix") {
+    if let Some(encryption_prefix) = ini.get_from(Some("FiSH11"), "encryption_prefix") {
         config.fish11.encryption_prefix = encryption_prefix.to_string();
     }
-    if let Some(fish_prefix) = ini.get("FiSH11", "fish_prefix") {
+    if let Some(fish_prefix) = ini.get_from(Some("FiSH11"), "fish_prefix") {
         config.fish11.fish_prefix = fish_prefix.eq_ignore_ascii_case("true") || fish_prefix == "1";
     }
 
     // Load [Startup] section
-    if let Some(date) = ini.get("Startup", "date") {
+    if let Some(date) = ini.get_from(Some("Startup"), "date") {
         if let Ok(d) = date.parse() {
             config.startup_data.date = Some(d);
         }
@@ -207,24 +213,22 @@ fn load_encrypted_config_from_file(config_path: &PathBuf) -> Result<FishConfig> 
     let keys_section = "Keys";
     let dates_section = "Dates";
 
-    // Get the keys map if it exists
-    if let Some(keys_map) = ini.get_map_ref().get(keys_section) {
-        for (entry_key, key_val_opt) in keys_map.iter() {
-            if let Some(key_val) = key_val_opt {
-                // Look for corresponding date in dates section
-                let date_val = if let Some(dates_map) = ini.get_map_ref().get(dates_section) {
-                    dates_map.get(entry_key).and_then(|v| v.clone())
-                } else {
-                    None
-                };
+    // Get the keys section if it exists
+    if let Some(keys_section_data) = ini.section(Some(keys_section)) {
+        // Get dates section if it exists, for efficient lookup
+        let dates_section_data = ini.section(Some(dates_section));
 
-                let entry_data = EntryData {
-                    key: Some(key_val.clone()),
-                    date: date_val,
-                    is_exchange: Some(false), // Default to false for loaded keys
-                };
-                config.entries.insert(entry_key.clone(), entry_data);
-            }
+        for (entry_key, key_val) in keys_section_data.iter() {
+            // Look for corresponding date in dates section
+            let date_val =
+                dates_section_data.and_then(|dates| dates.get(entry_key).map(|s| s.to_string()));
+
+            let entry_data = EntryData {
+                key: Some(key_val.to_string()),
+                date: date_val,
+                is_exchange: Some(false), // Default to false for loaded keys
+            };
+            config.entries.insert(entry_key.to_string(), entry_data);
         }
     }
 
@@ -234,7 +238,7 @@ fn load_encrypted_config_from_file(config_path: &PathBuf) -> Result<FishConfig> 
 /// Check if master key is available in memory
 pub fn is_master_key_available() -> bool {
     // Check if the master key is currently held in memory
-    crate::dll_interface::fish11_masterkey::is_master_key_unlocked()
+    is_master_key_unlocked()
 }
 
 /// Save configuration to an encrypted file
@@ -244,45 +248,48 @@ pub fn save_encrypted_config(config: &FishConfig, path_override: Option<PathBuf>
         None => get_config_path()?,
     };
 
-    crate::log_debug!("save_encrypted_config: config path: {}", config_path.display());
+    #[cfg(debug_assertions)]
+    log_debug!("save_encrypted_config: config path: {}", config_path.display());
 
     // Convert the config to a regular INI format first
     let mut ini = Ini::new();
 
     // Save [KeyPair] section
     if let Some(private) = &config.our_private_key {
-        ini.set("KeyPair", "private", Some(private.to_string()));
+        ini.with_section(Some("KeyPair")).set("private", private);
     }
     if let Some(public) = &config.our_public_key {
-        ini.set("KeyPair", "public", Some(public.to_string()));
+        ini.with_section(Some("KeyPair")).set("public", public);
     }
 
     // Save [NickNetworks] section
     let nick_section = "NickNetworks";
     for (k, v) in &config.nick_networks {
-        ini.set(nick_section, k, Some(v.clone()));
+        ini.with_section(Some(nick_section)).set(k, v);
     }
 
     // Save [FiSH11] section
-    ini.set("FiSH11", "process_incoming", Some(config.fish11.process_incoming.to_string()));
-    ini.set("FiSH11", "process_outgoing", Some(config.fish11.process_outgoing.to_string()));
-    ini.set("FiSH11", "plain_prefix", Some(config.fish11.plain_prefix.clone()));
-    ini.set("FiSH11", "encrypt_notice", Some(config.fish11.encrypt_notice.to_string()));
-    ini.set("FiSH11", "encrypt_action", Some(config.fish11.encrypt_action.to_string()));
-    ini.set("FiSH11", "mark_position", Some(config.fish11.mark_position.to_string()));
-    ini.set("FiSH11", "mark_encrypted", Some(config.fish11.mark_encrypted.clone()));
-    ini.set("FiSH11", "no_fish10_legacy", Some(config.fish11.no_fish10_legacy.to_string()));
+    ini.with_section(Some("FiSH11"))
+        .set("process_incoming", config.fish11.process_incoming.to_string())
+        .set("process_outgoing", config.fish11.process_outgoing.to_string())
+        .set("plain_prefix", config.fish11.plain_prefix.clone())
+        .set("encrypt_notice", config.fish11.encrypt_notice.to_string())
+        .set("encrypt_action", config.fish11.encrypt_action.to_string())
+        .set("mark_position", config.fish11.mark_position.to_string())
+        .set("mark_encrypted", config.fish11.mark_encrypted.clone())
+        .set("no_fish10_legacy", config.fish11.no_fish10_legacy.to_string());
 
     if let Some(ttl) = config.fish11.key_ttl {
-        ini.set("FiSH11", "key_ttl", Some(ttl.to_string()));
+        ini.with_section(Some("FiSH11")).set("key_ttl", ttl.to_string());
     }
 
-    ini.set("FiSH11", "encryption_prefix", Some(config.fish11.encryption_prefix.clone()));
-    ini.set("FiSH11", "fish_prefix", Some(config.fish11.fish_prefix.to_string()));
+    ini.with_section(Some("FiSH11"))
+        .set("encryption_prefix", config.fish11.encryption_prefix.clone())
+        .set("fish_prefix", config.fish11.fish_prefix.to_string());
 
     // Save [Startup] section
     if let Some(date) = config.startup_data.date {
-        ini.set("Startup", "date", Some(date.to_string()));
+        ini.with_section(Some("Startup")).set("date", date.to_string());
     }
 
     // Save entries from config.entries to [Keys] and [Dates] sections
@@ -291,15 +298,19 @@ pub fn save_encrypted_config(config: &FishConfig, path_override: Option<PathBuf>
 
     for (entry_key, entry_data) in &config.entries {
         if let Some(key_val) = &entry_data.key {
-            ini.set(keys_section, entry_key, Some(key_val.clone()));
+            ini.with_section(Some(keys_section)).set(entry_key, key_val);
         }
         if let Some(date_val) = &entry_data.date {
-            ini.set(dates_section, entry_key, Some(date_val.clone()));
+            ini.with_section(Some(dates_section)).set(entry_key, date_val);
         }
     }
 
     // Convert to string
-    let ini_string = ini.writes();
+
+    let mut buffer = Cursor::new(Vec::new());
+    ini.write_to(&mut buffer)?;
+    let ini_string = String::from_utf8(buffer.into_inner())
+        .map_err(|e| FishError::ConfigError(format!("Failed to convert INI to string: {}", e)))?;
 
     // Check if master key is available for encryption
     if !is_master_key_available() {
