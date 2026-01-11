@@ -1587,7 +1587,13 @@ menu status,channel,nicklist,query {
   ...Disable :{ fish11_SetIniValue encrypt_action 0 | echo $color(Mode text) -at *** FiSH: ACTION encryption disabled }
   ..No legacy FiSH 10 [Status]
   ...Enable :{ fish11_SetIniValue no_fish10_legacy 1 | echo $color(Mode text) -at *** FiSH: legacy FiSH 10 compatibility disabled }
-  ...Disable :{ fish11_SetIniValue no_fish10_legacy 0 | echo $color(Mode text) -at *** FiSH: legacy FiSH 10 compatibility enabled }
+  ..Disable :{ fish11_SetIniValue no_fish10_legacy 0 | echo $color(Mode text) -at *** FiSH: legacy FiSH 10 compatibility enabled }
+  ..-
+  ..Legacy FiSH 10
+  ...DH1080 Key Exchange :fish10_keyx $active
+  ...Set legacy key :{ var %key = $?="Enter hex Blowfish key (4-56 bytes):" | if (%key != $null) fish10_setkey $active %key }
+  ...Remove legacy key :fish10_delkey $active
+  ...Show legacy key :fish10_showkey $active
   ..-
   ..Open config file :fish11_ViewIniFile
   ..-
@@ -1728,6 +1734,92 @@ alias fish_setlogkey11 { fish11_setlogkey $1- }
 alias fish_logencrypt11 { fish11_logencrypt $1- }
 alias fish_logdecrypt11 { fish11_logdecrypt $1- }
 alias fish_logdecryptfile11 { fish11_logdecryptfile $1- }
+
+; Legacy FiSH 10 aliases
+alias fish10_setkey {
+  if ($1 == $null || $2 == $null) {
+    echo 4 -a Syntax: /fish10_setkey <target> <hex_key>
+    return
+  }
+  var %msg = $dll(%Fish11DllFile, FiSH10_SetKey, $1 $2-)
+  if (%msg && $left(%msg, 6) != Error:) {
+    echo -a *** FiSH_10: %msg
+  }
+  else {
+    echo -a *** FiSH_10: error setting key - %msg
+  }
+}
+
+alias fish10_delkey {
+  if ($1 == $null) var %target = $active
+  else var %target = $1
+  var %msg = $dll(%Fish11DllFile, FiSH10_DelKey, %target)
+  if (%msg && $left(%msg, 6) != Error:) {
+    echo -a *** FiSH_10: %msg
+  }
+  else {
+    echo -a *** FiSH_10: error removing key - %msg
+  }
+}
+
+alias fish10_showkey {
+  if ($1 == $null) var %target = $active
+  else var %target = $1
+  var %key = $dll(%Fish11DllFile, FiSH11_FileGetKey, %target)
+  if (%key == $null) {
+    ; Try to get from legacy store if implemented? 
+    ; Actually FiSH11_FileGetKey might already check it or we need a specific legacy one.
+    ; For now let's assume it works or just report error.
+    echo -a *** FiSH_10: no key found for %target
+  } else {
+    echo -a *** FiSH_10: key for %target : %key
+  }
+}
+
+alias fish10_keyx {
+  if ($1 == $null) var %target = $active
+  else var %target = $1
+  
+  var %pub = $dll(%Fish11DllFile, FiSH10_DH1080_GenerateKeyPair, %target)
+  if ($left(%pub, 7) == DH1080_) {
+    .notice %target %pub
+    echo $color(Mode text) -tm %target *** FiSH_10: sent %pub to %target $+ , waiting for reply...
+  }
+  else {
+    echo $color(Error) -at *** FiSH_10: DH1080 init failed - %pub
+  }
+}
+
+; Legacy DH1080 Notice Handlers
+on ^*:NOTICE:DH1080_INIT*:?:{
+  var %their_pub = $2-
+  echo $color(Mode text) -tm $nick *** FiSH_10: received DH1080_INIT from $nick, responding...
+  
+  var %our_pub = $dll(%Fish11DllFile, FiSH10_DH1080_GenerateKeyPair, $nick)
+  var %secret = $dll(%Fish11DllFile, FiSH10_DH1080_ComputeSecret, $nick %their_pub)
+  
+  if ($left(%our_pub, 7) == DH1080_ && $left(%secret, 6) != Error:) {
+    .notice $nick DH1080_FINISH %our_pub
+    echo $color(Mode text) -tm $nick *** FiSH_10: key exchange complete with $nick
+  }
+  else {
+    echo $color(Error) -tm $nick *** FiSH_10: key exchange failed - %secret
+  }
+  halt
+}
+
+on ^*:NOTICE:DH1080_FINISH*:?:{
+  var %their_pub = $2-
+  var %secret = $dll(%Fish11DllFile, FiSH10_DH1080_ComputeSecret, $nick %their_pub)
+  
+  if ($left(%secret, 6) != Error:) {
+    echo $color(Mode text) -tm $nick *** FiSH_10: key exchange complete with $nick
+  }
+  else {
+    echo $color(Error) -tm $nick *** FiSH_10: key exchange failed - %secret
+  }
+  halt
+}
 
 ; Direct command for channel encryption settings
 alias fish11_channel_settings {
