@@ -31,6 +31,8 @@ dll_function_identifier!(FiSH10_SetKey, data, {
         });
     }
 
+    
+    
     log_debug!("FiSH10: Setting legacy key for '{}' (length: {})", target, key_bytes.len());
 
     // Store the key in the legacy key store
@@ -73,22 +75,25 @@ mod tests {
             });
         }
 
-        log_debug!("FiSH10: Setting legacy key for '{}' (length: {})", target, key_bytes.len());
+        #[cfg(debug_assertions)]
+        log_debug!("FiSH10: setting legacy key for '{}' (length: {})", target, key_bytes.len());
 
         // Store the key in the legacy key store
         let config = legacy::LEGACY_CONFIG.write();
         let mut keys = config.legacy_keys.write();
+        
         keys.insert(target.to_string(), key_bytes.clone());
 
         // Also save to persistent storage if configured
         if let Some(ini_path) = &config.blowfish_ini_path {
             if let Err(e) = legacy::config::save_key_to_blowfish_ini(&target, &key_bytes, ini_path)
             {
-                log::warn!("FiSH10: Failed to save key to blowfish.ini: {}", e);
+                log::warn!("FiSH10: failed to save key to blowfish.ini: {}", e);
             }
         }
 
-        log_info!("FiSH10: Successfully set legacy key for '{}'", target);
+        #[cfg(debug_assertions)]
+        log_debug!("FiSH10: successfully set legacy key for '{}'", target);
 
         Ok(format!("Legacy key set for {}", target))
     }

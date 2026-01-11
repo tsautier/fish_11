@@ -293,7 +293,7 @@ pub extern "stdcall" fn UnloadDll(_timeout: c_int) -> c_int {
     }
 
     // Log final shutdown message
-    log::info!("FiSH_11 DLL resources released and ready for unload");
+    log::info!("FiSH_11 dll resources released and ready for unload");
 
     // Log function exit with return value (0 = allow unload)
     crate::logging::log_function_exit("UnloadDll", Some(0));

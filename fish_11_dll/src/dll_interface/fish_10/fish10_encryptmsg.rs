@@ -6,7 +6,7 @@
 use crate::dll_interface::utility;
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
-use crate::{buffer_utils, config, crypto, dll_function_identifier, legacy, log_debug, log_info};
+use crate::{buffer_utils, dll_function_identifier, legacy, log_debug};
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
@@ -33,6 +33,7 @@ fn fish10_encrypt_msg_impl(input: &str) -> Result<String, DllError> {
         cause: "Key not found in legacy key store".to_string(),
     })?;
 
+    #[cfg(debug_assertions)]
     log_debug!("FiSH10: Encrypting message for '{}' with legacy key", target);
 
     // Encrypt using legacy Blowfish algorithm

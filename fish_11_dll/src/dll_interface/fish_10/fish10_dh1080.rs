@@ -5,7 +5,7 @@
 use crate::dll_interface::utility;
 use crate::platform_types::{BOOL, HWND, c_char, c_int};
 use crate::unified_error::DllError;
-use crate::{buffer_utils, config, crypto, dll_function_identifier, legacy, log_debug, log_info};
+use crate::{buffer_utils, dll_function_identifier, legacy, log_debug};
 
 // Generate DH1080 key pair
 // Returns: public_key
@@ -83,7 +83,7 @@ dll_function_identifier!(FiSH10_DH1080_SetKey, data, {
     dh_keys.insert(target.to_string(), private_key);
 
     #[cfg(debug_assertions)]
-    log_debug!("FiSH10: Set DH1080 private key for '{}'", target);
+    log_debug!("FiSH10: set DH1080 private key for '{}'", target);
 
     Ok(format!("DH1080 key set for {}", target))
 });

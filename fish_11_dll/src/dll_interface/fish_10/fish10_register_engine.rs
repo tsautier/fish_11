@@ -68,7 +68,7 @@ mod tests {
         // Initialize the legacy system first
         crate::legacy::init_legacy_system();
 
-        let available = unsafe { FiSH10_IsEngineAvailable() };
+        let available = FiSH10_IsEngineAvailable();
         assert_eq!(available, 1);
     }
 
