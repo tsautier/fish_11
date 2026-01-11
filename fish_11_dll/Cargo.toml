@@ -38,6 +38,13 @@ zeroize = "1.6"
 libc = "0.2.177"
 parking_lot = "0.12"
 thiserror = "2.0"
+arrayref = "0.3.7"
+
+# Legacy compatibility
+dirs = "5.0"
+tempfile = "3.10"
+sha1 = "0.10"
+hex = "0.4"
 
 # Shared core library
 fish_11_core = { path = "../fish_11_core" }

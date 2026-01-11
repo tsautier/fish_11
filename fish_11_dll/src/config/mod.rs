@@ -148,6 +148,33 @@ pub use entries::{
 pub use file_storage::{get_config_path, init_config_file, load_config, save_config};
 pub use key_management::{
     delete_key, delete_key_default, get_all_keys_with_ttl, get_configured_key_ttl, get_key,
+};
+
+/// Get the mIRC directory path
+pub fn get_mirc_directory() -> Result<std::path::PathBuf, String> {
+    // Try to get from environment variable first
+    if let Ok(mirc_dir) = std::env::var("MIRCDIR") {
+        let path = std::path::PathBuf::from(mirc_dir);
+        if path.exists() {
+            return Ok(path);
+        }
+    }
+    
+    // Fallback to default location
+    let mut path = dirs::config_dir().ok_or("Could not determine config directory")?;
+    path.push("mIRC");
+    
+    // Create directory if it doesn't exist
+    if !path.exists() {
+        if let Err(e) = std::fs::create_dir_all(&path) {
+            return Err(format!("Failed to create mIRC directory: {}", e));
+        }
+    }
+    
+    Ok(path)
+}
+
+pub use key_management::{
     get_key_default, get_key_status, get_key_status_human_readable, get_key_ttl,
     get_key_ttl_human_readable, get_keypair, get_our_keypair, is_key_about_to_expire, list_keys,
     set_configured_key_ttl, set_key, set_key_default, store_keypair,

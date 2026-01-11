@@ -21,6 +21,11 @@ use thiserror::Error;
 /// Uses `thiserror` for automatic Display and Error trait implementations.
 #[derive(Error, Debug)]
 pub enum DllError {
+    // ===== Legacy Compatibility Errors =====
+    /// Legacy FiSH 10 compatibility error
+    #[error("legacy FiSH 10 error: {context} - {cause}")]
+    LegacyError { context: String, cause: String },
+
     // ===== Configuration Errors =====
     /// Configuration file not found or inaccessible
     #[error("configuration file not found: {0}")]
@@ -398,6 +403,12 @@ impl From<BufferError> for DllError {
 impl From<&str> for DllError {
     fn from(err: &str) -> Self {
         DllError::InvalidInput { param: "data".to_string(), reason: err.to_string() }
+    }
+}
+
+impl From<String> for DllError {
+    fn from(err: String) -> Self {
+        DllError::InvalidInput { param: "data".to_string(), reason: err }
     }
 }
 

@@ -194,6 +194,15 @@ pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
     #[cfg(debug_assertions)]
     log::info!("LoadDll: CONFIG initialized successfully");
 
+    // Initialize legacy FiSH 10 compatibility system
+    #[cfg(debug_assertions)]
+    log::info!("LoadDll: initializing legacy FiSH 10 compatibility system...");
+
+    crate::legacy::init_legacy_system();
+
+    #[cfg(debug_assertions)]
+    log::info!("LoadDll: legacy system initialized");
+
     // Create a structure to hold mIRC client info for logging
     let mut mirc_version = String::from("Unknown mIRC version");
     let mut buffer_size = DEFAULT_MIRC_BUFFER_SIZE;
