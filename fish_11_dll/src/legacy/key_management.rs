@@ -87,7 +87,7 @@ pub fn generate_dh1080_keypair() -> Result<super::dh1080::DH1080KeyPair, DllErro
 
 /// Compute shared secret using DH1080
 pub fn compute_dh1080_shared_secret(
-    private_key: &[u8],
+    private_key: &num_bigint::BigUint,
     other_public_key: &str,
 ) -> Result<String, DllError> {
     super::dh1080::compute_dh1080_shared_secret(private_key, other_public_key)
@@ -95,7 +95,7 @@ pub fn compute_dh1080_shared_secret(
 
 /// Parse DH1080 public key
 pub fn parse_dh1080_public_key(key_str: &str) -> Result<Vec<u8>, DllError> {
-    super::dh1080::parse_dh1080_public_key(key_str)
+    super::dh1080::dh1080_base64_decode(key_str)
 }
 
 #[cfg(test)]

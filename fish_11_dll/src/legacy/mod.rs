@@ -19,7 +19,7 @@ use std::sync::Arc;
 pub struct LegacyConfig {
     pub blowfish_ini_path: Option<String>,
     pub legacy_keys: Arc<RwLock<std::collections::HashMap<String, Vec<u8>>>>,
-    pub dh1080_keys: Arc<RwLock<std::collections::HashMap<String, Vec<u8>>>>,
+    pub dh1080_keys: Arc<RwLock<std::collections::HashMap<String, num_bigint::BigUint>>>,
 }
 
 impl Default for LegacyConfig {
@@ -90,7 +90,7 @@ pub mod test_utils {
     }
 
     /// Setup a test DH1080 key for testing purposes
-    pub fn setup_test_dh1080_key(target: &str, private_key: Vec<u8>) {
+    pub fn setup_test_dh1080_key(target: &str, private_key: num_bigint::BigUint) {
         let mut config = LEGACY_CONFIG.write();
         let mut keys = config.dh1080_keys.write();
         keys.insert(target.to_string(), private_key);

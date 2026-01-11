@@ -69,18 +69,13 @@ dll_function_identifier!(FiSH10_DH1080_SetKey, data, {
     let private_key_hex = parsed.message.trim();
 
     // Decode the hex private key
-    let private_key = hex::decode(private_key_hex).map_err(|e| DllError::LegacyError {
+    let private_key_bytes = hex::decode(private_key_hex).map_err(|e| DllError::LegacyError {
         context: "DH1080 key decoding".to_string(),
         cause: format!("Invalid hex key: {}", e),
     })?;
 
-    // Validate key length (should be 135 bytes for 1080 bits)
-    if private_key.len() != 135 {
-        return Err(DllError::LegacyError {
-            context: "DH1080 key validation".to_string(),
-            cause: format!("Invalid key length: {} bytes (expected 135)", private_key.len()),
-        });
-    }
+    // Convert bytes to BigUint
+    let private_key = num_bigint::BigUint::from_bytes_be(&private_key_bytes);
 
     // Store the private key
     let mut config = legacy::LEGACY_CONFIG.write();

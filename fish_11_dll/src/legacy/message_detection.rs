@@ -5,32 +5,38 @@
 
 use crate::unified_error::DllError;
 
-/// FiSH 10 message prefix
+/// FiSH 10 message prefixes
 pub const FISH10_PREFIX: &str = "+OK ";
+pub const MCPS_PREFIX: &str = "mcps ";
 
 /// Check if a message is a legacy FiSH 10 message
 pub fn is_fish10_message(message: &str) -> bool {
-    message.trim().starts_with(FISH10_PREFIX)
+    let trimmed = message.trim();
+    trimmed.starts_with(FISH10_PREFIX) || trimmed.starts_with(MCPS_PREFIX)
 }
 
 /// Extract the encrypted payload from a FiSH 10 message
 pub fn extract_fish10_payload(message: &str) -> Result<String, DllError> {
     let trimmed = message.trim();
 
-    if !trimmed.starts_with(FISH10_PREFIX) {
+    let (prefix_len, prefix_name) = if trimmed.starts_with(FISH10_PREFIX) {
+        (FISH10_PREFIX.len(), FISH10_PREFIX)
+    } else if trimmed.starts_with(MCPS_PREFIX) {
+        (MCPS_PREFIX.len(), MCPS_PREFIX)
+    } else {
         return Err(DllError::LegacyError {
             context: "Message detection".to_string(),
-            cause: format!("Message does not start with FiSH 10 prefix '{}'", FISH10_PREFIX),
+            cause: format!("Message does not start with a known legacy prefix ('{}' or '{}')", FISH10_PREFIX, MCPS_PREFIX),
         });
-    }
+    };
 
     // Remove the prefix
-    let payload = trimmed[FISH10_PREFIX.len()..].trim();
+    let payload = trimmed[prefix_len..].trim();
 
     if payload.is_empty() {
         return Err(DllError::LegacyError {
             context: "Message parsing".to_string(),
-            cause: "Empty payload after removing FiSH 10 prefix".to_string(),
+            cause: format!("Empty payload after removing prefix '{}'", prefix_name),
         });
     }
 
@@ -83,6 +89,7 @@ mod tests {
     #[test]
     fn test_fish10_message_detection() {
         assert!(is_fish10_message("+OK abc123"));
+        assert!(is_fish10_message("mcps abc123"));
         assert!(is_fish10_message("  +OK def456  "));
         assert!(!is_fish10_message("Hello world"));
         assert!(!is_fish10_message("+FISH abc123"));
@@ -91,6 +98,10 @@ mod tests {
     #[test]
     fn test_fish10_payload_extraction() {
         let result = extract_fish10_payload("+OK abc123");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "abc123");
+
+        let result = extract_fish10_payload("mcps abc123");
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "abc123");
 
