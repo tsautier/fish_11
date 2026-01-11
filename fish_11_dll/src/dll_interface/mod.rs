@@ -2,8 +2,9 @@ use crate::log_error;
 use std::ffi::CStr;
 use std::ptr;
 mod fish10_decryptmsg;
-mod fish10_encryptmsg;
 mod fish10_dh1080;
+mod fish10_encryptmsg;
+mod fish10_register_engine;
 mod fish10_setkey;
 mod fish11_coreversion;
 mod fish11_decryptmsg;
@@ -35,8 +36,13 @@ pub use crate::channel_encryption::init_key::FiSH11_InitChannelKey;
 pub use crate::channel_encryption::process_key::FiSH11_ProcessChannelKey;
 // Legacy FiSH 10 compatibility functions
 pub use fish10_decryptmsg::FiSH10_DecryptMsg;
+pub use fish10_dh1080::{
+    FiSH10_DH1080_ComputeSecret, FiSH10_DH1080_GenerateKeyPair, FiSH10_DH1080_SetKey,
+};
 pub use fish10_encryptmsg::FiSH10_EncryptMsg;
-pub use fish10_dh1080::{FiSH10_DH1080_ComputeSecret, FiSH10_DH1080_GenerateKeyPair, FiSH10_DH1080_SetKey};
+pub use fish10_register_engine::{
+    FiSH10_GetEngineVersion, FiSH10_IsEngineAvailable, FiSH10_RegisterEngine,
+};
 pub use fish10_setkey::FiSH10_SetKey;
 
 pub use fish11_getkeyttl::FiSH11_GetKeyTTL;

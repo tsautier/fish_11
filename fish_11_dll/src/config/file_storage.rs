@@ -326,7 +326,7 @@ pub fn load_config(path_override: Option<PathBuf>) -> Result<FishConfig> {
             }
         }
     }
-    
+
     log_warn!(
         "load_config: entries processed in {:?} ({} entries)",
         entries_start.elapsed(),

@@ -4,7 +4,7 @@
 //! for secure key exchange.
 
 use crate::unified_error::DllError;
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use std::sync::Once;
 
 /// DH1080 prime (1080-bit Sophie Germain prime)
@@ -20,7 +20,7 @@ static INIT_OPENSSL: Once = Once::new();
 /// Adds 'A' at the end if no padding was needed
 fn fish10_base64_encode(data: &[u8]) -> String {
     let b64 = base64::encode(data);
-    
+
     if b64.ends_with('=') {
         // Remove padding characters
         b64.replace("=", "")
@@ -34,17 +34,17 @@ fn fish10_base64_encode(data: &[u8]) -> String {
 /// Removes 'A' at the end if present and adds padding if needed
 fn fish10_base64_decode(b64: &str) -> Result<Vec<u8>, DllError> {
     let mut encoded = b64.to_string();
-    
+
     // Remove 'A' if it was added as per FiSH 10 spec
     if encoded.ends_with('A') && encoded.len() % 4 == 1 {
         encoded.pop();
     }
-    
+
     // Add padding if needed
     while encoded.len() % 4 != 0 {
         encoded.push('=');
     }
-    
+
     base64::decode(encoded).map_err(|e| DllError::LegacyError {
         context: "DH1080 Base64 decoding".to_string(),
         cause: format!("Invalid base64: {}", e),
@@ -56,14 +56,14 @@ fn fish10_sha256(data: &[u8]) -> Result<String, DllError> {
     let mut hasher = Sha256::new();
     hasher.update(data);
     let hash = hasher.finalize();
-    
+
     Ok(fish10_base64_encode(&hash))
 }
 
 /// DH1080 key pair
 pub struct DH1080KeyPair {
     pub private_key: Vec<u8>,
-    pub public_key: String,  // FiSH 10 base64 encoded
+    pub public_key: String, // FiSH 10 base64 encoded
 }
 
 /// Generate DH1080 key pair
@@ -76,17 +76,14 @@ pub fn generate_dh1080_keypair() -> Result<DH1080KeyPair, DllError> {
 
     // In a real implementation, we would use proper DH operations
     // For now, we'll generate a dummy key pair for demonstration
-    
+
     // Generate a random private key (in real implementation, this would be proper DH)
     let private_key = vec![0u8; 135]; // 1080 bits = 135 bytes
-    
+
     // Generate public key (in real implementation: g^private_key mod p)
     let public_key = fish10_base64_encode(&private_key);
-    
-    Ok(DH1080KeyPair {
-        private_key,
-        public_key,
-    })
+
+    Ok(DH1080KeyPair { private_key, public_key })
 }
 
 /// Compute shared secret using DH1080
@@ -96,16 +93,17 @@ pub fn compute_dh1080_shared_secret(
 ) -> Result<String, DllError> {
     // Decode the other party's public key
     let other_pub = fish10_base64_decode(other_public_key)?;
-    
+
     // In a real implementation, we would compute: other_pub^private_key mod p
     // For now, we'll simulate this with a dummy shared secret
-    
+
     // Generate a dummy shared secret (in real implementation, this would be the DH result)
     let mut shared_secret = vec![0u8; 135];
     for i in 0..135 {
-        shared_secret[i] = private_key[i] ^ other_pub.get(i % other_pub.len()).copied().unwrap_or(0);
+        shared_secret[i] =
+            private_key[i] ^ other_pub.get(i % other_pub.len()).copied().unwrap_or(0);
     }
-    
+
     // Hash the shared secret to get the encryption key
     fish10_sha256(&shared_secret)
 }
@@ -124,7 +122,7 @@ mod tests {
         let data = b"test";
         let encoded = fish10_base64_encode(data);
         assert!(encoded.ends_with('A') || !encoded.contains('='));
-        
+
         let decoded = fish10_base64_decode(&encoded).unwrap();
         assert_eq!(decoded, data);
     }
@@ -140,10 +138,12 @@ mod tests {
     fn test_dh1080_shared_secret() {
         let keypair1 = generate_dh1080_keypair().unwrap();
         let keypair2 = generate_dh1080_keypair().unwrap();
-        
-        let secret1 = compute_dh1080_shared_secret(&keypair1.private_key, &keypair2.public_key).unwrap();
-        let secret2 = compute_dh1080_shared_secret(&keypair2.private_key, &keypair1.public_key).unwrap();
-        
+
+        let secret1 =
+            compute_dh1080_shared_secret(&keypair1.private_key, &keypair2.public_key).unwrap();
+        let secret2 =
+            compute_dh1080_shared_secret(&keypair2.private_key, &keypair1.public_key).unwrap();
+
         // In a real DH implementation, these would be equal
         // For our dummy implementation, they won't be, but that's expected
         assert_eq!(secret1.len(), secret2.len());

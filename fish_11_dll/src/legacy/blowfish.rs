@@ -27,10 +27,7 @@ impl Blowfish {
             });
         }
 
-        let mut cipher = Blowfish {
-            p: [0; 18],
-            s: [[0; 256]; 4],
-        };
+        let mut cipher = Blowfish { p: [0; 18], s: [[0; 256]; 4] };
 
         // Initialize with the standard P-array and S-boxes
         cipher.init_p_array();
@@ -47,11 +44,9 @@ impl Blowfish {
         // Standard Blowfish P-array initialization
         // (This would be the actual P-array values)
         self.p = [
-            0x243F6A88, 0x85A308D3, 0x13198A2E, 0x03707344,
-            0xA4093822, 0x299F31D0, 0x082EFA98, 0xEC4E6C89,
-            0x452821E6, 0x38D01377, 0xBE5466CF, 0x34E90C6C,
-            0xC0AC29B7, 0xC97C50DD, 0x3F84D5B5, 0xB5470917,
-            0x9216D5D9, 0x8979FB1B,
+            0x243F6A88, 0x85A308D3, 0x13198A2E, 0x03707344, 0xA4093822, 0x299F31D0, 0x082EFA98,
+            0xEC4E6C89, 0x452821E6, 0x38D01377, 0xBE5466CF, 0x34E90C6C, 0xC0AC29B7, 0xC97C50DD,
+            0x3F84D5B5, 0xB5470917, 0x9216D5D9, 0x8979FB1B,
         ];
     }
 
@@ -59,10 +54,8 @@ impl Blowfish {
     fn init_s_boxes(&mut self) {
         // Standard Blowfish S-box initialization
         // (This would be the actual S-box values)
-        self.s = [
-            [0; 256], [0; 256], [0; 256], [0; 256],
-        ];
-        
+        self.s = [[0; 256], [0; 256], [0; 256], [0; 256]];
+
         // Initialize S-boxes with standard values
         // (Implementation would go here)
     }
@@ -92,7 +85,11 @@ impl Blowfish {
 
 /// Encrypt a message using Blowfish in ECB mode (FiSH 10 style)
 /// FiSH 10 uses ECB mode, not CBC
-pub fn encrypt_message(key: &[u8], plaintext: &str, associated_data: &[u8]) -> Result<String, DllError> {
+pub fn encrypt_message(
+    key: &[u8],
+    plaintext: &str,
+    associated_data: &[u8],
+) -> Result<String, DllError> {
     // Create Blowfish cipher
     let cipher = Blowfish::new(key)?;
 
@@ -101,7 +98,7 @@ pub fn encrypt_message(key: &[u8], plaintext: &str, associated_data: &[u8]) -> R
 
     // Encrypt using ECB mode (no chaining, each block is independent)
     let mut ciphertext = Vec::new();
-    
+
     for chunk in padded_plaintext.chunks(BLOWFISH_BLOCK_SIZE) {
         if chunk.len() != BLOWFISH_BLOCK_SIZE {
             return Err(DllError::LegacyError {
@@ -109,10 +106,10 @@ pub fn encrypt_message(key: &[u8], plaintext: &str, associated_data: &[u8]) -> R
                 cause: "Invalid block size for ECB mode".to_string(),
             });
         }
-        
+
         let mut block = [0u8; BLOWFISH_BLOCK_SIZE];
         block.copy_from_slice(chunk);
-        
+
         // Encrypt the block directly (ECB mode - no XOR with previous block)
         let encrypted_block = cipher.encrypt_block(&block);
         ciphertext.extend_from_slice(&encrypted_block);
@@ -125,7 +122,11 @@ pub fn encrypt_message(key: &[u8], plaintext: &str, associated_data: &[u8]) -> R
 
 /// Decrypt a message using Blowfish in ECB mode (FiSH 10 style)
 /// FiSH 10 uses ECB mode, not CBC
-pub fn decrypt_message(key: &[u8], ciphertext_b64: &str, associated_data: &[u8]) -> Result<String, DllError> {
+pub fn decrypt_message(
+    key: &[u8],
+    ciphertext_b64: &str,
+    associated_data: &[u8],
+) -> Result<String, DllError> {
     // Decode from base64
     let ciphertext = base64::decode(ciphertext_b64).map_err(|e| DllError::LegacyError {
         context: "Base64 decoding".to_string(),
@@ -136,7 +137,11 @@ pub fn decrypt_message(key: &[u8], ciphertext_b64: &str, associated_data: &[u8])
     if ciphertext.len() % BLOWFISH_BLOCK_SIZE != 0 {
         return Err(DllError::LegacyError {
             context: "Ciphertext validation".to_string(),
-            cause: format!("Ciphertext length {} not a multiple of block size {}", ciphertext.len(), BLOWFISH_BLOCK_SIZE),
+            cause: format!(
+                "Ciphertext length {} not a multiple of block size {}",
+                ciphertext.len(),
+                BLOWFISH_BLOCK_SIZE
+            ),
         });
     }
 

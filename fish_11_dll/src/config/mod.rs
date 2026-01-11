@@ -159,18 +159,18 @@ pub fn get_mirc_directory() -> Result<std::path::PathBuf, String> {
             return Ok(path);
         }
     }
-    
+
     // Fallback to default location
     let mut path = dirs::config_dir().ok_or("Could not determine config directory")?;
     path.push("mIRC");
-    
+
     // Create directory if it doesn't exist
     if !path.exists() {
         if let Err(e) = std::fs::create_dir_all(&path) {
             return Err(format!("Failed to create mIRC directory: {}", e));
         }
     }
-    
+
     Ok(path)
 }
 

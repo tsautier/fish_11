@@ -7,10 +7,12 @@ pub mod blowfish;
 pub mod config;
 pub mod dh1080;
 pub mod encryption;
+pub mod fish10_engine;
 pub mod key_management;
+pub mod message_detection;
 
-use std::sync::Arc;
 use parking_lot::RwLock;
+use std::sync::Arc;
 
 /// Legacy configuration structure
 #[derive(Debug, Clone)]
@@ -32,17 +34,21 @@ impl Default for LegacyConfig {
 
 /// Global legacy configuration instance
 use once_cell::sync::Lazy;
-pub static LEGACY_CONFIG: Lazy<Arc<RwLock<LegacyConfig>>> = Lazy::new(|| {
-    Arc::new(RwLock::new(LegacyConfig::default()))
-});
+pub static LEGACY_CONFIG: Lazy<Arc<RwLock<LegacyConfig>>> =
+    Lazy::new(|| Arc::new(RwLock::new(LegacyConfig::default())));
 
 /// Initialize the legacy compatibility system
 pub fn init_legacy_system() {
     log::info!("LEGACY: Initializing FiSH 10 compatibility system");
-    
+
     // Load legacy configuration
     if let Err(e) = config::load_legacy_config() {
         log::warn!("LEGACY: Failed to load legacy config: {}", e);
+    }
+
+    // Initialize the FiSH 10 engine for fish_inject integration
+    if let Err(e) = fish10_engine::init_fish10_engine() {
+        log::warn!("LEGACY: Failed to initialize FiSH 10 engine: {}", e);
     }
 }
 
@@ -58,6 +64,11 @@ pub fn get_legacy_key(target: &str) -> Option<Vec<u8>> {
     let config = LEGACY_CONFIG.read();
     let keys = config.legacy_keys.read();
     keys.get(target).cloned()
+}
+
+/// Get the FiSH 10 engine pointer for registration with fish_inject
+pub fn get_fish10_engine_ptr() -> Option<*const fish10_engine::Fish10Engine> {
+    fish10_engine::get_fish10_engine()
 }
 
 #[cfg(test)]

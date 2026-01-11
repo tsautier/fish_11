@@ -58,7 +58,7 @@ mod tests {
     #[test]
     fn test_legacy_encryption_format() {
         setup_test_legacy_key("#test", b"testkey12345678");
-        
+
         let result = legacy_encrypt("#test", "Hello");
         assert!(result.is_ok());
         let encrypted = result.unwrap();

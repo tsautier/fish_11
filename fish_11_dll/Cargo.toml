@@ -41,7 +41,7 @@ thiserror = "2.0"
 arrayref = "0.3.7"
 
 # Legacy compatibility
-dirs = "5.0"
+dirs = "6.0"
 tempfile = "3.10"
 sha1 = "0.10"
 hex = "0.4"

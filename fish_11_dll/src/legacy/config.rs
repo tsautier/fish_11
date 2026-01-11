@@ -10,29 +10,29 @@ use std::path::PathBuf;
 pub fn load_legacy_config() -> Result<(), DllError> {
     // Get the blowfish.ini path
     let ini_path = get_blowfish_ini_path()?;
-    
+
     log::info!("LEGACY: Loading configuration from {}", ini_path.display());
-    
+
     // Check if the file exists
     if !ini_path.exists() {
         log::info!("LEGACY: blowfish.ini not found, starting with empty legacy config");
         return Ok(());
     }
-    
+
     // Load keys from the blowfish.ini file
     let keys = load_keys_from_blowfish_ini(&ini_path)?;
-    
+
     // Update the global legacy configuration
     let mut config = super::LEGACY_CONFIG.write();
     config.blowfish_ini_path = Some(ini_path.to_string_lossy().into_owned());
-    
+
     let mut legacy_keys = config.legacy_keys.write();
     for (target, key) in keys {
         legacy_keys.insert(target, key);
     }
-    
+
     log::info!("LEGACY: Loaded {} legacy keys", legacy_keys.len());
-    
+
     Ok(())
 }
 
@@ -40,39 +40,41 @@ pub fn load_legacy_config() -> Result<(), DllError> {
 fn get_blowfish_ini_path() -> Result<PathBuf, DllError> {
     // Try to get the mIRC directory from the main config
     let mirc_dir = crate::config::get_mirc_directory()?;
-    
+
     let ini_path = mirc_dir.join("blowfish.ini");
     Ok(ini_path)
 }
 
 /// Load keys from blowfish.ini file
-fn load_keys_from_blowfish_ini(path: &std::path::Path) -> Result<std::collections::HashMap<String, Vec<u8>>, DllError> {
+fn load_keys_from_blowfish_ini(
+    path: &std::path::Path,
+) -> Result<std::collections::HashMap<String, Vec<u8>>, DllError> {
     use std::fs;
     use std::io::BufRead;
-    
+
     let mut keys = std::collections::HashMap::new();
-    
+
     // Read the file line by line
     let file = fs::File::open(path).map_err(|e| DllError::LegacyError {
         context: "Reading blowfish.ini".to_string(),
         cause: format!("Failed to open file: {}", e),
     })?;
-    
+
     let reader = std::io::BufReader::new(file);
-    
+
     for line in reader.lines() {
         let line = line.map_err(|e| DllError::LegacyError {
             context: "Reading blowfish.ini".to_string(),
             cause: format!("Failed to read line: {}", e),
         })?;
-        
+
         let line = line.trim();
-        
+
         // Skip empty lines and comments
         if line.is_empty() || line.starts_with(';') || line.starts_with('#') {
             continue;
         }
-        
+
         // Parse key=value format
         if let Some((target, key_hex)) = parse_ini_line(line) {
             // Decode the hex key
@@ -80,34 +82,38 @@ fn load_keys_from_blowfish_ini(path: &std::path::Path) -> Result<std::collection
                 context: format!("Decoding key for '{}'", target),
                 cause: format!("Invalid hex: {}", e),
             })?;
-            
+
             // Validate key length
             if key_bytes.len() >= 4 && key_bytes.len() <= 56 {
                 keys.insert(target.clone(), key_bytes);
                 log::debug!("LEGACY: Loaded key for '{}'", target);
             } else {
-                log::warn!("LEGACY: Invalid key length for '{}' ({} bytes)", target, key_bytes.len());
+                log::warn!(
+                    "LEGACY: Invalid key length for '{}' ({} bytes)",
+                    target,
+                    key_bytes.len()
+                );
             }
         }
     }
-    
+
     Ok(keys)
 }
 
 /// Parse a blowfish.ini line in format: target=hexkey
 fn parse_ini_line(line: &str) -> Option<(String, String)> {
     let parts: Vec<&str> = line.splitn(2, '=').collect();
-    
+
     if parts.len() == 2 {
         let target = parts[0].trim().to_string();
         let key_hex = parts[1].trim().to_string();
-        
+
         // Skip empty targets or keys
         if !target.is_empty() && !key_hex.is_empty() {
             return Some((target, key_hex));
         }
     }
-    
+
     None
 }
 
@@ -115,29 +121,26 @@ fn parse_ini_line(line: &str) -> Option<(String, String)> {
 pub fn save_key_to_blowfish_ini(target: &str, key: &[u8], path: &str) -> Result<(), DllError> {
     use std::fs::{File, OpenOptions};
     use std::io::Write;
-    
+
     let key_hex = hex::encode(key);
     let line = format!("{}={}\n", target, key_hex);
-    
+
     // Open the file in append mode, create if it doesn't exist
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-        .map_err(|e| DllError::LegacyError {
+    let mut file = OpenOptions::new().create(true).append(true).open(path).map_err(|e| {
+        DllError::LegacyError {
             context: "Writing to blowfish.ini".to_string(),
             cause: format!("Failed to open file: {}", e),
-        })?;
-    
+        }
+    })?;
+
     // Write the key
-    file.write_all(line.as_bytes())
-        .map_err(|e| DllError::LegacyError {
-            context: "Writing to blowfish.ini".to_string(),
-            cause: format!("Failed to write: {}", e),
-        })?;
-    
+    file.write_all(line.as_bytes()).map_err(|e| DllError::LegacyError {
+        context: "Writing to blowfish.ini".to_string(),
+        cause: format!("Failed to write: {}", e),
+    })?;
+
     log::debug!("LEGACY: Saved key for '{}' to {}", target, path);
-    
+
     Ok(())
 }
 
@@ -149,8 +152,8 @@ fn get_mirc_directory() -> Result<std::path::PathBuf, DllError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::NamedTempFile;
     use std::io::Write;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_parse_ini_line() {
@@ -178,7 +181,7 @@ mod tests {
 
         let path = temp_file.path();
         let result = load_keys_from_blowfish_ini(path);
-        
+
         assert!(result.is_ok());
         let keys = result.unwrap();
         assert_eq!(keys.len(), 2);

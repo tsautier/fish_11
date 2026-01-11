@@ -9,7 +9,7 @@ use std::os::raw::c_int;
 use crate::dll_interface::utility;
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
-use crate::{buffer_utils, config, crypto, dll_function_identifier, log_debug, log_info, legacy};
+use crate::{buffer_utils, dll_function_identifier, legacy, log_debug};
 
 /* Legacy FiSH 10 message formats:
    :nick!ident@host PRIVMSG #chan :+OK 2T5zD0mPgMn
@@ -21,9 +21,8 @@ use crate::{buffer_utils, config, crypto, dll_function_identifier, log_debug, lo
    :nick!ident@host TOPIC #chan :+OK JRFEAKWS
 */
 
-dll_function_identifier!(FiSH10_DecryptMsg, data, {
+fn fish10_decrypt_msg_impl(input_str: &str) -> Result<String, DllError> {
     // Parse input: <target> <encrypted_message>
-    let mut input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
     let parsed = utility::parse_input(&input_str)?;
 
     let target = parsed.target;
@@ -32,6 +31,8 @@ dll_function_identifier!(FiSH10_DecryptMsg, data, {
     // Strip the "+OK " prefix if present (legacy FiSH 10 format)
     if let Some(stripped) = encrypted_message.strip_prefix("+OK ") {
         encrypted_message = stripped;
+
+        #[cfg(debug_assertions)]
         log_debug!("FiSH10: Stripped +OK prefix from legacy encrypted message");
     }
 
@@ -51,41 +52,39 @@ dll_function_identifier!(FiSH10_DecryptMsg, data, {
         cause: "Key not found in legacy key store".to_string(),
     })?;
 
-    log_debug!(
-        "FiSH10: Decrypting message for '{}' with legacy key",
-        target
-    );
+    #[cfg(debug_assertions)]
+    log_debug!("FiSH10: Decrypting message for '{}' with legacy key", target);
 
     // Decrypt using legacy Blowfish algorithm
-    let decrypted = legacy::blowfish::decrypt_message(
-        key,
-        encrypted_message,
-        target.as_bytes(),
-    )
-    .map_err(|e| DllError::LegacyError {
-        context: format!("Blowfish decryption failed for '{}'", target),
-        cause: e.to_string(),
-    })?;
+    let decrypted = legacy::blowfish::decrypt_message(key, encrypted_message, target.as_bytes())
+        .map_err(|e| DllError::LegacyError {
+            context: format!("Blowfish decryption failed for '{}'", target),
+            cause: e.to_string(),
+        })?;
 
-    log_debug!(
-        "FiSH10: Successfully decrypted legacy message for '{}'",
-        target
-    );
+    #[cfg(debug_assertions)]
+    log_debug!("FiSH10: Successfully decrypted legacy message for '{}'", target);
 
     Ok(decrypted)
+}
+
+dll_function_identifier!(FiSH10_DecryptMsg, data, {
+    let input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
+
+    fish10_decrypt_msg_impl(&input_str)
 });
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    //use super::*;
     use crate::legacy::test_utils::setup_test_legacy_key;
 
     #[test]
     fn test_fish10_decrypt_basic() {
         setup_test_legacy_key("#test", b"testkey12345678");
-        
+
         // Test with basic +OK message
-        let result = fish10_decrypt_msg_impl("#test +OK encrypteddata");
+        let result = super::fish10_decrypt_msg_impl("#test +OK encrypteddata");
         // Add proper assertions once blowfish implementation is complete
     }
 }

@@ -4,9 +4,7 @@ use crate::dll_interface::fish11_masterkey::is_master_key_unlocked;
 use crate::error::{FishError, Result};
 use crate::log_debug;
 use base64::{Engine as _, engine::general_purpose};
-use fish_11_core::master_key::{
-    EncryptedBlob, decrypt_data, derive_config_kek, encrypt_data,
-};
+use fish_11_core::master_key::{EncryptedBlob, decrypt_data, derive_config_kek, encrypt_data};
 use ini::Ini;
 use std::fs;
 use std::io::Cursor;

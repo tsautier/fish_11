@@ -41,7 +41,7 @@ pub fn set_legacy_key(target: &str, key_hex: &str) -> Result<(), DllError> {
 pub fn remove_legacy_key(target: &str) -> Result<(), DllError> {
     let mut config = super::LEGACY_CONFIG.write();
     let mut keys = config.legacy_keys.write();
-    
+
     if keys.remove(target).is_some() {
         log::info!("Removed legacy key for '{}'", target);
         Ok(())
@@ -70,12 +70,12 @@ pub fn has_legacy_key(target: &str) -> bool {
 /// Convert a password to a Blowfish key (FiSH 10 style)
 pub fn password_to_key(password: &str) -> Vec<u8> {
     // FiSH 10 uses a simple approach: take the first 16 bytes of the SHA-1 hash
-    use sha1::{Sha1, Digest};
-    
+    use sha1::{Digest, Sha1};
+
     let mut hasher = Sha1::new();
     hasher.update(password.as_bytes());
     let result = hasher.finalize();
-    
+
     // Take first 16 bytes (128 bits) for Blowfish
     result[..16].to_vec()
 }
@@ -101,20 +101,20 @@ pub fn parse_dh1080_public_key(key_str: &str) -> Result<Vec<u8>, DllError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::legacy::test_utils::{setup_test_legacy_key, clear_test_legacy_keys};
+    use crate::legacy::test_utils::{clear_test_legacy_keys, setup_test_legacy_key};
 
     #[test]
     fn test_key_management() {
         clear_test_legacy_keys();
-        
+
         // Test setting a key
         assert!(set_legacy_key("#test", "6162636465666768").is_ok());
         assert!(has_legacy_key("#test"));
-        
+
         // Test listing keys
         let keys = list_legacy_keys();
-        assert!(keys.contains("#test"));
-        
+        assert!(keys.contains(&"#test".to_string()));
+
         // Test removing a key
         assert!(remove_legacy_key("#test").is_ok());
         assert!(!has_legacy_key("#test"));
