@@ -1387,7 +1387,7 @@ menu channel {
   .Show channel key info : fish11_show_channel_key_info $chan
   .Remove channel key : fish11_remove_channel_key $chan
   .-
-  .Show keychan :fish11_showkey $chan
+  .Show key :fish11_showkey $chan
   .Show fingerprint :fish11_showfingerprint $chan
   .Copy fingerprint to clipboard :{
     fish11_showfingerprint $chan
@@ -1397,7 +1397,7 @@ menu channel {
       echo $color(Mode text) -at *** FiSH_11: fingerprint for $chan copied to clipboard
     }
   }
-
+  .-
   .Encrypt message :{
     var %msg = $?="Enter message to encrypt:"
     if (%msg) {
@@ -1405,7 +1405,6 @@ menu channel {
       echo $color(Mode text) -at *** FiSH: encrypted message: %encrypted
     }
   }
-
   .Decrypt message :{
     var %msg = $?="Enter message to decrypt:"
     if (%msg) {
@@ -1413,17 +1412,21 @@ menu channel {
       echo $color(Mode text) -at *** FiSH: decrypted message: %decrypted
     }
   }
-
   .Set topic (encrypted) :{
     var %topic = $?="Enter encrypted topic for " $+ $chan $+ ":"
     if (%topic != $null) etopic %topic
   }
-
+  .-
   .Encrypted logging
   ..Set key for encrypted logging:/fish11_setlogkey
   ..Encrypt a log line:/fish11_logencrypt
   ..Decrypt a log line:/fish11_logdecrypt
   ..View encrypted log file:/fish11_logdecryptfile
+  -
+  FiSH_10 legacy (Blowfish)
+  .Show legacy key :fish10_showkey $chan
+  .Set legacy key... :{ var %key = $?="Enter hex Blowfish key (4-56 bytes):" | if (%key != $null) fish10_setkey $chan %key }
+  .Remove legacy key :fish10_delkey $chan
 }
 
 ; Menu for query windows
@@ -1442,10 +1445,12 @@ menu query {
       echo $color(Mode text) -at *** FiSH_11: fingerprint for $1 copied to clipboard
     }
   }
+  .-
   .Set manual key... :{ var %key = $?="Enter manual key for " $+ $1 $+ ":" | if (%key != $null) fish11_setkey_manual $1 %key }
   .Set new key :{ var %key = $?="Enter new key for " $+ $1 $+ ":" | if (%key != $null) fish11_setkey $1 %key }
   .Set new key (UTF-8) :{ var %key = $?="Enter new key for " $+ $1 $+ " (UTF-8):" | if (%key != $null) fish11_setkey_utf8 $1 %key }
   .Remove key :fish11_removekey $1
+  .-
   .Encrypt message :{
     var %msg = $?="Enter message to encrypt:"
     if (%msg) {
@@ -1460,12 +1465,19 @@ menu query {
       echo $color(Mode text) -at *** FiSH: decrypted message: %decrypted
     }
   }
-
+  .-
   .Encrypted logging
   ..Set key for encrypted logging:/fish11_setlogkey
   ..Encrypt a log line:/fish11_logencrypt
   ..Decrypt a log line:/fish11_logdecrypt
   ..View encrypted log file:/fish11_logdecryptfile
+  -
+  FiSH_10 legacy (DH1080)
+  .DH1080 keyXchange: fish10_keyx $1
+  .-
+  .Show legacy key :fish10_showkey $1
+  .Set legacy key... :{ var %key = $?="Enter hex Blowfish key (4-56 bytes) for " $+ $1 $+ ":" | if (%key != $null) fish10_setkey $1 %key }
+  .Remove legacy key :fish10_delkey $1
 }
 
 ; Menu for nicklist
@@ -1476,11 +1488,13 @@ menu nicklist {
   .-
   .Show key :fish11_showkey $1
   .Show fingerprint :fish11_showfingerprint $1
+  .-
   .Set manual key... :{ var %key = $?="Enter manual key for " $+ $1 $+ ":" | if (%key != $null) fish11_setkey_manual $1 %key }
   .Set new key :{ var %key = $?="Enter new key for " $+ $1 $+ ":" | if (%key != $null) fish11_setkey $1 %key }
   .Set new key (UTF-8) :{ var %key = $?="Enter new key for " $+ $1 $+ " (UTF-8):" | if (%key != $null) fish11_setkey_utf8 $1 %key }
   .Remove key :fish11_removekey $1
   .Use same key as $chan :fish11_usechankey $1 $chan
+  .-
   .Encrypt message :{
     var %msg = $?="Enter message to encrypt:"
     if (%msg) {
@@ -1495,17 +1509,25 @@ menu nicklist {
       echo $color(Mode text) -at *** FiSH: decrypted message: %decrypted
     }
   }
-
+  .-
   .Encrypted logging
   ..Set key for encrypted logging:/fish11_setlogkey
   ..Encrypt a log line:/fish11_logencrypt
   ..Decrypt a log line:/fish11_logdecrypt
   ..View encrypted log file:/fish11_logdecryptfile
+  -
+  FiSH_10 legacy (DH1080)
+  .DH1080 keyXchange: fish10_keyx $1
+  .-
+  .Show legacy key :fish10_showkey $1
+  .Set legacy key... :{ var %key = $?="Enter hex Blowfish key (4-56 bytes) for " $+ $1 $+ ":" | if (%key != $null) fish10_setkey $1 %key }
+  .Remove legacy key :fish10_delkey $1
+  .Use same legacy key as $chan :fish10_usechankey $1 $chan
 }
 
 ; Common menu available in all windows
 menu status,channel,nicklist,query {
-  FISH_11
+  FiSH_11
   .Core version :fish11_version
   .Injection version : fish11_injection_version
   .Help :fish11_help
@@ -1592,13 +1614,7 @@ menu status,channel,nicklist,query {
   ...Disable :{ fish11_SetIniValue encrypt_action 0 | echo $color(Mode text) -at *** FiSH: ACTION encryption disabled }
   ..No legacy FiSH 10 [Status]
   ...Enable :{ fish11_SetIniValue no_fish10_legacy 1 | echo $color(Mode text) -at *** FiSH: legacy FiSH 10 compatibility disabled }
-  ..Disable :{ fish11_SetIniValue no_fish10_legacy 0 | echo $color(Mode text) -at *** FiSH: legacy FiSH 10 compatibility enabled }
-  ..-
-  ..Legacy FiSH 10
-  ...DH1080 Key Exchange :fish10_keyx $active
-  ...Set legacy key :{ var %key = $?="Enter hex Blowfish key (4-56 bytes):" | if (%key != $null) fish10_setkey $active %key }
-  ...Remove legacy key :fish10_delkey $active
-  ...Show legacy key :fish10_showkey $active
+  ...Disable :{ fish11_SetIniValue no_fish10_legacy 0 | echo $color(Mode text) -at *** FiSH: legacy FiSH 10 compatibility enabled }
   ..-
   ..Open config file :fish11_ViewIniFile
   ..-
@@ -1633,6 +1649,19 @@ menu status,channel,nicklist,query {
   ..Encrypt a log line:/fish11_logencrypt
   ..Decrypt a log line:/fish11_logdecrypt
   ..View encrypted log file:/fish11_logdecryptfile
+  -
+  FiSH_10 legacy compatibility
+  .DH1080 key exchange :fish10_keyx $active
+  .Show legacy key :fish10_showkey $active
+  .Set legacy key... :{ var %key = $?="Enter hex Blowfish key (4-56 bytes):" | if (%key != $null) fish10_setkey $active %key }
+  .Remove legacy key :fish10_delkey $active
+  .-
+  .About FiSH_10 compatibility :{
+    echo $color(Mode text) -at *** FiSH_10 Legacy Compatibility
+    echo $color(Mode text) -at *** Supports DH1080 key exchange and Blowfish ECB encryption
+    echo $color(Mode text) -at *** Compatible with mIRC FiSH 10.x and other FiSH implementations
+    echo $color(Mode text) -at *** Use DH1080 for automatic key exchange or set keys manually
+  }
 }
 
 
@@ -1779,6 +1808,28 @@ alias fish10_showkey {
   } else {
     echo -a *** FiSH_10: key for %target : %key
   }
+}
+
+alias fish10_usechankey {
+  if ($1 == $null || $2 == $null) {
+    echo 4 -a Syntax: /fish10_usechankey <target> <source_channel>
+    return
+  }
+  
+  var %target = $1
+  var %source = $2
+  
+  ; Get the key from the source
+  var %key = $dll(%Fish11DllFile, FiSH11_FileGetKey, %source)
+  
+  if (%key == $null || $len(%key) < 4) {
+    echo $color(Error) -at *** FiSH_10: no valid key found for %source
+    return
+  }
+  
+  ; Set the same key for the target
+  fish10_setkey %target %key
+  echo $color(Mode text) -at *** FiSH_10: using same key as %source for %target
 }
 
 alias fish10_keyx {
