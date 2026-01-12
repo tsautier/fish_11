@@ -2,12 +2,18 @@
 //!
 //! This module provides the DH1080 key exchange protocol used by FiSH 10
 //! for secure key exchange.
+//!
+//! IMPORTANT: DH1080 uses STANDARD base64 alphabet (ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/)
+//! for encoding public keys, NOT the FiSH-specific alphabet used for Blowfish messages.
+//! The '=' padding is stripped and replaced with 'A' at the end.
 
 use crate::unified_error::DllError;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use num_bigint::{BigUint, RandomBits};
 use num_traits::Num;
 use rand::Rng;
 use sha2::{Digest, Sha256};
+use zeroize::Zeroize;
 
 /// DH1080 prime (1080-bit Sophie Germain prime)
 const DH1080_PRIME_HEX: &str = "FBE1022E23D213E8ACFA9AE8B9DFADA3EA6B7AC7A7B7E95AB5EB2DF858921FEADE95E6AC7BE7DE6ADBAB8A783E7AF7A7FA6A2B7BEB1E72EAE2B72F9FA2BFB2A2EFBEFAC868BADB3E828FA8BADFADA3E4CC1BE7E8AFE85E9698A783EB68FA07A77AB6AD7BEB618ACF9CA2897EB28A6189EFA07AB99A8A7FA9AE299EFA7BA66DEAFEFBEFBF0B7D8B";
@@ -15,75 +21,96 @@ const DH1080_PRIME_HEX: &str = "FBE1022E23D213E8ACFA9AE8B9DFADA3EA6B7AC7A7B7E95A
 /// DH1080 generator
 const DH1080_GENERATOR: u32 = 2;
 
-/// FiSH 10 specific Base64 alphabet
-const FISH10_B16_ABC: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+/// Standard Base64 alphabet for DH1080 key exchange (NOT the FiSH message alphabet)
+const DH1080_B64_ABC: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/// FiSH 10 specific Base64 alphabet for encrypted messages (NOT for DH keys)
+#[allow(dead_code)]
 const FISH10_B64_ABC: &[u8] = b"./0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-/// FiSH 10 specific Base64 encoding for DH keys (1080 bits -> 135 bytes -> 180 chars + 'A')
+/// Expected length of DH1080 public key in bytes (1080 bits = 135 bytes)
+const DH1080_KEY_BYTES: usize = 135;
+
+/// Expected length of DH1080 public key in base64 (180 chars + 'A' = 181)
+const DH1080_PUBKEY_B64_LEN: usize = 181;
+
+/// DH1080 Base64 encoding for public keys
+/// Uses standard base64 alphabet, strips '=' padding, appends 'A'
+/// Compatible with FiSH 10 C++ implementation
 pub fn dh1080_base64_encode(data: &[u8]) -> String {
-    let mut result = String::with_capacity(181);
-    let mut i = 0;
-    while i < data.len() {
-        let b1 = data[i] as u32;
-        let b2 = if i + 1 < data.len() { data[i + 1] as u32 } else { 0 };
-        let b3 = if i + 2 < data.len() { data[i + 2] as u32 } else { 0 };
-
-        let triple = (b1 << 16) | (b2 << 8) | b3;
-
-        result.push(FISH10_B16_ABC[((triple >> 18) & 0x3F) as usize] as char);
-        result.push(FISH10_B16_ABC[((triple >> 12) & 0x3F) as usize] as char);
-        if i + 1 < data.len() {
-            result.push(FISH10_B16_ABC[((triple >> 6) & 0x3F) as usize] as char);
-        }
-        if i + 2 < data.len() {
-            result.push(FISH10_B16_ABC[(triple & 0x3F) as usize] as char);
-        }
-        i += 3;
-    }
-
-    // FiSH 10 DH keys always end with 'A' and padding is stripped
-    result + "A"
+    // Use standard base64 encoding
+    let encoded = BASE64_STANDARD.encode(data);
+    
+    // Strip '=' padding and append 'A' (FiSH 10 convention)
+    let mut result: String = encoded.chars().filter(|&c| c != '=').collect();
+    result.push('A');
+    
+    result
 }
 
-/// FiSH 10 specific Base64 decoding for DH keys
+/// DH1080 Base64 decoding for public keys
+/// Expects standard base64 alphabet with trailing 'A' instead of '=' padding
 pub fn dh1080_base64_decode(b64: &str) -> Result<Vec<u8>, DllError> {
+    // Validate input length (should be around 181 chars for 135 bytes)
+    if b64.is_empty() {
+        return Err(DllError::LegacyError {
+            context: "DH1080 Decoding".to_string(),
+            cause: "Empty input".to_string(),
+        });
+    }
+    
     let mut s = b64.to_string();
+    
+    // Remove trailing 'A' (FiSH 10 convention)
     if s.ends_with('A') {
         s.pop();
     }
-
-    // Standard base64 decoding but with FISH10_B16_ABC
-    // Since we don't have a library that takes a custom alphabet easily for this specific padded format,
-    // we implement a simple one.
-    let mut bytes = Vec::new();
-    let mut current_val = 0u32;
-    let mut bits_collected = 0;
-
-    for c in s.chars() {
-        let val = FISH10_B16_ABC.iter().position(|&x| x == c as u8).ok_or_else(|| {
-            DllError::LegacyError {
-                context: "DH1080 Decoding".to_string(),
-                cause: format!("Invalid character in base64: {}", c),
-            }
-        })? as u32;
-
-        current_val = (current_val << 6) | val;
-        bits_collected += 6;
-
-        if bits_collected >= 8 {
-            bits_collected -= 8;
-            bytes.push((current_val >> bits_collected) as u8);
-            current_val &= (1 << bits_collected) - 1;
-        }
+    
+    // Add back '=' padding to make valid base64
+    while s.len() % 4 != 0 {
+        s.push('=');
     }
-
-    Ok(bytes)
+    
+    // Decode using standard base64
+    BASE64_STANDARD.decode(&s).map_err(|e| DllError::LegacyError {
+        context: "DH1080 Decoding".to_string(),
+        cause: format!("Invalid base64: {}", e),
+    })
 }
 
 /// DH1080 key pair
+/// 
+/// SECURITY: The private key is stored as bytes that will be zeroized
+/// when the keypair is dropped. This prevents the private key from
+/// lingering in memory after use.
 pub struct DH1080KeyPair {
-    pub private_key: BigUint,
-    pub public_key: String, // FiSH 10 base64 encoded
+    /// Private key bytes (zeroized on drop)
+    private_key_bytes: ZeroizingVec,
+    /// Public key in FiSH 10 base64 format
+    pub public_key: String,
+}
+
+/// Wrapper around Vec<u8> that zeroizes on drop
+struct ZeroizingVec(Vec<u8>);
+
+impl Drop for ZeroizingVec {
+    fn drop(&mut self) {
+        self.0.zeroize();
+    }
+}
+
+impl DH1080KeyPair {
+    fn new(private_key: BigUint, public_key: String) -> Self {
+        Self {
+            private_key_bytes: ZeroizingVec(private_key.to_bytes_be()),
+            public_key,
+        }
+    }
+    
+    /// Get the private key as a BigUint for computation
+    pub fn private_key(&self) -> BigUint {
+        BigUint::from_bytes_be(&self.private_key_bytes.0)
+    }
 }
 
 /// Generate DH1080 key pair
@@ -110,10 +137,13 @@ pub fn generate_dh1080_keypair() -> Result<DH1080KeyPair, DllError> {
 
     let public_key = dh1080_base64_encode(&pub_bytes);
 
-    Ok(DH1080KeyPair { private_key: priv_key, public_key })
+    Ok(DH1080KeyPair::new(priv_key, public_key))
 }
 
 /// Compute shared secret using DH1080
+/// 
+/// SECURITY: Validates that the other party's public key is in the valid range [2, p-2]
+/// to prevent small subgroup attacks.
 pub fn compute_dh1080_shared_secret(
     private_key: &BigUint,
     other_public_key: &str,
@@ -125,6 +155,21 @@ pub fn compute_dh1080_shared_secret(
 
     let other_pub_bytes = dh1080_base64_decode(other_public_key)?;
     let other_pub_bn = BigUint::from_bytes_be(&other_pub_bytes);
+
+    // SECURITY: Validate that public key is in range [2, p-2]
+    // This prevents small subgroup attacks where an attacker sends:
+    // - 0: shared_secret = 0
+    // - 1: shared_secret = 1
+    // - p-1: shared_secret = 1 or p-1
+    let two = BigUint::from(2u32);
+    let p_minus_one = &p - BigUint::from(1u32);
+    
+    if other_pub_bn < two || other_pub_bn >= p_minus_one {
+        return Err(DllError::LegacyError {
+            context: "DH1080 Security".to_string(),
+            cause: "Invalid public key: must be in range [2, p-2]".to_string(),
+        });
+    }
 
     // shared = other_pub^private mod p
     let shared_secret_bn = other_pub_bn.modpow(private_key, &p);
@@ -149,8 +194,8 @@ pub fn compute_dh1080_shared_secret(
 
 /// FiSH 10 hash encoding (standard base64 table but stripped '=')
 fn fish_b64_encode_hash(data: &[u8]) -> String {
-    let encoded = base64::encode(data);
-    encoded.replace("=", "")
+    let encoded = BASE64_STANDARD.encode(data);
+    encoded.replace('=', "")
 }
 
 #[cfg(test)]
@@ -169,10 +214,31 @@ mod tests {
         let kp1 = generate_dh1080_keypair().unwrap();
         let kp2 = generate_dh1080_keypair().unwrap();
 
-        let s1 = compute_dh1080_shared_secret(&kp1.private_key, &kp2.public_key).unwrap();
-        let s2 = compute_dh1080_shared_secret(&kp2.private_key, &kp1.public_key).unwrap();
+        let s1 = compute_dh1080_shared_secret(&kp1.private_key(), &kp2.public_key).unwrap();
+        let s2 = compute_dh1080_shared_secret(&kp2.private_key(), &kp1.public_key).unwrap();
 
         assert_eq!(s1, s2);
         assert_eq!(s1.len(), 43); // SHA256 is 32 bytes -> 44 chars, stripped '=' -> 43
+    }
+    
+    #[test]
+    fn test_dh1080_invalid_public_key_rejected() {
+        let kp = generate_dh1080_keypair().unwrap();
+        
+        // Test that public key "1" (encoded) is rejected
+        let one_bytes = vec![0u8; 134];
+        let mut one_padded = one_bytes;
+        one_padded.push(1);
+        let one_b64 = dh1080_base64_encode(&one_padded);
+        
+        let result = compute_dh1080_shared_secret(&kp.private_key(), &one_b64);
+        assert!(result.is_err());
+        
+        // Test that public key "0" is rejected
+        let zero_bytes = vec![0u8; 135];
+        let zero_b64 = dh1080_base64_encode(&zero_bytes);
+        
+        let result = compute_dh1080_shared_secret(&kp.private_key(), &zero_b64);
+        assert!(result.is_err());
     }
 }

@@ -22,7 +22,7 @@ dll_function_identifier!(FiSH10_DH1080_GenerateKeyPair, data, {
     let mut config = legacy::LEGACY_CONFIG.write();
     let mut dh_keys = config.dh1080_keys.write();
 
-    dh_keys.insert(target.to_string(), keypair.private_key);
+    dh_keys.insert(target.to_string(), keypair.private_key());
 
     #[cfg(debug_assertions)]
     log_debug!("FiSH10: generated DH1080 key pair for '{}'", target);
@@ -96,9 +96,9 @@ fn fish10_dh1080_generate_keypair_impl(input: &str) -> Result<String, DllError> 
     let keypair = legacy::dh1080::generate_dh1080_keypair()?;
 
     // Store the private key for this target
-    let mut config = legacy::LEGACY_CONFIG.write();
+    let config = legacy::LEGACY_CONFIG.write();
     let mut dh_keys = config.dh1080_keys.write();
-    dh_keys.insert(target.to_string(), keypair.private_key);
+    dh_keys.insert(target.to_string(), keypair.private_key());
 
     #[cfg(debug_assertions)]
     log_debug!("FiSH10 (test helper): generated DH1080 key pair for '{}'", target);

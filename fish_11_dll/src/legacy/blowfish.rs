@@ -12,19 +12,34 @@ use blowfish::cipher::generic_array::GenericArray;
 const FISH10_B64_ABC: &[u8] = b"./0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 /// Encode into FiSH 10 specific Base64
-fn fish10_b64_encode(data: &[u8]) -> String {
-    let mut result = String::new();
-    let mut i = 0;
-    while i < data.len() {
-        let mut left: u32 = (data[i] as u32) << 24;
-        left |= (data[i+1] as u32) << 16;
-        left |= (data[i+2] as u32) << 8;
-        left |= data[i+3] as u32;
+/// SAFETY: Input data MUST have length that is a multiple of 8 bytes
+fn fish10_b64_encode(data: &[u8]) -> Result<String, DllError> {
+    // Validate input: must be multiple of 8 bytes
+    if data.len() % 8 != 0 {
+        return Err(DllError::LegacyError {
+            context: "FiSH 10 Encoding".to_string(),
+            cause: format!("Data length must be multiple of 8 (got {})", data.len()),
+        });
+    }
+    
+    if data.is_empty() {
+        return Ok(String::new());
+    }
 
-        let mut right: u32 = (data[i+4] as u32) << 24;
-        right |= (data[i+5] as u32) << 16;
-        right |= (data[i+6] as u32) << 8;
-        right |= data[i+7] as u32;
+    let mut result = String::with_capacity(data.len() / 8 * 12);
+    let mut i = 0;
+    
+    while i < data.len() {
+        // SAFETY: We've validated data.len() is multiple of 8, so i+7 is always valid
+        let mut left: u32 = (data[i] as u32) << 24;
+        left |= (data[i + 1] as u32) << 16;
+        left |= (data[i + 2] as u32) << 8;
+        left |= data[i + 3] as u32;
+
+        let mut right: u32 = (data[i + 4] as u32) << 24;
+        right |= (data[i + 5] as u32) << 16;
+        right |= (data[i + 6] as u32) << 8;
+        right |= data[i + 7] as u32;
 
         for _ in 0..6 {
             result.push(FISH10_B64_ABC[(right & 0x3F) as usize] as char);
@@ -36,7 +51,8 @@ fn fish10_b64_encode(data: &[u8]) -> String {
         }
         i += 8;
     }
-    result
+    
+    Ok(result)
 }
 
 /// Decode from FiSH 10 specific Base64
@@ -104,7 +120,7 @@ pub fn encrypt_message(
         ciphertext.extend_from_slice(&block);
     }
 
-    Ok(fish10_b64_encode(&ciphertext))
+    fish10_b64_encode(&ciphertext)
 }
 
 /// Decrypt a message using Blowfish in ECB mode (FiSH 10 style)
@@ -144,10 +160,17 @@ mod tests {
     #[test]
     fn test_fish10_b64_roundtrip() {
         let data = b"12345678";
-        let encoded = fish10_b64_encode(data);
+        let encoded = fish10_b64_encode(data).unwrap();
         assert_eq!(encoded.len(), 12);
         let decoded = fish10_b64_decode(&encoded).unwrap();
         assert_eq!(decoded, data);
+    }
+
+    #[test]
+    fn test_fish10_b64_validates_length() {
+        // Data not multiple of 8 should error
+        let data = b"1234567"; // 7 bytes
+        assert!(fish10_b64_encode(data).is_err());
     }
 
     #[test]

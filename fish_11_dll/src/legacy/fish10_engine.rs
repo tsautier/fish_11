@@ -26,6 +26,10 @@ pub struct Fish10Engine {
 /// Global instance of the FiSH 10 engine
 static mut FISH10_ENGINE_INSTANCE: Option<Fish10Engine> = None;
 
+/// Global storage for the engine name to prevent dangling pointer
+/// This is intentionally leaked because the engine lives for the entire program lifetime
+static mut ENGINE_NAME_PTR: *mut i8 = std::ptr::null_mut();
+
 /// Initialize the FiSH 10 engine
 pub fn init_fish10_engine() -> Result<*const Fish10Engine, DllError> {
     info!("LEGACY: Initializing FiSH 10 engine for fish_inject integration");
@@ -35,9 +39,18 @@ pub fn init_fish10_engine() -> Result<*const Fish10Engine, DllError> {
         cause: format!("Failed to create engine name: {}", e),
     })?;
 
+    // SAFETY: we intentionally leak the CString to keep the pointer valid
+    // for the entire program lifetime. This is acceptable because the engine
+    // is a singleton that lives forever.
+    let engine_name_ptr = engine_name.into_raw();
+
+    unsafe {
+        ENGINE_NAME_PTR = engine_name_ptr;
+    }
+
     let engine = Fish10Engine {
         version: FISH_INJECT_ENGINE_VERSION,
-        engine_name: engine_name.as_ptr(),
+        engine_name: engine_name_ptr,
         is_postprocessor: false, // Process before other engines
         on_outgoing_irc_line: fish10_on_outgoing_irc_line,
         on_incoming_irc_line: fish10_on_incoming_irc_line,
@@ -65,12 +78,31 @@ unsafe extern "C" fn fish10_on_outgoing_irc_line(
 ) -> *mut i8 {
     trace!("FiSH10 Engine: Processing outgoing line on socket {}", socket);
 
-    // Convert the C string to a Rust string
-    let line_str = match CStr::from_ptr(line).to_str() {
-        Ok(s) => s,
-        Err(e) => {
-            error!("FiSH10 Engine: Failed to convert outgoing line to UTF-8: {}", e);
-            return std::ptr::null_mut();
+    if line.is_null() {
+        error!("FiSH10 Engine: Received null pointer for outgoing line");
+        return std::ptr::null_mut();
+    }
+
+    // Use len parameter to validate and create a slice
+    // This is safer than relying solely on null termination
+    let line_str = if len > 0 {
+        // If len is provided, use it for validation
+        let slice = std::slice::from_raw_parts(line as *const u8, len);
+        match std::str::from_utf8(slice) {
+            Ok(s) => s.trim_end_matches('\0'),
+            Err(e) => {
+                error!("FiSH10 Engine: Failed to convert outgoing line to UTF-8: {}", e);
+                return std::ptr::null_mut();
+            }
+        }
+    } else {
+        // Fallback to CStr for null-terminated strings
+        match CStr::from_ptr(line).to_str() {
+            Ok(s) => s,
+            Err(e) => {
+                error!("FiSH10 Engine: Failed to convert outgoing line to UTF-8: {}", e);
+                return std::ptr::null_mut();
+            }
         }
     };
 
@@ -135,12 +167,31 @@ unsafe extern "C" fn fish10_on_incoming_irc_line(
 ) -> *mut i8 {
     trace!("FiSH10 Engine: Processing incoming line on socket {}", socket);
 
-    // Convert the C string to a Rust string
-    let line_str = match CStr::from_ptr(line).to_str() {
-        Ok(s) => s,
-        Err(e) => {
-            error!("FiSH10 Engine: Failed to convert incoming line to UTF-8: {}", e);
-            return std::ptr::null_mut();
+    if line.is_null() {
+        error!("FiSH10 Engine: Received null pointer for incoming line");
+        return std::ptr::null_mut();
+    }
+
+    // Use len parameter to validate and create a slice
+    // This is safer than relying solely on null termination
+    let line_str = if len > 0 {
+        // If len is provided, use it for validation
+        let slice = std::slice::from_raw_parts(line as *const u8, len);
+        match std::str::from_utf8(slice) {
+            Ok(s) => s.trim_end_matches('\0'),
+            Err(e) => {
+                error!("FiSH10 Engine: Failed to convert incoming line to UTF-8: {}", e);
+                return std::ptr::null_mut();
+            }
+        }
+    } else {
+        // Fallback to CStr for null-terminated strings
+        match CStr::from_ptr(line).to_str() {
+            Ok(s) => s,
+            Err(e) => {
+                error!("FiSH10 Engine: Failed to convert incoming line to UTF-8: {}", e);
+                return std::ptr::null_mut();
+            }
         }
     };
 
@@ -224,7 +275,7 @@ unsafe extern "C" fn fish10_free_string(ptr: *mut i8) {
 }
 
 /// Callback to get network name for a socket
-unsafe extern "C" fn fish10_get_network_name(socket: u32) -> *mut i8 {
+unsafe extern "C" fn fish10_get_network_name(_socket: u32) -> *mut i8 {
     // For now, return NULL as we don't have network information
     // This could be enhanced later if needed
     std::ptr::null_mut()

@@ -46,6 +46,7 @@ fn get_blowfish_ini_path() -> Result<PathBuf, DllError> {
 }
 
 /// Load keys from blowfish.ini file
+/// Supports both legacy format (target=hexkey) and FiSH 10 format with sections
 fn load_keys_from_blowfish_ini(
     path: &std::path::Path,
 ) -> Result<std::collections::HashMap<String, Vec<u8>>, DllError> {
@@ -53,6 +54,7 @@ fn load_keys_from_blowfish_ini(
     use std::io::BufRead;
 
     let mut keys = std::collections::HashMap::new();
+    let mut current_section: Option<String> = None;
 
     // Read the file line by line
     let file = fs::File::open(path).map_err(|e| DllError::LegacyError {
@@ -71,25 +73,45 @@ fn load_keys_from_blowfish_ini(
         let line = line.trim();
 
         // Skip empty lines and comments
-        if line.is_empty() || line.starts_with(';') {
+        if line.is_empty() || line.starts_with(';') || line.starts_with('#') && !line.contains('=') {
+            continue;
+        }
+
+        // Check for section headers like [network:target] or [target]
+        if line.starts_with('[') && line.ends_with(']') {
+            let section_name = &line[1..line.len()-1];
+            current_section = Some(section_name.to_string());
+            log::debug!("LEGACY: Found section [{}]", section_name);
             continue;
         }
 
         // Parse key=value format
-        if let Some((target, key_hex)) = parse_ini_line(line) {
-            // Decode the hex key
-            let key_bytes = hex::decode(key_hex).map_err(|e| DllError::LegacyError {
-                context: format!("Decoding key for '{}'", target),
-                cause: format!("Invalid hex: {}", e),
-            })?;
+        if let Some((key_name, key_value)) = parse_ini_line(line) {
+            // Determine the target name
+            let target = if key_name.eq_ignore_ascii_case("key") {
+                // If the key name is "key", use the section name as target
+                match &current_section {
+                    Some(section) => section.clone(),
+                    None => {
+                        log::warn!("LEGACY: Found 'key=' without a section, skipping");
+                        continue;
+                    }
+                }
+            } else {
+                // Use the key name as target (legacy format: target=key)
+                key_name.clone()
+            };
 
-            // Validate key length
+            // Decode the key value - handle both hex and plaintext formats
+            let key_bytes = decode_key_value(&key_value)?;
+
+            // Validate key length (Blowfish accepts 4-56 bytes)
             if key_bytes.len() >= 4 && key_bytes.len() <= 56 {
                 keys.insert(target.clone(), key_bytes);
                 log::debug!("LEGACY: Loaded key for '{}'", target);
             } else {
                 log::warn!(
-                    "LEGACY: Invalid key length for '{}' ({} bytes)",
+                    "LEGACY: Invalid key length for '{}' ({} bytes), skipping",
                     target,
                     key_bytes.len()
                 );
@@ -98,6 +120,36 @@ fn load_keys_from_blowfish_ini(
     }
 
     Ok(keys)
+}
+
+/// Decode a key value from blowfish.ini
+/// Supports:
+/// - Hex encoded keys (e.g., "6162636465666768")
+/// - Plaintext keys with +OK prefix (e.g., "+OK secretpassword")
+/// - Plain text keys (e.g., "mysecretkey")
+fn decode_key_value(value: &str) -> Result<Vec<u8>, DllError> {
+    let value = value.trim();
+    
+    // Check for +OK prefix (FiSH 10 plaintext key format)
+    if let Some(plaintext) = value.strip_prefix("+OK ") {
+        return Ok(plaintext.as_bytes().to_vec());
+    }
+    
+    // Check for mcps prefix (CBC mode plaintext key)
+    if let Some(plaintext) = value.strip_prefix("mcps ") {
+        return Ok(plaintext.as_bytes().to_vec());
+    }
+    
+    // Try to decode as hex
+    if value.chars().all(|c| c.is_ascii_hexdigit()) && value.len() % 2 == 0 {
+        return hex::decode(value).map_err(|e| DllError::LegacyError {
+            context: "Decoding hex key".to_string(),
+            cause: format!("Invalid hex: {}", e),
+        });
+    }
+    
+    // Assume it's a plaintext key
+    Ok(value.as_bytes().to_vec())
 }
 
 /// Parse a blowfish.ini line in format: target=hexkey
@@ -119,7 +171,7 @@ fn parse_ini_line(line: &str) -> Option<(String, String)> {
 
 /// Save a key to blowfish.ini file
 pub fn save_key_to_blowfish_ini(target: &str, key: &[u8], path: &str) -> Result<(), DllError> {
-    use std::fs::{File, OpenOptions};
+    use std::fs::OpenOptions;
     use std::io::Write;
 
     let key_hex = hex::encode(key);
@@ -144,11 +196,6 @@ pub fn save_key_to_blowfish_ini(target: &str, key: &[u8], path: &str) -> Result<
     Ok(())
 }
 
-/// Get the current mIRC directory from the main configuration
-fn get_mirc_directory() -> Result<std::path::PathBuf, DllError> {
-    crate::config::get_mirc_directory().map_err(|e| DllError::ConfigError(e.to_string()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,8 +218,8 @@ mod tests {
     }
 
     #[test]
-    fn test_load_keys_from_ini() {
-        // Create a temporary blowfish.ini file
+    fn test_load_keys_from_ini_legacy_format() {
+        // Create a temporary blowfish.ini file with legacy format
         let mut temp_file = NamedTempFile::new().unwrap();
         writeln!(temp_file, "#test=6162636465666768").unwrap();
         writeln!(temp_file, "#another=1234567890abcdef").unwrap();
@@ -187,5 +234,52 @@ mod tests {
         assert_eq!(keys.len(), 2);
         assert!(keys.contains_key("#test"));
         assert!(keys.contains_key("#another"));
+    }
+
+    #[test]
+    fn test_load_keys_from_ini_section_format() {
+        // Create a temporary blowfish.ini file with section format
+        let mut temp_file = NamedTempFile::new().unwrap();
+        writeln!(temp_file, "[irc.server.net:#channel]").unwrap();
+        writeln!(temp_file, "key=6162636465666768").unwrap();
+        writeln!(temp_file, "[user:nickname]").unwrap();
+        writeln!(temp_file, "key=0102030405060708").unwrap();
+
+        let path = temp_file.path();
+        let result = load_keys_from_blowfish_ini(path);
+
+        assert!(result.is_ok());
+        let keys = result.unwrap();
+        assert_eq!(keys.len(), 2);
+        assert!(keys.contains_key("irc.server.net:#channel"));
+        assert!(keys.contains_key("user:nickname"));
+    }
+
+    #[test]
+    fn test_decode_key_value_hex() {
+        let result = decode_key_value("6162636465666768");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), b"abcdefgh");
+    }
+
+    #[test]
+    fn test_decode_key_value_plaintext_ok() {
+        let result = decode_key_value("+OK mysecretkey");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), b"mysecretkey");
+    }
+
+    #[test]
+    fn test_decode_key_value_plaintext_mcps() {
+        let result = decode_key_value("mcps cbcsecret");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), b"cbcsecret");
+    }
+
+    #[test]
+    fn test_decode_key_value_plaintext_fallback() {
+        let result = decode_key_value("notahexkey123");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), b"notahexkey123");
     }
 }

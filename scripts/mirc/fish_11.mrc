@@ -45,9 +45,14 @@ alias fish11_startup {
     halt
   }
 
-  ; Initialize hash table for tracking key exchanges
+  ; Initialize hash table for tracking key exchanges (X25519)
   if (!$hget(fish11.dh).size) {
     hmake fish11.dh 10
+  }
+
+  ; Initialize hash table for tracking legacy DH1080 key exchanges
+  if (!$hget(fish10.dh).size) {
+    hmake fish10.dh 10
   }
 
   echo 4 -a DEBUG : calling fish_11.dll FiSH11_SetMircDir to set configuration path...
@@ -1780,19 +1785,49 @@ alias fish10_keyx {
   if ($1 == $null) var %target = $active
   else var %target = $1
   
+  ; Use hash table to track in-progress exchanges
+  hadd -m fish10.dh %target 1
+  
   var %pub = $dll(%Fish11DllFile, FiSH10_DH1080_GenerateKeyPair, %target)
   if ($left(%pub, 7) == DH1080_) {
     .notice %target %pub
     echo $color(Mode text) -tm %target *** FiSH_10: sent %pub to %target $+ , waiting for reply...
+    
+    ; Set timeout timer
+    if (%KEY_EXCHANGE_TIMEOUT_SECONDS == $null) { var %timeout = 10 }
+    else { var %timeout = %KEY_EXCHANGE_TIMEOUT_SECONDS }
+    .timer 1 %timeout fish10_timeout_keyexchange %target
   }
   else {
+    hdel fish10.dh %target
     echo $color(Error) -at *** FiSH_10: DH1080 init failed - %pub
+  }
+}
+
+; Handle key exchange timeout for FiSH 10/DH1080
+alias fish10_timeout_keyexchange {
+  if ($1 == $null) return
+  var %contact = $1
+  
+  ; Check if key exchange is still in progress
+  if ($hget(fish10.dh, %contact).item == 1) {
+    hdel fish10.dh %contact
+    echo $color(Mode text) -at *** FiSH_10: key exchange with %contact timed out
   }
 }
 
 ; Legacy DH1080 Notice Handlers
 on ^*:NOTICE:DH1080_INIT*:?:{
-  var %their_pub = $2-
+  ; $1 = DH1080_INIT, $2 = <base64_pubkey>
+  ; Validate: only accept first token as pubkey (no spaces allowed)
+  var %their_pub = $2
+  
+  ; Validate format: DH1080 public keys should be base64
+  if (!$regex(%their_pub, /^[A-Za-z0-9+\/=]+$/)) {
+    echo $color(Error) -tm $nick *** FiSH_10: received invalid DH1080_INIT format from $nick
+    halt
+  }
+  
   echo $color(Mode text) -tm $nick *** FiSH_10: received DH1080_INIT from $nick, responding...
   
   var %our_pub = $dll(%Fish11DllFile, FiSH10_DH1080_GenerateKeyPair, $nick)
@@ -1801,6 +1836,7 @@ on ^*:NOTICE:DH1080_INIT*:?:{
   if ($left(%our_pub, 7) == DH1080_ && $left(%secret, 6) != Error:) {
     .notice $nick DH1080_FINISH %our_pub
     echo $color(Mode text) -tm $nick *** FiSH_10: key exchange complete with $nick
+    echo $color(Error) -tm $nick *** FiSH_10 WARNING: key exchange complete, but the identity of $nick is NOT VERIFIED.
   }
   else {
     echo $color(Error) -tm $nick *** FiSH_10: key exchange failed - %secret
@@ -1809,11 +1845,30 @@ on ^*:NOTICE:DH1080_INIT*:?:{
 }
 
 on ^*:NOTICE:DH1080_FINISH*:?:{
-  var %their_pub = $2-
+  ; Verify an exchange is in progress
+  if ($hget(fish10.dh, $nick).item != 1) {
+    echo -at *** FiSH_10: received DH1080_FINISH but no key exchange was in progress with $nick
+    halt
+  }
+  
+  ; $1 = DH1080_FINISH, $2 = <base64_pubkey>
+  var %their_pub = $2
+  
+  ; Validate format
+  if (!$regex(%their_pub, /^[A-Za-z0-9+\/=]+$/)) {
+    echo $color(Error) -tm $nick *** FiSH_10: received invalid DH1080_FINISH format from $nick
+    hdel fish10.dh $nick
+    halt
+  }
+  
   var %secret = $dll(%Fish11DllFile, FiSH10_DH1080_ComputeSecret, $nick %their_pub)
+  
+  ; Clean up tracking
+  hdel fish10.dh $nick
   
   if ($left(%secret, 6) != Error:) {
     echo $color(Mode text) -tm $nick *** FiSH_10: key exchange complete with $nick
+    echo $color(Error) -tm $nick *** FiSH_10 WARNING: key exchange complete, but the identity of $nick is NOT VERIFIED.
   }
   else {
     echo $color(Error) -tm $nick *** FiSH_10: key exchange failed - %secret
