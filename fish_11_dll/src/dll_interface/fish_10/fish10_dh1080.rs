@@ -2,7 +2,6 @@
 //!
 //! These functions provide DH1080 key exchange compatibility for FiSH 10 protocol.
 
-use crate::dll_interface::utility;
 use crate::platform_types::{BOOL, HWND, c_char, c_int};
 use crate::unified_error::DllError;
 use crate::{buffer_utils, dll_function_identifier, legacy, log_debug};
@@ -62,27 +61,18 @@ dll_function_identifier!(FiSH10_DH1080_ComputeSecret, data, {
     #[cfg(debug_assertions)]
     log_debug!("FiSH10: computed DH1080 shared secret for '{}'", target);
 
-    // Convert the base64 secret to bytes for Blowfish key storage
-    // The shared secret is a base64-encoded SHA256 hash (32 bytes), with '=' padding stripped
-    // We need to add back the padding for proper decoding
-    let mut padded_secret = shared_secret.clone();
-    while padded_secret.len() % 4 != 0 {
-        padded_secret.push('=');
-    }
+    // FiSH 10 uses the base64-encoded SHA256 hash STRING directly as the Blowfish key.
+    // The 43 ASCII bytes of the base64 string become the key bytes, NOT the decoded 32 bytes.
+    // This matches the original FiSH 10 behavior: BF_set_key(&bf_key, key.size(), (unsigned char*)key.data())
+    let secret_bytes = shared_secret.as_bytes().to_vec();
 
-    let secret_bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &padded_secret)
-        .map_err(|e| DllError::LegacyError {
-            context: "DH1080 key storage".to_string(),
-            cause: format!("Failed to decode shared secret: {}", e),
-        })?;
-
-    // Store the secret as a Blowfish key for this target
+    // Store the secret string bytes as a Blowfish key for this target
     drop(dh_keys);  // Release the read lock before acquiring write lock
     let mut keys = config.legacy_keys.write();
     keys.insert(target.to_string(), secret_bytes);
 
     #[cfg(debug_assertions)]
-    log_debug!("FiSH10: stored DH1080 shared secret as Blowfish key for '{}'", target);
+    log_debug!("FiSH10: stored DH1080 shared secret as Blowfish key for '{}' ({} bytes)", target, shared_secret.len());
 
     Ok(shared_secret)
 });
@@ -124,7 +114,7 @@ dll_function_identifier!(FiSH10_DH1080_SetKey, data, {
     Ok(format!("DH1080 key set for {}", target))
 });
 
-// Test helpers used by unit tests: simple implementations that mirror the DLL behavior.
+
 #[cfg(test)]
 fn fish10_dh1080_generate_keypair_impl(input: &str) -> Result<String, DllError> {
     let target = input.trim();
@@ -165,19 +155,9 @@ fn fish10_dh1080_compute_secret_impl(input: &str) -> Result<String, DllError> {
     let shared_secret =
         legacy::dh1080::compute_dh1080_shared_secret(private_key, other_public_key)?;
 
-    // Convert the base64 secret to bytes for Blowfish key storage
-    // The shared secret is a base64-encoded SHA256 hash (32 bytes), with '=' padding stripped
-    // We need to add back the padding for proper decoding
-    let mut padded_secret = shared_secret.clone();
-    while padded_secret.len() % 4 != 0 {
-        padded_secret.push('=');
-    }
-
-    let secret_bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &padded_secret)
-        .map_err(|e| DllError::LegacyError {
-            context: "DH1080 key storage".to_string(),
-            cause: format!("Failed to decode shared secret: {}", e),
-        })?;
+    // FiSH 10 uses the base64-encoded SHA256 hash STRING directly as the Blowfish key.
+    // The 43 ASCII bytes of the base64 string become the key bytes, NOT the decoded 32 bytes.
+    let secret_bytes = shared_secret.as_bytes().to_vec();
 
     // Store the secret as a Blowfish key for this target
     drop(dh_keys);  // Release the read lock before acquiring write lock
