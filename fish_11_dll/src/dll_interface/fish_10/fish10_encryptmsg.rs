@@ -14,7 +14,7 @@ fn fish10_encrypt_msg_impl(input: &str) -> Result<String, DllError> {
     // Parse input: <target> <plaintext_message>
     let parsed = utility::parse_input(input)?;
 
-    let target = parsed.target;
+    let target = parsed.target.to_lowercase();
     let plaintext_message = parsed.message.trim();
 
     // Check if this is a legacy target

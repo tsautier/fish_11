@@ -11,15 +11,15 @@ use crate::{buffer_utils, dll_function_identifier, legacy, log_debug};
 // Returns: public_key
 dll_function_identifier!(FiSH10_DH1080_GenerateKeyPair, data, {
     // Parse input: <target> (optional)
-    let mut input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
-    let parsed = utility::parse_input(&input_str)?;
-    let target = parsed.target;
+    // Parse input: <target> (optional message part for some DH1080 usage, but initiation only has target)
+    let input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
+    let target = crate::utils::normalize_target_lowercase(&input_str);
 
     // Generate DH1080 key pair
     let keypair = legacy::dh1080::generate_dh1080_keypair()?;
 
     // Store the private key for this target
-    let mut config = legacy::LEGACY_CONFIG.write();
+    let config = legacy::LEGACY_CONFIG.write();
     let mut dh_keys = config.dh1080_keys.write();
 
     dh_keys.insert(target.to_string(), keypair.private_key());
@@ -32,13 +32,20 @@ dll_function_identifier!(FiSH10_DH1080_GenerateKeyPair, data, {
 
 // Compute shared secret from DH1080 exchange
 // Input: <target> <other_public_key>
-// Returns: shared_secret
+// Returns: shared_secret (and automatically stores it as a Blowfish key)
 dll_function_identifier!(FiSH10_DH1080_ComputeSecret, data, {
     // Parse input: <target> <other_public_key>
-    let mut input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
-    let parsed = utility::parse_input(&input_str)?;
-    let target = parsed.target;
-    let other_public_key = parsed.message.trim();
+    // Parse input: <target> <other_public_key>
+    let input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
+    let parts: Vec<&str> = input_str.splitn(2, ' ').collect();
+    if parts.len() < 2 {
+        return Err(DllError::InvalidInput {
+            param: "input".to_string(),
+            reason: "expected format: <target> <other_public_key>".to_string(),
+        });
+    }
+    let target = crate::utils::normalize_target_lowercase(parts[0]);
+    let other_public_key = parts[1].trim();
 
     // Get our private key
     let config = legacy::LEGACY_CONFIG.read();
@@ -48,12 +55,34 @@ dll_function_identifier!(FiSH10_DH1080_ComputeSecret, data, {
         cause: "No private key found for this target".to_string(),
     })?;
 
-    // Compute shared secret
+    // Compute shared secret (returns base64-encoded SHA256 hash)
     let shared_secret =
         legacy::dh1080::compute_dh1080_shared_secret(private_key, other_public_key)?;
 
     #[cfg(debug_assertions)]
     log_debug!("FiSH10: computed DH1080 shared secret for '{}'", target);
+
+    // Convert the base64 secret to bytes for Blowfish key storage
+    // The shared secret is a base64-encoded SHA256 hash (32 bytes), with '=' padding stripped
+    // We need to add back the padding for proper decoding
+    let mut padded_secret = shared_secret.clone();
+    while padded_secret.len() % 4 != 0 {
+        padded_secret.push('=');
+    }
+
+    let secret_bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &padded_secret)
+        .map_err(|e| DllError::LegacyError {
+            context: "DH1080 key storage".to_string(),
+            cause: format!("Failed to decode shared secret: {}", e),
+        })?;
+
+    // Store the secret as a Blowfish key for this target
+    drop(dh_keys);  // Release the read lock before acquiring write lock
+    let mut keys = config.legacy_keys.write();
+    keys.insert(target.to_string(), secret_bytes);
+
+    #[cfg(debug_assertions)]
+    log_debug!("FiSH10: stored DH1080 shared secret as Blowfish key for '{}'", target);
 
     Ok(shared_secret)
 });
@@ -63,10 +92,17 @@ dll_function_identifier!(FiSH10_DH1080_ComputeSecret, data, {
 // Returns: success message
 dll_function_identifier!(FiSH10_DH1080_SetKey, data, {
     // Parse input: <target> <private_key_hex>
-    let mut input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
-    let parsed = utility::parse_input(&input_str)?;
-    let target = parsed.target;
-    let private_key_hex = parsed.message.trim();
+    // Parse input: <target> <private_key_hex>
+    let input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
+    let parts: Vec<&str> = input_str.splitn(2, ' ').collect();
+    if parts.len() < 2 {
+        return Err(DllError::InvalidInput {
+            param: "input".to_string(),
+            reason: "expected format: <target> <private_key_hex>".to_string(),
+        });
+    }
+    let target = crate::utils::normalize_target_lowercase(parts[0]);
+    let private_key_hex = parts[1].trim();
 
     // Decode the hex private key
     let private_key_bytes = hex::decode(private_key_hex).map_err(|e| DllError::LegacyError {
@@ -78,7 +114,7 @@ dll_function_identifier!(FiSH10_DH1080_SetKey, data, {
     let private_key = num_bigint::BigUint::from_bytes_be(&private_key_bytes);
 
     // Store the private key
-    let mut config = legacy::LEGACY_CONFIG.write();
+    let config = legacy::LEGACY_CONFIG.write();
     let mut dh_keys = config.dh1080_keys.write();
     dh_keys.insert(target.to_string(), private_key);
 
@@ -89,6 +125,7 @@ dll_function_identifier!(FiSH10_DH1080_SetKey, data, {
 });
 
 // Test helpers used by unit tests: simple implementations that mirror the DLL behavior.
+#[cfg(test)]
 fn fish10_dh1080_generate_keypair_impl(input: &str) -> Result<String, DllError> {
     let target = input.trim();
 
@@ -106,6 +143,7 @@ fn fish10_dh1080_generate_keypair_impl(input: &str) -> Result<String, DllError> 
     Ok(keypair.public_key)
 }
 
+#[cfg(test)]
 fn fish10_dh1080_compute_secret_impl(input: &str) -> Result<String, DllError> {
     // Expect input: "<target> <other_public_key>"
     let mut parts = input.splitn(2, ' ');
@@ -123,9 +161,28 @@ fn fish10_dh1080_compute_secret_impl(input: &str) -> Result<String, DllError> {
         cause: "No private key found for this target".to_string(),
     })?;
 
-    // Compute shared secret
+    // Compute shared secret (returns base64-encoded SHA256 hash)
     let shared_secret =
         legacy::dh1080::compute_dh1080_shared_secret(private_key, other_public_key)?;
+
+    // Convert the base64 secret to bytes for Blowfish key storage
+    // The shared secret is a base64-encoded SHA256 hash (32 bytes), with '=' padding stripped
+    // We need to add back the padding for proper decoding
+    let mut padded_secret = shared_secret.clone();
+    while padded_secret.len() % 4 != 0 {
+        padded_secret.push('=');
+    }
+
+    let secret_bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &padded_secret)
+        .map_err(|e| DllError::LegacyError {
+            context: "DH1080 key storage".to_string(),
+            cause: format!("Failed to decode shared secret: {}", e),
+        })?;
+
+    // Store the secret as a Blowfish key for this target
+    drop(dh_keys);  // Release the read lock before acquiring write lock
+    let mut keys = config.legacy_keys.write();
+    keys.insert(target.to_string(), secret_bytes);
 
     Ok(shared_secret)
 }
@@ -133,7 +190,7 @@ fn fish10_dh1080_compute_secret_impl(input: &str) -> Result<String, DllError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::legacy::test_utils::{clear_test_dh1080_keys, setup_test_dh1080_key};
+    use crate::legacy::test_utils::clear_test_dh1080_keys;
 
     #[test]
     fn test_dh1080_key_generation() {

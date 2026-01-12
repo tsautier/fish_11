@@ -120,13 +120,29 @@ on *:ACTIVE:*: {
 
 ; === AUTO KEY EXCHANGE ===
 on *:OPEN:?:{
-  if (%autokeyx == [On]) {
-    var %tmp1 = $dll(%Fish11DllFile, FiSH11_FileGetKey, $nick)
-    if ($len(%tmp1) == 0) {
+  ; Don't auto-exchange if autokeyx is not enabled
+  if (%autokeyx != [On]) return
+  
+  ; Don't auto-exchange if a legacy DH1080 exchange is in progress
+  if ($hget(fish10.dh, $nick)) return
+  
+  ; Don't auto-exchange if a FiSH 11 exchange is in progress
+  if ($hget(fish11.dh, $nick)) return
+  
+  var %tmp1 = $dll(%Fish11DllFile, FiSH11_FileGetKey, $nick)
+  
+  ; Check for error messages or empty result
+  ; Only initiate exchange if truly no key exists
+  if (%tmp1 == $null || $left(%tmp1, 2) == no || $left(%tmp1, 5) == Error) {
+    ; No FiSH 11 key found - check for legacy key
+    var %has_legacy = $dll(%Fish11DllFile, FiSH10_HasKey, $nick)
+    if (%has_legacy != 1) {
+      ; No key at all (neither FiSH 11 nor legacy), initiate FiSH 11 exchange
       fish11_X25519_INIT $nick
     }
-    unset %tmp1
+    unset %has_legacy
   }
+  unset %tmp1
 }
 
 ; === OUTGOING MESSAGE HANDLING ===
@@ -174,11 +190,21 @@ on *:INPUT:*: {
     %message = $2-
   }
   
-  ; Try to encrypt
-  %encrypted = $dll(%Fish11DllFile, FiSH11_EncryptMsg, %target %message)
+  ; Determine which encryption system to use: FiSH 10 (legacy) or FiSH 11
+  var %has_legacy_key = $dll(%Fish11DllFile, FiSH10_HasKey, %target)
+  
+  if (%has_legacy_key == 1) {
+    ; Use FiSH 10 legacy encryption (Blowfish)
+    %encrypted = $dll(%Fish11DllFile, FiSH10_EncryptMsg, %target %message)
+  }
+  else {
+    ; Use FiSH 11 encryption (ChaCha20-Poly1305)
+    %encrypted = $dll(%Fish11DllFile, FiSH11_EncryptMsg, %target %message)
+  }
   
   ; Only process if encryption was successful
-  if (%encrypted != $null && $left(%encrypted, 5) != Error) {
+  ; Check for various error indicators: "Error", "no encryption", empty result, or legacy errors
+  if (%encrypted != $null && $left(%encrypted, 5) != Error && $left(%encrypted, 13) != no encryption && $left(%encrypted, 6) != Legacy) {
     ; Add encryption mark if configured
     if (%mark_outgoing == [On]) {
       if (%mark_style == 1) {
@@ -216,6 +242,17 @@ on *:INPUT:*: {
       .msg %target %encrypted
       haltdef
     }
+  }
+  else {
+    ; Encryption failed - display error and prevent sending to server
+    if (%encrypted != $null) {
+      echo $color(Error) -at *** FiSH ERROR: %encrypted
+    }
+    else {
+      echo $color(Error) -at *** FiSH ERROR: Encryption failed (no key available)
+    }
+    haltdef
+    halt
   }
 }
 
@@ -1840,9 +1877,12 @@ alias fish10_keyx {
   hadd -m fish10.dh %target 1
   
   var %pub = $dll(%Fish11DllFile, FiSH10_DH1080_GenerateKeyPair, %target)
-  if ($left(%pub, 7) == DH1080_) {
-    .notice %target %pub
-    echo $color(Mode text) -tm %target *** FiSH_10: sent %pub to %target $+ , waiting for reply...
+  
+  ; Check if key generation was successful (should be a base64 string ending with 'A')
+  ; DH1080 public keys are ~181 chars long and end with 'A'
+  if ($len(%pub) > 100 && $right(%pub, 1) == A) {
+    .notice %target DH1080_INIT %pub
+    echo $color(Mode text) -tm %target *** FiSH_10: sent DH1080_INIT to %target $+ , waiting for reply...
     
     ; Set timeout timer
     if (%KEY_EXCHANGE_TIMEOUT_SECONDS == $null) { var %timeout = 10 }
@@ -1869,29 +1909,43 @@ alias fish10_timeout_keyexchange {
 
 ; Legacy DH1080 Notice Handlers
 on ^*:NOTICE:DH1080_INIT*:?:{
-  ; $1 = DH1080_INIT, $2 = <base64_pubkey>
-  ; Validate: only accept first token as pubkey (no spaces allowed)
+  ; In mIRC NOTICE events:
+  ; $1 = "DH1080_INIT"
+  ; $2 = public key (base64)
+  ; $3 = "CBC" (optional)
   var %their_pub = $2
-  
+
   ; Validate format: DH1080 public keys should be base64
   if (!$regex(%their_pub, /^[A-Za-z0-9+\/=]+$/)) {
     echo $color(Error) -tm $nick *** FiSH_10: received invalid DH1080_INIT format from $nick
     halt
   }
-  
+
   echo $color(Mode text) -tm $nick *** FiSH_10: received DH1080_INIT from $nick, responding...
-  
+
   var %our_pub = $dll(%Fish11DllFile, FiSH10_DH1080_GenerateKeyPair, $nick)
-  var %secret = $dll(%Fish11DllFile, FiSH10_DH1080_ComputeSecret, $nick %their_pub)
   
-  if ($left(%our_pub, 7) == DH1080_ && $left(%secret, 6) != Error:) {
-    .notice $nick DH1080_FINISH %our_pub
-    echo $color(Mode text) -tm $nick *** FiSH_10: key exchange complete with $nick
-    echo $color(Error) -tm $nick *** FiSH_10 WARNING: key exchange complete, but the identity of $nick is NOT VERIFIED.
+  ; Check if key generation failed
+  if ($left(%our_pub, 6) == Error:) {
+    echo $color(Error) -tm $nick *** FiSH_10: key generation failed - %our_pub
+    halt
   }
-  else {
+
+  var %secret = $dll(%Fish11DllFile, FiSH10_DH1080_ComputeSecret, $nick %their_pub)
+
+  ; Check if secret computation failed
+  if ($left(%secret, 6) == Error:) {
     echo $color(Error) -tm $nick *** FiSH_10: key exchange failed - %secret
+    halt
   }
+
+  ; The DLL automatically stores the shared secret as a Blowfish key for this nick
+
+  ; Send DH1080_FINISH response with our public key
+  .notice $nick DH1080_FINISH %our_pub
+
+  echo $color(Mode text) -tm $nick *** FiSH_10: key exchange complete with $nick
+  echo $color(Error) -tm $nick *** FiSH_10 WARNING: key exchange complete, but the identity of $nick is NOT VERIFIED.
   halt
 }
 
@@ -1901,10 +1955,12 @@ on ^*:NOTICE:DH1080_FINISH*:?:{
     echo -at *** FiSH_10: received DH1080_FINISH but no key exchange was in progress with $nick
     halt
   }
-  
-  ; $1 = DH1080_FINISH, $2 = <base64_pubkey>
+
+  ; In mIRC NOTICE events:
+  ; $1 = "DH1080_FINISH"
+  ; $2 = public key (base64)
   var %their_pub = $2
-  
+
   ; Validate format
   if (!$regex(%their_pub, /^[A-Za-z0-9+\/=]+$/)) {
     echo $color(Error) -tm $nick *** FiSH_10: received invalid DH1080_FINISH format from $nick
@@ -1917,13 +1973,16 @@ on ^*:NOTICE:DH1080_FINISH*:?:{
   ; Clean up tracking
   hdel fish10.dh $nick
   
-  if ($left(%secret, 6) != Error:) {
-    echo $color(Mode text) -tm $nick *** FiSH_10: key exchange complete with $nick
-    echo $color(Error) -tm $nick *** FiSH_10 WARNING: key exchange complete, but the identity of $nick is NOT VERIFIED.
-  }
-  else {
+  ; Check if secret computation failed
+  if ($left(%secret, 6) == Error:) {
     echo $color(Error) -tm $nick *** FiSH_10: key exchange failed - %secret
+    halt
   }
+
+  ; The DLL automatically stores the shared secret as a Blowfish key for this nick
+
+  echo $color(Mode text) -tm $nick *** FiSH_10: key exchange complete with $nick
+  echo $color(Error) -tm $nick *** FiSH_10 WARNING: key exchange complete, but the identity of $nick is NOT VERIFIED.
   halt
 }
 

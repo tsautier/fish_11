@@ -5,14 +5,11 @@ use base64::Engine as _;
 use base64::engine::general_purpose;
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
-use chrono::Utc;
 use fish_11_core::globals::MAX_MESSAGE_SIZE;
 use hkdf::Hkdf;
 use lru_time_cache::LruCache;
 use sha2::{Digest, Sha256};
 use std::any::Any;
-use std::fs::OpenOptions;
-use std::io::Write;
 use std::sync::Mutex;
 use std::time::Duration as StdDuration;
 
@@ -333,11 +330,6 @@ fn log_audit(event: &str) {
     // Use the standard debug logging
     #[cfg(debug_assertions)]
     log::debug!("[AUDIT] {}", event);
-
-    // Also log to the specialized audit log file
-    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("fish11.audit.log") {
-        let _ = writeln!(file, "[{}] {}", Utc::now(), event);
-    }
 }
 
 #[cfg(test)]

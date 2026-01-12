@@ -10,10 +10,8 @@ use crate::{buffer_utils, dll_function_identifier, legacy, log_debug, log_info};
 
 dll_function_identifier!(FiSH10_DelKey, data, {
     // Parse input: <target>
-    let mut input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
-    let parsed = utility::parse_input(&input_str)?;
-
-    let target = parsed.target;
+    let input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
+    let target = crate::utils::normalize_target_lowercase(&input_str);
 
     #[cfg(debug_assertions)]
     log_debug!("FiSH10: deleting legacy key for '{}'", target);

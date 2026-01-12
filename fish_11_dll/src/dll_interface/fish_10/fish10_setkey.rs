@@ -15,7 +15,7 @@ dll_function_identifier!(FiSH10_SetKey, data, {
     let mut input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
     let parsed = utility::parse_input(&input_str)?;
 
-    let target = parsed.target;
+    let target = parsed.target.to_lowercase();
     let key_hex = parsed.message.trim();
 
     // Validate key length - Blowfish keys should be between 4 and 56 bytes

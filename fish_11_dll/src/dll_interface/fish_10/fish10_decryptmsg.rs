@@ -24,7 +24,7 @@ fn fish10_decrypt_msg_impl(input_str: &str) -> Result<String, DllError> {
     // Parse input: <target> <encrypted_message>
     let parsed = utility::parse_input(&input_str)?;
 
-    let target = parsed.target;
+    let target = parsed.target.to_lowercase();
     let mut encrypted_message = parsed.message.trim();
 
     // Strip the "+OK " prefix if present (legacy FiSH 10 format)

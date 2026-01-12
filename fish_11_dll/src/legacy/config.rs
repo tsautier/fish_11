@@ -107,8 +107,9 @@ fn load_keys_from_blowfish_ini(
 
             // Validate key length (Blowfish accepts 4-56 bytes)
             if key_bytes.len() >= 4 && key_bytes.len() <= 56 {
-                keys.insert(target.clone(), key_bytes);
-                log::debug!("LEGACY: Loaded key for '{}'", target);
+                let normalized_target = crate::utils::normalize_target_lowercase(&target);
+                keys.insert(normalized_target.clone(), key_bytes);
+                log::debug!("LEGACY: Loaded key for '{}'", normalized_target);
             } else {
                 log::warn!(
                     "LEGACY: Invalid key length for '{}' ({} bytes), skipping",

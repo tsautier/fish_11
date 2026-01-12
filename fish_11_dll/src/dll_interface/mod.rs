@@ -36,6 +36,7 @@ pub use fish_10::fish10_encryptmsg::FiSH10_EncryptMsg;
 pub use fish_10::fish10_dh1080::{
     FiSH10_DH1080_ComputeSecret, FiSH10_DH1080_GenerateKeyPair, FiSH10_DH1080_SetKey,
 };
+pub use fish_10::fish10_haskey::{FiSH10_GetKeyInfo, FiSH10_HasKey};
 pub use fish_10::fish10_register_engine::{
     FiSH10_GetEngineVersion, FiSH10_IsEngineAvailable, FiSH10_RegisterEngine,
 };
