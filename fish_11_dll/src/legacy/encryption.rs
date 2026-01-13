@@ -20,7 +20,11 @@ pub fn legacy_encrypt(target: &str, message: &str) -> Result<String, DllError> {
 }
 
 /// Encrypt a message using specified mode
-pub fn legacy_encrypt_with_mode(target: &str, message: &str, mode: FishEncryptionMode) -> Result<String, DllError> {
+pub fn legacy_encrypt_with_mode(
+    target: &str,
+    message: &str,
+    mode: FishEncryptionMode,
+) -> Result<String, DllError> {
     // Get the key for this target
     let key = super::get_legacy_key(target).ok_or_else(|| DllError::LegacyError {
         context: format!("Encrypting for '{}'", target),
@@ -48,7 +52,7 @@ pub fn legacy_encrypt_with_mode(target: &str, message: &str, mode: FishEncryptio
 /// Decrypt a legacy FiSH 10 message
 pub fn legacy_decrypt(target: &str, encrypted_message: &str) -> Result<String, DllError> {
     let trimmed = encrypted_message.trim();
-    
+
     // Detect encryption mode based on prefix
     let (ciphertext, mode) = if let Some(stripped) = trimmed.strip_prefix("+OK ") {
         (stripped, FishEncryptionMode::Ecb)
@@ -87,6 +91,47 @@ pub fn is_legacy_message(message: &str) -> bool {
     trimmed.starts_with("+OK ") || trimmed.starts_with("mcps ")
 }
 
+/// Encrypt a topic using the legacy FiSH 10 format
+pub fn legacy_encrypt_topic(target: &str, topic: &str) -> Result<String, DllError> {
+    legacy_encrypt_with_mode(target, topic, FishEncryptionMode::Ecb)
+}
+
+/// Decrypt a legacy FiSH 10 topic
+pub fn legacy_decrypt_topic(target: &str, encrypted_topic: &str) -> Result<String, DllError> {
+    let trimmed = encrypted_topic.trim();
+
+    // Detect encryption mode based on prefix
+    let (ciphertext, mode) = if let Some(stripped) = trimmed.strip_prefix("+OK ") {
+        (stripped, FishEncryptionMode::Ecb)
+    } else if let Some(stripped) = trimmed.strip_prefix("mcps ") {
+        (stripped, FishEncryptionMode::Cbc)
+    } else {
+        // No recognized prefix - assume ECB mode
+        (trimmed, FishEncryptionMode::Ecb)
+    };
+
+    // Get the key for this target
+    let key = super::get_legacy_key(target).ok_or_else(|| DllError::LegacyError {
+        context: format!("Decrypting topic for '{}'", target),
+        cause: "No legacy key found for this target".to_string(),
+    })?;
+
+    match mode {
+        FishEncryptionMode::Ecb => {
+            // Decrypt using Blowfish ECB
+            super::blowfish::decrypt_message(&key, ciphertext, target.as_bytes())
+        }
+        FishEncryptionMode::Cbc => {
+            // TODO: Implement CBC mode decryption
+            // For now, return an error indicating CBC is not yet implemented
+            Err(DllError::LegacyError {
+                context: "CBC decryption".to_string(),
+                cause: "CBC mode decryption is not yet implemented. Message prefix 'mcps' indicates CBC mode which requires a separate implementation.".to_string(),
+            })
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,5 +167,33 @@ mod tests {
         assert!(result.is_err());
         let err_str = format!("{}", result.unwrap_err());
         assert!(err_str.contains("CBC"));
+    }
+
+    #[test]
+    fn test_legacy_topic_encryption() {
+        setup_test_legacy_key("#test", b"testkey12345678");
+
+        let topic = "This is a test topic";
+        let result = legacy_encrypt_topic("#test", topic);
+        assert!(result.is_ok());
+        let encrypted = result.unwrap();
+        assert!(encrypted.starts_with("+OK "));
+
+        // Test decryption
+        let decrypted_result = legacy_decrypt_topic("#test", &encrypted);
+        assert!(decrypted_result.is_ok());
+        let decrypted = decrypted_result.unwrap();
+        assert_eq!(decrypted, topic);
+    }
+
+    #[test]
+    fn test_legacy_topic_encryption_no_key() {
+        // Test encryption without a key
+        let result = legacy_encrypt_topic("#nonexistent", "test topic");
+        assert!(result.is_err());
+
+        // Test decryption without a key
+        let result = legacy_decrypt_topic("#nonexistent", "+OK someencrypteddata");
+        assert!(result.is_err());
     }
 }

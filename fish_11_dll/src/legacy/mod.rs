@@ -10,6 +10,7 @@ pub mod encryption;
 pub mod fish10_engine;
 pub mod key_management;
 pub mod message_detection;
+use crate::unified_error::DllError;
 use parking_lot::RwLock;
 use std::sync::Arc;
 
@@ -68,6 +69,20 @@ pub fn get_legacy_key(target: &str) -> Option<Vec<u8>> {
 /// Get the FiSH 10 engine pointer for registration with fish_inject
 pub fn get_fish10_engine_ptr() -> Option<*const fish10_engine::Fish10Engine> {
     fish10_engine::get_fish10_engine()
+}
+
+/// Get the topic encryption setting for a channel
+pub fn get_encrypt_topic_setting(network: &str, channel: &str) -> Result<bool, DllError> {
+    config::get_encrypt_topic_setting(network, channel)
+}
+
+/// Set the topic encryption setting for a channel
+pub fn set_encrypt_topic_setting(
+    network: &str,
+    channel: &str,
+    enabled: bool,
+) -> Result<(), DllError> {
+    config::set_encrypt_topic_setting(network, channel, enabled)
 }
 
 #[cfg(test)]
@@ -255,5 +270,68 @@ mod integration_tests {
 
         let public_key = message_detection::extract_dh1080_public_key(finish_message).unwrap();
         assert_eq!(public_key, "another_public_key");
+    }
+
+    #[test]
+    fn test_legacy_topic_encryption_workflow() {
+        // Test the complete topic encryption workflow
+        let target = "#test_channel";
+        let plaintext_topic = "This is a test topic for encryption";
+
+        // Generate a shared secret (simulating DH1080 exchange)
+        let keypair1 = dh1080::generate_dh1080_keypair().unwrap();
+        let keypair2 = dh1080::generate_dh1080_keypair().unwrap();
+        let shared_secret =
+            dh1080::compute_dh1080_shared_secret(&keypair1.private_key(), &keypair2.public_key)
+                .unwrap();
+
+        // Convert the shared secret to hex for storage
+        let shared_secret_hex = hex::encode(shared_secret.as_bytes());
+
+        // Store the shared secret as a legacy key
+        key_management::set_legacy_key(target, &shared_secret_hex).unwrap();
+
+        // Encrypt the topic using the stored key
+        if key_management::has_legacy_key(target) {
+            // Get the key bytes from the stored hex
+            let key_bytes = hex::decode(&shared_secret_hex).unwrap();
+
+            // Encrypt the topic
+            let encrypted = blowfish::encrypt_message(&key_bytes, plaintext_topic, &[]).unwrap();
+            let encrypted_with_prefix = format!("+OK {}", encrypted);
+
+            // Decrypt the topic using the same key
+            let decrypted = blowfish::decrypt_message(&key_bytes, &encrypted, &[]).unwrap();
+
+            // Verify the decrypted topic matches the original
+            assert_eq!(plaintext_topic, decrypted);
+        } else {
+            panic!("Failed to retrieve stored key");
+        }
+    }
+
+    #[test]
+    fn test_topic_encryption_settings() {
+        // Test storing and retrieving topic encryption settings
+        let network = "test_network_unique_12345";
+        let channel = "#test_channel_unique_67890";
+
+        // Set topic encryption to enabled
+        let result = set_encrypt_topic_setting(network, channel, true);
+        assert!(result.is_ok());
+
+        // Check if the setting was stored correctly
+        let result = get_encrypt_topic_setting(network, channel);
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+
+        // Set topic encryption to disabled
+        let result = set_encrypt_topic_setting(network, channel, false);
+        assert!(result.is_ok());
+
+        // Check if the setting was updated correctly
+        let result = get_encrypt_topic_setting(network, channel);
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
     }
 }

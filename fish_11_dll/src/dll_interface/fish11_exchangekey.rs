@@ -213,6 +213,15 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
 
     log_info!("=== Key exchange (serial {:?}) completed ===", start_time);
 
+    // Increment key exchange counter
+    crate::config::with_config(|config| {
+        let mut config_mut = config.clone();
+        config_mut.metrics.key_exchange_count =
+            config_mut.metrics.key_exchange_count.saturating_add(1);
+        Ok(config_mut)
+    })
+    .ok();
+
     // SECURITY: Clear the source buffer from memory
     crate::utils::secure_clear_string(&mut input);
 

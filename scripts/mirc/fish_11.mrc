@@ -1680,6 +1680,7 @@ menu status,channel,nicklist,query {
   .Debug
   ..Show debug info :fish11_debug
   ..View INI file :fish11_ViewIniFile
+  ..Show encryption stats :fish11_stats
 
   .Encrypted logging
   ..Set key for encrypted logging:/fish11_setlogkey
@@ -1799,6 +1800,9 @@ alias fish_test11 { fish11_test_crypt $1- }
 alias fish_help11 { fish11_help }
 alias fish_version11 { fish11_version }
 alias fish_initchannel11 { fish11_initchannel $1- }
+
+; Short alias for statistics
+alias fish_stats11 { fish11_stats }
 
 ; Short aliases for encrypted logging commands
 alias fish_setlogkey11 { fish11_setlogkey $1- }
@@ -2197,4 +2201,19 @@ alias fish11_logdecryptfile {
 }
 
 alias fcep11 { fish11_initchannel $1- }
+
+; Show encryption statistics
+alias fish11_stats {
+  var %stats = $dll(%Fish11DllFile, FiSH11_GetEncryptionStats, $null)
+  if (%stats) {
+    echo $color(Mode text) -at *** FiSH_11 Encryption Statistics:
+    echo $color(Mode text) -at %stats
+  }
+  else {
+    echo $color(Error) -at *** FiSH_11: failed to retrieve encryption statistics
+  }
+}
+
+; Short alias for statistics
+alias fish_stats { fish11_stats }
 

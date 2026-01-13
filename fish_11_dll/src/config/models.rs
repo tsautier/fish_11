@@ -140,6 +140,17 @@ impl NonceCache {
     }
 }
 
+/// Metrics for tracking encryption operations
+#[derive(PartialEq, Debug, Clone, Default)]
+pub struct EncryptionMetrics {
+    /// Number of encryption operations performed
+    pub encryption_count: usize,
+    /// Number of decryption operations performed
+    pub decryption_count: usize,
+    /// Number of key exchange operations performed
+    pub key_exchange_count: usize,
+}
+
 /// Main configuration struct
 #[derive(PartialEq, Debug, Clone)]
 pub struct FishConfig {
@@ -165,8 +176,9 @@ pub struct FishConfig {
     pub channel_ratchet_states: HashMap<String, RatchetState>,
     /// Channel nonce caches for anti-replay
     pub channel_nonce_caches: HashMap<String, NonceCache>,
+    /// Encryption metrics
+    pub metrics: EncryptionMetrics,
     /// Tracks if configuration has unsaved changes (not serialized)
-    #[cfg_attr(feature = "serde", serde(skip))]
     dirty: std::cell::Cell<bool>,
 }
 
@@ -188,6 +200,7 @@ impl FishConfig {
             channel_keys: HashMap::new(),
             channel_ratchet_states: HashMap::new(),
             channel_nonce_caches: HashMap::new(),
+            metrics: EncryptionMetrics::default(),
             dirty: std::cell::Cell::new(false),
         }
     }

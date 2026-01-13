@@ -4,6 +4,8 @@
 //! and managing legacy key configuration.
 
 use crate::unified_error::DllError;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::PathBuf;
 
 /// Load legacy configuration from blowfish.ini
@@ -24,9 +26,11 @@ pub fn load_legacy_config() -> Result<(), DllError> {
 
     // Update the global legacy configuration
     let mut config = super::LEGACY_CONFIG.write();
+
     config.blowfish_ini_path = Some(ini_path.to_string_lossy().into_owned());
 
     let mut legacy_keys = config.legacy_keys.write();
+
     for (target, key) in keys {
         legacy_keys.insert(target, key);
     }
@@ -73,15 +77,19 @@ fn load_keys_from_blowfish_ini(
         let line = line.trim();
 
         // Skip empty lines and comments
-        if line.is_empty() || line.starts_with(';') || line.starts_with('#') && !line.contains('=') {
+        if line.is_empty() || line.starts_with(';') || line.starts_with('#') && !line.contains('=')
+        {
             continue;
         }
 
         // Check for section headers like [network:target] or [target]
         if line.starts_with('[') && line.ends_with(']') {
-            let section_name = &line[1..line.len()-1];
+            let section_name = &line[1..line.len() - 1];
             current_section = Some(section_name.to_string());
+
+            #[cfg(debug_assertions)]
             log::debug!("LEGACY: Found section [{}]", section_name);
+
             continue;
         }
 
@@ -93,7 +101,9 @@ fn load_keys_from_blowfish_ini(
                 match &current_section {
                     Some(section) => section.clone(),
                     None => {
+                        #[cfg(debug_assertions)]
                         log::warn!("LEGACY: Found 'key=' without a section, skipping");
+                        
                         continue;
                     }
                 }
@@ -108,9 +118,13 @@ fn load_keys_from_blowfish_ini(
             // Validate key length (Blowfish accepts 4-56 bytes)
             if key_bytes.len() >= 4 && key_bytes.len() <= 56 {
                 let normalized_target = crate::utils::normalize_target_lowercase(&target);
+
                 keys.insert(normalized_target.clone(), key_bytes);
+
+                #[cfg(debug_assertions)]
                 log::debug!("LEGACY: Loaded key for '{}'", normalized_target);
             } else {
+                #[cfg(debug_assertions)]
                 log::warn!(
                     "LEGACY: Invalid key length for '{}' ({} bytes), skipping",
                     target,
@@ -130,17 +144,17 @@ fn load_keys_from_blowfish_ini(
 /// - Plain text keys (e.g., "mysecretkey")
 fn decode_key_value(value: &str) -> Result<Vec<u8>, DllError> {
     let value = value.trim();
-    
+
     // Check for +OK prefix (FiSH 10 plaintext key format)
     if let Some(plaintext) = value.strip_prefix("+OK ") {
         return Ok(plaintext.as_bytes().to_vec());
     }
-    
+
     // Check for mcps prefix (CBC mode plaintext key)
     if let Some(plaintext) = value.strip_prefix("mcps ") {
         return Ok(plaintext.as_bytes().to_vec());
     }
-    
+
     // Try to decode as hex
     if value.chars().all(|c| c.is_ascii_hexdigit()) && value.len() % 2 == 0 {
         return hex::decode(value).map_err(|e| DllError::LegacyError {
@@ -148,7 +162,7 @@ fn decode_key_value(value: &str) -> Result<Vec<u8>, DllError> {
             cause: format!("Invalid hex: {}", e),
         });
     }
-    
+
     // Assume it's a plaintext key
     Ok(value.as_bytes().to_vec())
 }
@@ -192,7 +206,89 @@ pub fn save_key_to_blowfish_ini(target: &str, key: &[u8], path: &str) -> Result<
         cause: format!("Failed to write: {}", e),
     })?;
 
+    #[cfg(debug_assertions)]
     log::debug!("LEGACY: Saved key for '{}' to {}", target, path);
+
+    Ok(())
+}
+
+/// Get the topic encryption setting for a channel
+pub fn get_encrypt_topic_setting(network: &str, channel: &str) -> Result<bool, DllError> {
+    // Try to get the blowfish.ini path
+    let ini_path = match get_blowfish_ini_path() {
+        Ok(path) => path,
+        Err(_) => return Ok(false), // Default to false if we can't get the path
+    };
+
+    // Check if the file exists
+    if !ini_path.exists() {
+        return Ok(false); // Default to false if file doesn't exist
+    }
+
+    // Try to read the INI file
+    let file_content = match std::fs::read_to_string(&ini_path) {
+        Ok(content) => content,
+        Err(_) => return Ok(false), // Default to false if we can't read the file
+    };
+
+    // Parse the INI content to find the channel section and encrypt_topic setting
+    let section_name = format!("{}:{}", network, channel);
+    let mut in_section = false;
+    let mut encrypt_topic = false;
+
+    for line in file_content.lines() {
+        let line = line.trim();
+
+        // Skip empty lines and comments
+        if line.is_empty() || line.starts_with(';') || line.starts_with('#') {
+            continue;
+        }
+
+        // Check for section headers
+        if line.starts_with('[') && line.ends_with(']') {
+            let current_section = &line[1..line.len() - 1];
+            in_section = current_section == section_name;
+            continue;
+        }
+
+        // If we're in the right section, look for encrypt_topic setting
+        if in_section && line.starts_with("encrypt_topic=") {
+            let value = line.split('=').nth(1).unwrap_or("").trim();
+            encrypt_topic = value == "1" || value.eq_ignore_ascii_case("true");
+            break;
+        }
+    }
+
+    Ok(encrypt_topic)
+}
+
+/// Set the topic encryption setting for a channel
+pub fn set_encrypt_topic_setting(
+    network: &str,
+    channel: &str,
+    enabled: bool,
+) -> Result<(), DllError> {
+    let ini_path = get_blowfish_ini_path()?;
+
+    let section_name = format!("{}:{}", network, channel);
+    let value = if enabled { "1" } else { "0" };
+    let line = format!("[{}]\nencrypt_topic={}\n", section_name, value);
+
+    // Open the file in append mode, create if it doesn't exist
+    let mut file = OpenOptions::new().create(true).append(true).open(&ini_path).map_err(|e| {
+        DllError::LegacyError {
+            context: "Writing to blowfish.ini".to_string(),
+            cause: format!("Failed to open file: {}", e),
+        }
+    })?;
+
+    // Write the setting
+    file.write_all(line.as_bytes()).map_err(|e| DllError::LegacyError {
+        context: "Writing to blowfish.ini".to_string(),
+        cause: format!("Failed to write: {}", e),
+    })?;
+
+    log::debug!("LEGACY: Set encrypt_topic={} for {}:{}", enabled, network, channel);
 
     Ok(())
 }
@@ -282,5 +378,25 @@ mod tests {
         let result = decode_key_value("notahexkey123");
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), b"notahexkey123");
+    }
+
+    #[test]
+    fn test_encrypt_topic_setting() {
+        // Test getting the setting for a non-existent network/channel (should default to false)
+        let result =
+            get_encrypt_topic_setting("nonexistent_network_12345", "#nonexistent_channel_67890");
+        assert!(result.is_ok());
+        // The function should return false by default when the setting is not found
+        let value = result.unwrap();
+        eprintln!("DEBUG: encrypt_topic setting value: {}", value);
+        assert!(!value); // Should default to false
+    }
+
+    #[test]
+    fn test_encrypt_topic_setting_nonexistent() {
+        // Test getting setting for non-existent file
+        let result = get_encrypt_topic_setting("nonexistent", "#channel");
+        assert!(result.is_ok());
+        assert!(!result.unwrap()); // Should default to false
     }
 }

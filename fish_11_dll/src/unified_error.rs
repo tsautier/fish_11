@@ -13,6 +13,7 @@ use std::ffi::{NulError, c_char};
 use std::os::raw::c_int;
 use thiserror::Error;
 
+
 /// Unified error type for all DLL operations
 ///
 /// This enum consolidates all possible error conditions across the DLL,

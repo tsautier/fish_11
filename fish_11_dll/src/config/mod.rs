@@ -1,28 +1,52 @@
 //! Configuration module for FiSH_11
 
 use parking_lot::Mutex;
+pub mod channel_key_utils;
+pub mod channel_keys;
 pub mod config_access;
 pub mod encrypted_file_storage;
 pub mod entries;
 pub mod file_storage;
 pub mod key_management;
+pub mod manual_channel_keys;
 pub mod models;
 pub mod networks;
-
-pub mod channel_key_utils;
-pub mod channel_keys;
-pub mod manual_channel_keys;
-
+pub use networks::{
+    count_network_mappings, count_unique_networks, delete_network, get_all_network_mappings,
+    get_all_networks, get_network_for_nick, get_nicknames_by_network, has_network, merge_networks,
+    remove_network_for_nick, rename_network, set_network_for_nick,
+};
+pub use settings::{
+    get_encryption_mark, get_fish11_config, get_plain_prefix, get_startup_time,
+    get_startup_time_formatted, is_fish10_legacy_disabled, should_encrypt_message,
+    should_process_incoming, should_process_outgoing, update_fish11_config, update_startup_time,
+};
+pub use state_management::{add_nonce, check_nonce, init_ratchet_state, with_ratchet_state_mut};
 pub mod settings;
-
 pub mod state_management;
-
+pub use channel_key_utils::{get_channel_key_type, get_channel_key_with_fallback, has_channel_key};
+pub use channel_keys::{get_channel_key, set_channel_key};
+pub use config_access::{read_config, with_config, with_config_mut, write_config};
+pub use entries::{
+    get_channel_data, get_user_data, list_channel_entries, list_user_entries, set_channel_data,
+    set_user_data,
+};
+pub use file_storage::{get_config_path, init_config_file, load_config, save_config};
+pub use key_management::{
+    delete_key, delete_key_default, get_all_keys_with_ttl, get_configured_key_ttl, get_key,
+};
+pub use key_management::{
+    get_key_default, get_key_status, get_key_status_human_readable, get_key_ttl,
+    get_key_ttl_human_readable, get_keypair, get_our_keypair, is_key_about_to_expire, list_keys,
+    set_configured_key_ttl, set_key, set_key_default, store_keypair,
+};
+pub use manual_channel_keys::{
+    get_manual_channel_key, list_manual_channel_keys, set_manual_channel_key,
+};
+pub use models::{EncryptionMetrics, EntryData, Fish11Section, FishConfig, StartupSection};
+use once_cell::sync::Lazy;
 use std::thread;
 use std::time::{Duration, Instant};
-
-// Re-export models
-pub use models::{EntryData, Fish11Section, FishConfig, StartupSection};
-use once_cell::sync::Lazy;
 
 /// Global configuration instance
 /// Using parking_lot::Mutex for better performance and no poisoning
@@ -34,31 +58,31 @@ pub static CONFIG: Lazy<Mutex<FishConfig>> = Lazy::new(|| {
     match file_storage::get_config_path() {
         Ok(path) => {
             #[cfg(debug_assertions)]
-            log::info!("CONFIG: Config path obtained: {}", path.display());
+            log::info!("CONFIG: config path obtained: {}", path.display());
 
             match file_storage::load_config(Some(path.clone())) {
                 Ok(config) => {
                     #[cfg(debug_assertions)]
-                    log::info!("CONFIG: Configuration loaded successfully from {}", path.display());
+                    log::info!("CONFIG: configuration loaded successfully from {}", path.display());
                     Mutex::new(config)
                 }
                 Err(e) => {
                     #[cfg(debug_assertions)]
-                    log::error!("CONFIG: Failed to load config from {}: {}", path.display(), e);
+                    log::error!("CONFIG: failed to load config from {}: {}", path.display(), e);
 
-                    log::warn!("CONFIG: Using default configuration due to load error");
+                    log::warn!("CONFIG: using default configuration due to load error");
                     Mutex::new(FishConfig::new())
                 }
             }
         }
         Err(e) => {
             #[cfg(debug_assertions)]
-            log::error!("CONFIG: Failed to get config path: {}", e);
+            log::error!("CONFIG: failed to get config path: {}", e);
 
-            log::warn!("CONFIG: Using default configuration (MIRCDIR not set)");
+            log::warn!("CONFIG: using default configuration (MIRCDIR not set)");
 
             #[cfg(debug_assertions)]
-            log::info!("CONFIG: Creating new FishConfig...");
+            log::info!("CONFIG: creating new FishConfig...");
 
             let new_config = FishConfig::new();
 
@@ -74,7 +98,7 @@ pub static CONFIG: Lazy<Mutex<FishConfig>> = Lazy::new(|| {
             log::info!("CONFIG: Mutex created successfully");
 
             #[cfg(debug_assertions)]
-            log::info!("CONFIG: Returning from Lazy::new...");
+            log::info!("CONFIG: returning from Lazy::new...");
 
             mutex
         }
@@ -85,7 +109,7 @@ pub static CONFIG: Lazy<Mutex<FishConfig>> = Lazy::new(|| {
 /// This must be called during DLL initialization to avoid deadlocks
 pub fn init_config() {
     #[cfg(debug_assertions)]
-    log::info!("init_config: Forcing CONFIG initialization...");
+    log::info!("init_config: forcing CONFIG initialization...");
 
     // Just access CONFIG to trigger Lazy initialization
     let _ = &*CONFIG;
@@ -137,19 +161,6 @@ where
     Err(format!("Operation failed after {} attempts", attempts))
 }
 
-// Re-export key functions from submodules for easier access
-pub use channel_key_utils::{get_channel_key_type, get_channel_key_with_fallback, has_channel_key};
-pub use channel_keys::{get_channel_key, set_channel_key};
-pub use config_access::{read_config, with_config, with_config_mut, write_config};
-pub use entries::{
-    get_channel_data, get_user_data, list_channel_entries, list_user_entries, set_channel_data,
-    set_user_data,
-};
-pub use file_storage::{get_config_path, init_config_file, load_config, save_config};
-pub use key_management::{
-    delete_key, delete_key_default, get_all_keys_with_ttl, get_configured_key_ttl, get_key,
-};
-
 /// Get the mIRC directory path
 pub fn get_mirc_directory() -> Result<std::path::PathBuf, String> {
     // Try to get from environment variable first
@@ -173,15 +184,6 @@ pub fn get_mirc_directory() -> Result<std::path::PathBuf, String> {
 
     Ok(path)
 }
-
-pub use key_management::{
-    get_key_default, get_key_status, get_key_status_human_readable, get_key_ttl,
-    get_key_ttl_human_readable, get_keypair, get_our_keypair, is_key_about_to_expire, list_keys,
-    set_configured_key_ttl, set_key, set_key_default, store_keypair,
-};
-pub use manual_channel_keys::{
-    get_manual_channel_key, list_manual_channel_keys, set_manual_channel_key,
-};
 
 // Helper functions for channel key management
 pub fn has_manual_channel_key(channel_name: &str) -> bool {
@@ -219,14 +221,32 @@ pub fn remove_ratchet_channel_key(channel_name: &str) -> Result<(), crate::error
         Ok(())
     })
 }
-pub use networks::{
-    count_network_mappings, count_unique_networks, delete_network, get_all_network_mappings,
-    get_all_networks, get_network_for_nick, get_nicknames_by_network, has_network, merge_networks,
-    remove_network_for_nick, rename_network, set_network_for_nick,
-};
-pub use settings::{
-    get_encryption_mark, get_fish11_config, get_plain_prefix, get_startup_time,
-    get_startup_time_formatted, is_fish10_legacy_disabled, should_encrypt_message,
-    should_process_incoming, should_process_outgoing, update_fish11_config, update_startup_time,
-};
-pub use state_management::{add_nonce, check_nonce, init_ratchet_state, with_ratchet_state_mut};
+
+/// Get the count of stored keys
+pub fn count_keys() -> Result<usize, crate::error::FishError> {
+    with_config(|config| {
+        // Count user keys and channel keys
+        let user_keys = config.entries.iter().filter(|(k, _)| k.starts_with("key_")).count();
+
+        let channel_keys = config.channel_keys.len();
+        let manual_channel_keys =
+            config.entries.iter().filter(|(k, _)| k.starts_with("channel_key_")).count();
+
+        Ok(user_keys + channel_keys + manual_channel_keys)
+    })
+}
+
+/// Get the count of encryption operations
+pub fn get_encryption_count() -> Result<usize, crate::error::FishError> {
+    with_config(|config| Ok(config.metrics.encryption_count))
+}
+
+/// Get the count of decryption operations
+pub fn get_decryption_count() -> Result<usize, crate::error::FishError> {
+    with_config(|config| Ok(config.metrics.decryption_count))
+}
+
+/// Get the count of key exchange operations
+pub fn get_key_exchange_count() -> Result<usize, crate::error::FishError> {
+    with_config(|config| Ok(config.metrics.key_exchange_count))
+}
