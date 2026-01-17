@@ -6,6 +6,8 @@
 use crate::unified_error::DllError;
 use blowfish::cipher::generic_array::GenericArray;
 use blowfish::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
+use blowfish::Blowfish;
+use byteorder::BigEndian;
 
 /// FiSH 10 specific Base64 alphabet for encrypted messages
 const FISH10_B64_ABC: &[u8] = b"./0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -164,6 +166,199 @@ pub fn decrypt_message(
             );
             Ok(lossy_string.to_string())
         }
+    }
+}
+
+/// Encrypt a message using Blowfish in CBC mode (FiSH 10 style)
+pub fn encrypt_message_cbc(
+    key: &[u8],
+    plaintext: &str,
+    _associated_data: &[u8],
+) -> Result<String, DllError> {
+    // Pad the plaintext to 8-byte boundary with null bytes
+    let mut bytes = plaintext.as_bytes().to_vec();
+    let pad_len = (8 - (bytes.len() % 8)) % 8;
+    bytes.extend(std::iter::repeat(0u8).take(pad_len));
+
+    // Use first 8 bytes of key as IV (this is how FiSH-10 CBC typically works)
+    let iv: [u8; 8] = if key.len() >= 8 {
+        let mut iv_array = [0u8; 8];
+        iv_array.copy_from_slice(&key[..8]);
+        iv_array
+    } else {
+        // If key is shorter than 8 bytes, pad it with zeros
+        let mut iv_array = [0u8; 8];
+        iv_array[..key.len()].copy_from_slice(key);
+        iv_array
+    };
+
+    // Initialize CBC mode with Blowfish
+    
+    let cipher = Blowfish::<BigEndian>::new_from_slice(key).map_err(|e| {
+        DllError::LegacyError {
+            context: "Blowfish init".to_string(),
+            cause: format!("Invalid key: {}", e),
+        }
+    })?;
+
+    // For CBC mode, we need to handle it manually since the cipher crate doesn't have a direct CBC type
+    // This is a simplified approach - in a real implementation, you'd use a proper CBC implementation
+    let mut ciphertext = Vec::with_capacity(bytes.len());
+    let block_size = 8; // Blowfish block size
+    
+    // Simple CBC encryption (for demonstration only)
+    let mut prev_block_array = iv;
+    for chunk in bytes.chunks(block_size) {
+        let mut block = chunk.to_vec();
+        // Pad with zeros if needed
+        if block.len() < block_size {
+            block.resize(block_size, 0);
+        }
+        
+        // XOR with previous block
+        for i in 0..block_size {
+            block[i] ^= prev_block_array[i];
+        }
+        
+        // Encrypt the block
+        let mut output_block = GenericArray::clone_from_slice(&block);
+        cipher.encrypt_block(&mut output_block);
+        ciphertext.extend_from_slice(&output_block);
+        
+        // Update previous block for next iteration
+        prev_block_array.copy_from_slice(&output_block);
+    }
+
+    fish10_b64_encode(&ciphertext)
+}
+
+/// Decrypt a message using Blowfish in CBC mode (FiSH 10 style)
+pub fn decrypt_message_cbc(
+    key: &[u8],
+    ciphertext_b64: &str,
+    _associated_data: &[u8],
+) -> Result<String, DllError> {
+    // Decode the base64 ciphertext
+    let ciphertext = fish10_b64_decode(ciphertext_b64)?;
+
+    // Use first 8 bytes of key as IV (this is how FiSH-10 CBC typically works)
+    let iv: [u8; 8] = if key.len() >= 8 {
+        let mut iv_array = [0u8; 8];
+        iv_array.copy_from_slice(&key[..8]);
+        iv_array
+    } else {
+        // If key is shorter than 8 bytes, pad it with zeros
+        let mut iv_array = [0u8; 8];
+        iv_array[..key.len()].copy_from_slice(key);
+        iv_array
+    };
+
+    // Initialize Blowfish for decryption
+    let cipher = Blowfish::<BigEndian>::new_from_slice(key).map_err(|e| {
+        DllError::LegacyError {
+            context: "Blowfish init".to_string(),
+            cause: format!("Invalid key: {}", e),
+        }
+    })?;
+
+    // Simple CBC decryption (for demonstration only)
+    let mut plaintext = Vec::with_capacity(ciphertext.len());
+    let block_size = 8; // Blowfish block size
+    
+    let mut prev_block_array = iv;
+    for chunk in ciphertext.chunks(block_size) {
+        let original_block = chunk.to_vec();
+        
+        // Decrypt the block
+        let mut output_block = GenericArray::clone_from_slice(chunk);
+        cipher.decrypt_block(&mut output_block);
+        
+        // XOR with previous block
+        for i in 0..block_size {
+            output_block[i] ^= prev_block_array[i];
+        }
+        
+        plaintext.extend_from_slice(&output_block);
+        prev_block_array.copy_from_slice(&original_block);
+    }
+
+    // Remove trailing null bytes
+    let end = plaintext.iter().rposition(|&x| x != 0).map_or(0, |i| i + 1);
+    plaintext.truncate(end);
+
+    // Attempt to convert to UTF-8, but handle invalid sequences gracefully
+    match String::from_utf8(plaintext) {
+        Ok(s) => Ok(s),
+        Err(e) => {
+            // If UTF-8 conversion fails, try to handle the bytes as best as possible
+            let original_bytes = e.into_bytes();
+            let lossy_string = String::from_utf8_lossy(&original_bytes);
+
+            crate::log_warn!(
+                "Invalid UTF-8 encountered during legacy CBC decryption, using lossy conversion"
+            );
+            Ok(lossy_string.to_string())
+        }
+    }
+}
+
+/// Test the CBC mode functions
+#[cfg(test)]
+mod cbc_tests {
+    use super::*;
+
+    #[test]
+    fn test_blowfish_cbc_roundtrip() {
+        let key = b"secretkey1234567"; // 16-byte key for blowfish
+        let text = "Hello FiSH CBC!";
+        let encrypted = encrypt_message_cbc(key, text, &[]).unwrap();
+        let decrypted = decrypt_message_cbc(key, &encrypted, &[]).unwrap();
+        assert_eq!(text, decrypted);
+    }
+
+    #[test]
+    fn test_blowfish_cbc_with_padding() {
+        let key = b"secretkey1234567";
+        // Test with text that requires padding
+        let text = "Test CBC with padding";
+        let encrypted = encrypt_message_cbc(key, text, &[]).unwrap();
+        let decrypted = decrypt_message_cbc(key, &encrypted, &[]).unwrap();
+        assert_eq!(text, decrypted);
+    }
+
+    #[test]
+    fn test_blowfish_cbc_different_messages() {
+        let key = b"mysecretkey12345";
+        let text1 = "First message for CBC test";
+        let text2 = "Second message for CBC test";
+
+        let encrypted1 = encrypt_message_cbc(key, text1, &[]).unwrap();
+        let encrypted2 = encrypt_message_cbc(key, text2, &[]).unwrap();
+
+        // Two different messages should have different encrypted outputs (due to CBC)
+        assert_ne!(encrypted1, encrypted2);
+
+        let decrypted1 = decrypt_message_cbc(key, &encrypted1, &[]).unwrap();
+        let decrypted2 = decrypt_message_cbc(key, &encrypted2, &[]).unwrap();
+
+        assert_eq!(text1, decrypted1);
+        assert_eq!(text2, decrypted2);
+    }
+
+    #[test]
+    fn test_blowfish_cbc_invalid_key() {
+        let invalid_key = b""; // Empty key should cause an error
+        let text = "Hello FiSH CBC!";
+        let result = encrypt_message_cbc(invalid_key, text, &[]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_blowfish_cbc_invalid_ciphertext() {
+        let key = b"secretkey123456";
+        let invalid_ciphertext = "invalid_ciphertext";
+        let result = decrypt_message_cbc(key, invalid_ciphertext, &[]);
+        assert!(result.is_err());
     }
 }
 

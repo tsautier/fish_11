@@ -197,7 +197,7 @@ fn process_outgoing_fish10_topic(_line: &str, target: &str, topic: &str) -> Opti
     // For now, we'll assume it's enabled if we have a key for the channel
     // In a real implementation, we'd check the encrypt_topic setting in the INI file
 
-    // Encrypt the topic
+    // Encrypt the topic using ECB mode (default for compatibility)
     match crate::legacy::encryption::legacy_encrypt_topic(target, topic) {
         Ok(encrypted) => {
             #[cfg(debug_assertions)]
@@ -307,17 +307,19 @@ fn handle_fish10_topic_message(line: &str) -> Option<String> {
         return None;
     }
 
-    // Extract the actual encrypted data (remove +OK prefix)
+    // Extract the actual encrypted data (remove prefix)
     let payload = topic_payload.trim();
     let payload = if let Some(stripped) = payload.strip_prefix("+OK ") {
         stripped
+    } else if let Some(stripped) = payload.strip_prefix("mcps ") {
+        stripped
     } else {
-        error!("FiSH10 Engine: topic does not have +OK prefix: {}", topic_payload);
+        error!("FiSH10 Engine: topic does not have +OK or mcps prefix: {}", topic_payload);
         return None;
     };
 
     if payload.is_empty() {
-        error!("FiSH10 Engine: empty topic payload after removing +OK prefix");
+        error!("FiSH10 Engine: empty topic payload after removing prefix");
         return None;
     }
 
@@ -350,17 +352,19 @@ fn handle_fish10_encrypted_message(line: &str) -> Option<String> {
     let target = parts[1];
     let encrypted_payload = parts[2];
 
-    // Extract the actual encrypted data (remove +OK prefix)
+    // Extract the actual encrypted data (remove prefix)
     let payload = encrypted_payload.trim();
     let payload = if let Some(stripped) = payload.strip_prefix("+OK ") {
         stripped
+    } else if let Some(stripped) = payload.strip_prefix("mcps ") {
+        stripped
     } else {
-        error!("FiSH10 Engine: message does not have +OK prefix: {}", encrypted_payload);
+        error!("FiSH10 Engine: message does not have +OK or mcps prefix: {}", encrypted_payload);
         return None;
     };
 
     if payload.is_empty() {
-        error!("FiSH10 Engine: empty payload after removing +OK prefix");
+        error!("FiSH10 Engine: empty payload after removing prefix");
         return None;
     }
 
@@ -371,7 +375,7 @@ fn handle_fish10_encrypted_message(line: &str) -> Option<String> {
             info!("FiSH10 Engine: decrypted message from {}: {}", target, decrypted);
             Some(format!("{} {} {}", command, target, decrypted))
         }
-        Err(e) => {
+        Err(_e) => {
             error!("FiSH10 Engine: failed to decrypt message.");
             None
         }
@@ -403,7 +407,7 @@ fn handle_dh1080_message(line: &str) -> Option<String> {
             match generate_dh1080_keypair() {
                 Ok(keypair) => {
                     // Store our private key for later use
-                    let mut config = super::LEGACY_CONFIG.write();
+                    let config = super::LEGACY_CONFIG.write();
                     let mut dh1080_keys = config.dh1080_keys.write();
                     dh1080_keys.insert(target.to_string(), keypair.private_key());
 

@@ -268,7 +268,6 @@ mod tests {
 
     #[test]
     fn test_decryptmsg_channel_valid() {
-        use crate::utils::base64_decode;
 
         let channel = "#testchan";
         let original_message = "Hello channel!";
@@ -379,7 +378,6 @@ mod tests {
 
     #[test]
     fn test_decryptmsg_replay_attack_detection() {
-        use crate::config;
 
         // This tests the logic for nonce cache that would detect replay attacks
         let channel = "#replaytest";

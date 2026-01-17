@@ -235,63 +235,67 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
     // For topics, we need to use the channel key but NOT advance the ratchet (topics are special)
     // For channels (#, &) in regular messages, we handle encryption with ratchet advancement (like fish11_encryptmsg.rs)
     // For private messages, we use standard key lookup
-    let encrypted = if is_topic {
+    let (encrypted, used_legacy) = if is_topic {
         // Handle topic encryption using the channel key but without ratchet advancement
         #[cfg(debug_assertions)]
         log_debug!("Engine: attempting topic encryption for '{}'", target);
 
-        // First try to get a channel key (either manual or ratchet-based)
-        let key = match crate::config::get_channel_key_with_fallback(target) {
-            Ok(k) => k.to_vec(), // Convert to vec for compatibility with existing code
-            Err(_) => {
-                // If no channel key exists, try the regular key lookup (for backward compatibility)
-                match crate::config::get_key(target, network_name.as_deref()) {
-                    Ok(k) => k,
-                    Err(_) => {
-                        // No key = no encryption, pass through
-                        log_debug!(
-                            "Engine: no key for topic on channel '{}' on network '{:?}', not encrypting",
-                            target,
-                            network_name
-                        );
-                        return None;
-                    }
-                }
-            }
-        };
-
-        let key_array: &[u8; 32] = match key.as_slice().try_into() {
-            Ok(arr) => arr,
-            Err(_) => {
-                log_error!("Engine: invalid key length for topic on channel '{}'", target);
-                return None;
-            }
-        };
-
-        // Log message content if DEBUG flag is enabled for sensitive content
-        #[cfg(debug_assertions)]
-        log_debug!("Engine: topic encryption input for channel '{}': '{}'", target, &message);
-
-        // Encrypt the message with the channel name as Associated Data (to prevent cross-channel replay)
-        let encrypted =
-            match encrypt_message(key_array, &message, Some(target), Some(target.as_bytes())) {
-                Ok(enc) => {
-                    #[cfg(debug_assertions)]
-                    log_debug!(
-                        "Engine: topic encrypted output for channel '{}': '{}'",
-                        target,
-                        &enc
-                    );
-
-                    enc
-                }
-                Err(e) => {
-                    log_error!("Engine: topic encryption failed for channel '{}': {}", target, e);
+        let key_result = crate::config::get_channel_key_with_fallback(target);
+        
+        if let Ok(key) = key_result {
+            let key_array: &[u8; 32] = match key.as_slice().try_into() {
+                Ok(arr) => arr,
+                Err(_) => {
+                    log_error!("Engine: invalid key length for topic on channel '{}'", target);
                     return None;
                 }
             };
 
-        encrypted
+            // Log message content if DEBUG flag is enabled for sensitive content
+            #[cfg(debug_assertions)]
+            log_debug!("Engine: topic encryption input for channel '{}': '{}'", target, &message);
+
+            // Encrypt the message with the channel name as Associated Data (to prevent cross-channel replay)
+            let encrypted =
+                match encrypt_message(key_array, &message, Some(target), Some(target.as_bytes())) {
+                    Ok(enc) => {
+                        #[cfg(debug_assertions)]
+                        log_debug!(
+                            "Engine: topic encrypted output for channel '{}': '{}'",
+                            target,
+                            &enc
+                        );
+
+                        enc
+                    }
+                    Err(e) => {
+                        log_error!("Engine: topic encryption failed for channel '{}': {}", target, e);
+                        return None;
+                    }
+                };
+
+            (encrypted, false)
+        } else if let Some(legacy_key) = legacy::get_legacy_key(&target.to_lowercase()) {
+            #[cfg(debug_assertions)]
+            log_debug!("Engine: using legacy key for topic on '{}'", target);
+            
+            let encrypted = match legacy::blowfish::encrypt_message(&legacy_key, &message, target.as_bytes()) {
+                Ok(enc) => enc,
+                Err(e) => {
+                    log_error!("Engine: legacy topic encryption failed for '{}': {}", target, e);
+                    return None;
+                }
+            };
+            (encrypted, true)
+        } else {
+             // No key = no encryption, pass through
+             log_debug!(
+                 "Engine: no key for topic on channel '{}' on network '{:?}', not encrypting",
+                 target,
+                 network_name
+             );
+             return None;
+        }
     } else if target.starts_with('#') || target.starts_with('&') {
         #[cfg(debug_assertions)]
         log_debug!("Engine: attempting channel message encryption for '{}'", target);
@@ -321,7 +325,7 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
                                 &encrypted_b64
                             );
 
-                            encrypted_b64
+                            (encrypted_b64, false)
                         }
                         Err(e) => {
                             log_error!(
@@ -338,6 +342,18 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
                     return None;
                 }
             }
+        } else if let Some(legacy_key) = legacy::get_legacy_key(&target.to_lowercase()) {
+             #[cfg(debug_assertions)]
+             log_debug!("Engine: using legacy key for channel message on '{}'", target);
+             
+             let encrypted = match legacy::blowfish::encrypt_message(&legacy_key, &message, target.as_bytes()) {
+                 Ok(enc) => enc,
+                 Err(e) => {
+                     log_error!("Engine: legacy channel message encryption failed for '{}': {}", target, e);
+                     return None;
+                 }
+             };
+             (encrypted, true)
         } else {
             // Use ratchet-based encryption (FCEP-1 with forward secrecy)
             match crate::config::with_ratchet_state_mut(target, |state| {
@@ -384,7 +400,7 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
 
                 Ok(encrypted_b64)
             }) {
-                Ok(encrypted_b64) => encrypted_b64,
+                Ok(encrypted_b64) => (encrypted_b64, false),
                 Err(e) => {
                     log_error!("Engine: channel encryption failed for '{}': {}", target, e);
                     return None;
@@ -395,54 +411,65 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
         // For private messages, use standard key lookup
         log_debug!("Engine: attempting private message encryption for '{}'", target);
 
-        let key = match crate::config::get_key(target, network_name.as_deref()) {
-            Ok(k) => k,
-            Err(_) => {
-                // No key = no encryption, pass through
-                #[cfg(debug_assertions)]
-                log_debug!(
-                    "Engine: no key for target '{}' on network '{:?}', not encrypting",
-                    target,
-                    network_name
-                );
-                return None;
-            }
-        };
+        let key_result = crate::config::get_key(target, network_name.as_deref());
 
-        let key_array: &[u8; 32] = match key.as_slice().try_into() {
-            Ok(arr) => arr,
-            Err(_) => {
-                log_error!("Engine: invalid key length for target '{}'", target);
-                return None;
-            }
-        };
+        if let Ok(key) = key_result {
+            let key_array: &[u8; 32] = match key.as_slice().try_into() {
+                Ok(arr) => arr,
+                Err(_) => {
+                    log_error!("Engine: invalid key length for target '{}'", target);
+                    return None;
+                }
+            };
 
-        #[cfg(debug_assertions)]
-        log_debug!(
-            "Engine: private message encryption input for target '{}': '{}'",
-            target,
-            &message
-        );
+            #[cfg(debug_assertions)]
+            log_debug!(
+                "Engine: private message encryption input for target '{}': '{}'",
+                target,
+                &message
+            );
 
-        // Encrypt the message (no AD for private messages).
-        let encrypted = match encrypt_message(key_array, &message, Some(target), None) {
-            Ok(enc) => {
-                #[cfg(debug_assertions)]
-                log_debug!(
-                    "Engine: private message encrypted output for target '{}': '{}'",
-                    target,
-                    &enc
-                );
+            // Encrypt the message (no AD for private messages).
+            let encrypted = match encrypt_message(key_array, &message, Some(target), None) {
+                Ok(enc) => {
+                    #[cfg(debug_assertions)]
+                    log_debug!(
+                        "Engine: private message encrypted output for target '{}': '{}'",
+                        target,
+                        &enc
+                    );
 
-                enc
-            }
-            Err(e) => {
-                log_error!("Engine: encryption failed for target '{}': {}", target, e);
-                return None;
-            }
-        };
+                    enc
+                }
+                Err(e) => {
+                    log_error!("Engine: encryption failed for target '{}': {}", target, e);
+                    return None;
+                }
+            };
 
-        encrypted
+            (encrypted, false)
+        } else if let Some(legacy_key) = legacy::get_legacy_key(&target.to_lowercase()) {
+             #[cfg(debug_assertions)]
+             log_debug!("Engine: using legacy key for private message on '{}'", target);
+             
+             let encrypted = match legacy::blowfish::encrypt_message(&legacy_key, &message, &[]) {
+                 Ok(enc) => enc,
+                 Err(e) => {
+                     log_error!("Engine: legacy private message encryption failed for '{}': {}", target, e);
+                     return None;
+                 }
+             };
+             (encrypted, true)
+        } else {
+             // No key = no encryption, pass through
+             #[cfg(debug_assertions)]
+             log_debug!(
+                 "Engine: no key for target '{}' on network '{:?}', not encrypting",
+                 target,
+                 network_name
+             );
+             return None;
+        }
     };
 
     let msg_type = if is_topic {
@@ -462,7 +489,13 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
     // Reconstruct line with encrypted data
     // Keep prefix if present, replace message with configurable prefix + encrypted data or "+FCEP_TOPIC+ <encrypted>"
     // Add \r\n for IRC protocol compliance
-    let prefix = if is_topic { "+FCEP_TOPIC+" } else { encryption_prefix.as_str() };
+    let prefix = if is_topic { 
+        "+FCEP_TOPIC+" 
+    } else if used_legacy {
+        "+OK"
+    } else { 
+        encryption_prefix.as_str() 
+    };
     let encrypted_line = format!("{} :{} {}\r\n", cmd_part, prefix, encrypted);
 
     Some(encrypted_line)

@@ -39,17 +39,36 @@ pub fn set_legacy_key(target: &str, key_hex: &str) -> Result<(), DllError> {
 
 /// Remove a legacy key for a target
 pub fn remove_legacy_key(target: &str) -> Result<(), DllError> {
-    let mut config = super::LEGACY_CONFIG.write();
-    let mut keys = config.legacy_keys.write();
+    let config = super::LEGACY_CONFIG.read();
+    
+    // First remove from memory
+    let removed_from_memory = {
+        let mut keys = config.legacy_keys.write();
+        keys.remove(target).is_some()
+    };
 
-    if keys.remove(target).is_some() {
-        log::info!("Removed legacy key for '{}'", target);
+    // Then remove from file if path is set
+    if let Some(ini_path) = &config.blowfish_ini_path {
+        if let Err(e) = super::config::remove_key_from_blowfish_ini(target, ini_path) {
+            log::warn!("LEGACY: Failed to remove key from blowfish.ini: {}", e);
+        }
+    }
+
+    if removed_from_memory {
+        log::info!("FiSH10: Removed legacy key for '{}'", target);
         Ok(())
     } else {
-        Err(DllError::LegacyError {
-            context: format!("Removing key for '{}'", target),
-            cause: "Key not found".to_string(),
-        })
+        // If not in legacy memory, check if it's in FiSH 11 store to provide a better message
+        if crate::config::get_key(target, None).is_ok() || crate::config::has_channel_key(target) {
+             log::info!("FiSH10: Key for '{}' not found in legacy store, but it exists in FiSH 11 store.", target);
+             // We return Ok anyway because the "legacy" key is indeed "not there" (deleted or never existed)
+             Ok(())
+        } else {
+            Err(DllError::LegacyError {
+                context: format!("Removing key for '{}'", target),
+                cause: "Key not found in legacy store".to_string(),
+            })
+        }
     }
 }
 
@@ -101,7 +120,7 @@ pub fn parse_dh1080_public_key(key_str: &str) -> Result<Vec<u8>, DllError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::legacy::test_utils::{clear_test_legacy_keys, setup_test_legacy_key};
+    use crate::legacy::test_utils::clear_test_legacy_keys;
 
     #[test]
     fn test_key_management() {

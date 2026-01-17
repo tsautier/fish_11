@@ -7,11 +7,11 @@ use crate::unified_error::DllError;
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
-/// Returns encryption statistics including:
-/// - Number of keys stored
-/// - Number of encryption operations
-/// - Number of decryption operations
-/// - Number of successful key exchanges
+// Returns encryption statistics including:
+// - Number of keys stored
+// - Number of encryption operations
+// - Number of decryption operations
+// - Number of successful key exchanges
 
 dll_function_identifier!(FiSH11_GetEncryptionStats, data, {
     // Get statistics from config
@@ -38,8 +38,8 @@ dll_function_identifier!(FiSH11_GetEncryptionStats, data, {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::config;
+    // use super::*;
+    // use crate::config;
 
     #[test]
     fn test_get_encryption_stats() {

@@ -4,8 +4,7 @@
 //! and managing legacy key configuration.
 
 use crate::unified_error::DllError;
-use std::fs::OpenOptions;
-use std::io::Write;
+
 use std::path::PathBuf;
 
 /// Load legacy configuration from blowfish.ini
@@ -14,6 +13,12 @@ pub fn load_legacy_config() -> Result<(), DllError> {
     let ini_path = get_blowfish_ini_path()?;
 
     log::info!("LEGACY: Loading configuration from {}", ini_path.display());
+
+    // Update the global legacy configuration
+    {
+        let mut config = super::LEGACY_CONFIG.write();
+        config.blowfish_ini_path = Some(ini_path.to_string_lossy().into_owned());
+    }
 
     // Check if the file exists
     if !ini_path.exists() {
@@ -24,11 +29,8 @@ pub fn load_legacy_config() -> Result<(), DllError> {
     // Load keys from the blowfish.ini file
     let keys = load_keys_from_blowfish_ini(&ini_path)?;
 
-    // Update the global legacy configuration
-    let mut config = super::LEGACY_CONFIG.write();
-
-    config.blowfish_ini_path = Some(ini_path.to_string_lossy().into_owned());
-
+    // Update the key store
+    let config = super::LEGACY_CONFIG.read();
     let mut legacy_keys = config.legacy_keys.write();
 
     for (target, key) in keys {
@@ -184,30 +186,105 @@ fn parse_ini_line(line: &str) -> Option<(String, String)> {
     None
 }
 
-/// Save a key to blowfish.ini file
+/// Save a key to blowfish.ini file (replaces existing if found)
 pub fn save_key_to_blowfish_ini(target: &str, key: &[u8], path: &str) -> Result<(), DllError> {
-    use std::fs::OpenOptions;
-    use std::io::Write;
+    update_blowfish_ini_key(target, Some(key), path)
+}
 
-    let key_hex = hex::encode(key);
-    let line = format!("{}={}\n", target, key_hex);
+/// Remove a key from blowfish.ini file
+pub fn remove_key_from_blowfish_ini(target: &str, path: &str) -> Result<(), DllError> {
+    update_blowfish_ini_key(target, None, path)
+}
 
-    // Open the file in append mode, create if it doesn't exist
-    let mut file = OpenOptions::new().create(true).append(true).open(path).map_err(|e| {
-        DllError::LegacyError {
-            context: "Writing to blowfish.ini".to_string(),
+/// Internal helper to add, update, or remove a key in blowfish.ini
+fn update_blowfish_ini_key(target: &str, key: Option<&[u8]>, path_str: &str) -> Result<(), DllError> {
+    use std::fs;
+    use std::io::{BufRead, BufReader, Write};
+    use std::path::Path;
+
+    let path = Path::new(path_str);
+    let mut lines = Vec::new();
+    let mut found = false;
+    let target_lower = target.to_lowercase();
+
+    if path.exists() {
+        let file = fs::File::open(path).map_err(|e| DllError::LegacyError {
+            context: "Updating blowfish.ini".to_string(),
             cause: format!("Failed to open file: {}", e),
+        })?;
+        let reader = BufReader::new(file);
+
+        let mut current_section: Option<String> = None;
+
+        for line in reader.lines() {
+            let line = line.map_err(|e| DllError::LegacyError {
+                context: "Updating blowfish.ini".to_string(),
+                cause: format!("Failed to read line: {}", e),
+            })?;
+            
+            let trimmed = line.trim();
+
+            // Handle section headers
+            if trimmed.starts_with('[') && trimmed.ends_with(']') {
+                current_section = Some(trimmed[1..trimmed.len() - 1].to_string());
+                lines.push(line);
+                continue;
+            }
+
+            if let Some((key_name, _)) = parse_ini_line(trimmed) {
+                 // Determine what target this line refers to
+                 let line_target = if key_name.eq_ignore_ascii_case("key") {
+                     // If it's "key=...", it refers to the current section
+                     current_section.clone()
+                 } else {
+                     // Otherwise it's "target=..."
+                     Some(key_name.clone())
+                 };
+
+                 if let Some(t) = line_target {
+                     if t.to_lowercase() == target_lower {
+                         found = true;
+                         if let Some(k) = key {
+                             // Preserve the format (either key=value or target=value)
+                             if key_name.eq_ignore_ascii_case("key") {
+                                 lines.push(format!("key={}", hex::encode(k)));
+                             } else {
+                                 lines.push(format!("{}={}", target, hex::encode(k)));
+                             }
+                         }
+                         // If key is None, we skip (delete)
+                         continue;
+                     }
+                 }
+            }
+            lines.push(line);
         }
+    }
+
+    if !found {
+        if let Some(k) = key {
+             lines.push(format!("{}={}", target, hex::encode(k)));
+        }
+    }
+
+    let mut file = fs::File::create(path).map_err(|e| DllError::LegacyError {
+        context: "Updating blowfish.ini".to_string(),
+        cause: format!("Failed to create file: {}", e),
     })?;
 
-    // Write the key
-    file.write_all(line.as_bytes()).map_err(|e| DllError::LegacyError {
-        context: "Writing to blowfish.ini".to_string(),
-        cause: format!("Failed to write: {}", e),
-    })?;
+    for line in lines {
+        writeln!(file, "{}", line).map_err(|e| DllError::LegacyError {
+            context: "Updating blowfish.ini".to_string(),
+            cause: format!("Failed to write: {}", e),
+        })?;
+    }
 
     #[cfg(debug_assertions)]
-    log::debug!("LEGACY: Saved key for '{}' to {}", target, path);
+    if let Some(_) = key {
+        log::debug!("LEGACY: Updated key for '{}' in {}", target, path_str);
+    } else {
+        log::debug!("LEGACY: Removed key for '{}' from {}", target, path_str);
+    }
 
     Ok(())
 }
@@ -268,27 +345,31 @@ pub fn set_encrypt_topic_setting(
     channel: &str,
     enabled: bool,
 ) -> Result<(), DllError> {
+    use ini::Ini;
     let ini_path = get_blowfish_ini_path()?;
 
     let section_name = format!("{}:{}", network, channel);
     let value = if enabled { "1" } else { "0" };
-    let line = format!("[{}]\nencrypt_topic={}\n", section_name, value);
 
-    // Open the file in append mode, create if it doesn't exist
-    let mut file = OpenOptions::new().create(true).append(true).open(&ini_path).map_err(|e| {
-        DllError::LegacyError {
-            context: "Writing to blowfish.ini".to_string(),
-            cause: format!("Failed to open file: {}", e),
-        }
-    })?;
+    let mut conf = if std::path::Path::new(&ini_path).exists() {
+        Ini::load_from_file(&ini_path).map_err(|e| DllError::LegacyError {
+            context: "Loading blowfish.ini".to_string(),
+            cause: format!("Failed to load: {}", e),
+        })?
+    } else {
+        Ini::new()
+    };
 
-    // Write the setting
-    file.write_all(line.as_bytes()).map_err(|e| DllError::LegacyError {
+    conf.with_section(Some(section_name.clone()))
+        .set("encrypt_topic", value);
+
+    conf.write_to_file(&ini_path).map_err(|e| DllError::LegacyError {
         context: "Writing to blowfish.ini".to_string(),
         cause: format!("Failed to write: {}", e),
     })?;
 
-    log::debug!("LEGACY: Set encrypt_topic={} for {}:{}", enabled, network, channel);
+    #[cfg(debug_assertions)]
+    log::debug!("LEGACY: Set encrypt_topic={} for {}", enabled, section_name);
 
     Ok(())
 }

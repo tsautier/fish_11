@@ -12,7 +12,7 @@ use std::os::raw::c_int;
 
 dll_function_identifier!(FiSH10_SetKey, data, {
     // Parse input: <target> <key>
-    let mut input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
+    let input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
     let parsed = utility::parse_input(&input_str)?;
 
     let target = parsed.target.to_lowercase();

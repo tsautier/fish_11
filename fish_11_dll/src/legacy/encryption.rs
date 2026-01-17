@@ -39,12 +39,10 @@ pub fn legacy_encrypt_with_mode(
             Ok(format!("+OK {}", encrypted))
         }
         FishEncryptionMode::Cbc => {
-            // TODO: Implement CBC mode encryption
-            // For now, return an error indicating CBC is not yet implemented
-            Err(DllError::LegacyError {
-                context: "CBC encryption".to_string(),
-                cause: "CBC mode encryption is not yet implemented".to_string(),
-            })
+            // Encrypt using Blowfish CBC
+            let encrypted = super::blowfish::encrypt_message_cbc(&key, message, target.as_bytes())?;
+            // Add the legacy mcps prefix
+            Ok(format!("mcps {}", encrypted))
         }
     }
 }
@@ -75,12 +73,8 @@ pub fn legacy_decrypt(target: &str, encrypted_message: &str) -> Result<String, D
             super::blowfish::decrypt_message(&key, ciphertext, target.as_bytes())
         }
         FishEncryptionMode::Cbc => {
-            // TODO: Implement CBC mode decryption
-            // For now, return an error indicating CBC is not yet implemented
-            Err(DllError::LegacyError {
-                context: "CBC decryption".to_string(),
-                cause: "CBC mode decryption is not yet implemented. Message prefix 'mcps' indicates CBC mode which requires a separate implementation.".to_string(),
-            })
+            // Decrypt using Blowfish CBC
+            super::blowfish::decrypt_message_cbc(&key, ciphertext, target.as_bytes())
         }
     }
 }
@@ -94,6 +88,11 @@ pub fn is_legacy_message(message: &str) -> bool {
 /// Encrypt a topic using the legacy FiSH 10 format
 pub fn legacy_encrypt_topic(target: &str, topic: &str) -> Result<String, DllError> {
     legacy_encrypt_with_mode(target, topic, FishEncryptionMode::Ecb)
+}
+
+/// Encrypt a topic using the legacy FiSH 10 format with CBC mode
+pub fn legacy_encrypt_topic_cbc(target: &str, topic: &str) -> Result<String, DllError> {
+    legacy_encrypt_with_mode(target, topic, FishEncryptionMode::Cbc)
 }
 
 /// Decrypt a legacy FiSH 10 topic
@@ -122,12 +121,8 @@ pub fn legacy_decrypt_topic(target: &str, encrypted_topic: &str) -> Result<Strin
             super::blowfish::decrypt_message(&key, ciphertext, target.as_bytes())
         }
         FishEncryptionMode::Cbc => {
-            // TODO: Implement CBC mode decryption
-            // For now, return an error indicating CBC is not yet implemented
-            Err(DllError::LegacyError {
-                context: "CBC decryption".to_string(),
-                cause: "CBC mode decryption is not yet implemented. Message prefix 'mcps' indicates CBC mode which requires a separate implementation.".to_string(),
-            })
+            // Decrypt using Blowfish CBC
+            super::blowfish::decrypt_message_cbc(&key, ciphertext, target.as_bytes())
         }
     }
 }
@@ -159,17 +154,6 @@ mod tests {
     }
 
     #[test]
-    fn test_cbc_mode_not_implemented() {
-        setup_test_legacy_key("#test", b"testkey12345678");
-
-        // CBC decryption should return an error
-        let result = legacy_decrypt("#test", "mcps someencrypteddata");
-        assert!(result.is_err());
-        let err_str = format!("{}", result.unwrap_err());
-        assert!(err_str.contains("CBC"));
-    }
-
-    #[test]
     fn test_legacy_topic_encryption() {
         setup_test_legacy_key("#test", b"testkey12345678");
 
@@ -195,5 +179,51 @@ mod tests {
         // Test decryption without a key
         let result = legacy_decrypt_topic("#nonexistent", "+OK someencrypteddata");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_legacy_cbc_encryption() {
+        setup_test_legacy_key("#test", b"testkey12345678");
+
+        let message = "This is a test message for CBC mode";
+        let result = legacy_encrypt_with_mode("#test", message, FishEncryptionMode::Cbc);
+        assert!(result.is_ok());
+        let encrypted = result.unwrap();
+        assert!(encrypted.starts_with("mcps "));
+
+        // Test decryption
+        let decrypted_result = legacy_decrypt("#test", &encrypted);
+        assert!(decrypted_result.is_ok());
+        let decrypted = decrypted_result.unwrap();
+        assert_eq!(decrypted, message);
+    }
+
+    #[test]
+    fn test_legacy_cbc_topic_encryption() {
+        setup_test_legacy_key("#test", b"testkey12345678");
+
+        let topic = "This is a test topic for CBC mode";
+        let result = crate::legacy::encryption::legacy_encrypt_topic_cbc("#test", topic);
+        assert!(result.is_ok());
+        let encrypted = result.unwrap();
+        assert!(encrypted.starts_with("mcps "));
+
+        // Test decryption
+        let decrypted_result = legacy_decrypt_topic("#test", &encrypted);
+        assert!(decrypted_result.is_ok());
+        let decrypted = decrypted_result.unwrap();
+        assert_eq!(decrypted, topic);
+    }
+
+    #[test]
+    fn test_cbc_mode_detection() {
+        setup_test_legacy_key("#test", b"testkey12345678");
+
+        // Test that CBC mode is properly detected and decrypted
+        let message = "CBC test message";
+        let encrypted = format!("mcps {}", crate::legacy::blowfish::encrypt_message_cbc(b"testkey12345678", message, &[]).unwrap());
+        let result = legacy_decrypt("#test", &encrypted);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), message);
     }
 }

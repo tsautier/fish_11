@@ -8,9 +8,9 @@ use crate::{buffer_utils, dll_function_identifier, legacy, log_debug};
 use std::ffi::c_char;
 use std::os::raw::c_int;
 
-/// Check if a target has a legacy FiSH 10 key
-/// Input: <target>
-/// Returns: "1" if key exists, "0" if not
+// Check if a target has a legacy FiSH 10 key
+// Input: <target>
+// Returns: "1" if key exists, "0" if not
 dll_function_identifier!(FiSH10_HasKey, data, {
     let input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
     let target = crate::utils::normalize_target_lowercase(&input_str);
@@ -28,9 +28,9 @@ dll_function_identifier!(FiSH10_HasKey, data, {
     Ok(if has_key { "1".to_string() } else { "0".to_string() })
 });
 
-/// Get legacy key info for a target
-/// Input: <target>
-/// Returns: key info string or error
+// Get legacy key info for a target
+// Input: <target>
+// Returns: key info string or error
 dll_function_identifier!(FiSH10_GetKeyInfo, data, {
     let input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
     let target = crate::utils::normalize_target_lowercase(&input_str);

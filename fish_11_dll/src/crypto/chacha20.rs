@@ -169,12 +169,7 @@ pub fn encrypt_message(
     }
 
     // Increment encryption counter
-    crate::config::with_config(|config| {
-        let mut config_mut = config.clone();
-        config_mut.metrics.encryption_count = config_mut.metrics.encryption_count.saturating_add(1);
-        Ok(config_mut)
-    })
-    .ok();
+    crate::config::increment_encryption_counter();
 
     // Base64 encode the result
     Ok(base64_encode(&result))
@@ -243,12 +238,7 @@ pub fn decrypt_message(
     }
 
     // Increment decryption counter
-    crate::config::with_config(|config| {
-        let mut config_mut = config.clone();
-        config_mut.metrics.decryption_count = config_mut.metrics.decryption_count.saturating_add(1);
-        Ok(config_mut)
-    })
-    .ok();
+    crate::config::increment_decryption_counter();
 
     // Convert to string
     String::from_utf8(plaintext)

@@ -74,7 +74,6 @@ dll_function_identifier!(FiSH11_MasterKeyInit, data, {
             keystore.set_password_verifier(&verifier);
 
             if let Err(e) = keystore.save() {
-                use crate::dll_interface::{CStr, ptr};
                 log::warn!("Failed to save keystore: {}", e);
             }
 

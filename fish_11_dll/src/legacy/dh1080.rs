@@ -22,6 +22,7 @@ const DH1080_PRIME_HEX: &str = "FBE1022E23D213E8ACFA9AE8B9DFADA3EA6B7AC7A7B7E95A
 const DH1080_GENERATOR: u32 = 2;
 
 /// Standard Base64 alphabet for DH1080 key exchange (NOT the FiSH message alphabet)
+#[allow(dead_code)]
 const DH1080_B64_ABC: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /// FiSH 10 specific Base64 alphabet for encrypted messages (NOT for DH keys)
@@ -29,9 +30,11 @@ const DH1080_B64_ABC: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv
 const FISH10_B64_ABC: &[u8] = b"./0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 /// Expected length of DH1080 public key in bytes (1080 bits = 135 bytes)
+#[allow(dead_code)]
 const DH1080_KEY_BYTES: usize = 135;
 
 /// Expected length of DH1080 public key in base64 (180 chars + 'A' = 181)
+#[allow(dead_code)]
 const DH1080_PUBKEY_B64_LEN: usize = 181;
 
 /// DH1080 Base64 encoding for public keys

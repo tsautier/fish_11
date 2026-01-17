@@ -91,28 +91,28 @@ pub mod test_utils {
 
     /// Setup a test legacy key for testing purposes
     pub fn setup_test_legacy_key(target: &str, key: &[u8]) {
-        let mut config = LEGACY_CONFIG.write();
+        let config = LEGACY_CONFIG.write();
         let mut keys = config.legacy_keys.write();
         keys.insert(target.to_string(), key.to_vec());
     }
 
     /// Clear all test legacy keys
     pub fn clear_test_legacy_keys() {
-        let mut config = LEGACY_CONFIG.write();
+        let config = LEGACY_CONFIG.write();
         let mut keys = config.legacy_keys.write();
         keys.clear();
     }
 
     /// Setup a test DH1080 key for testing purposes
     pub fn setup_test_dh1080_key(target: &str, private_key: num_bigint::BigUint) {
-        let mut config = LEGACY_CONFIG.write();
+        let config = LEGACY_CONFIG.write();
         let mut keys = config.dh1080_keys.write();
         keys.insert(target.to_string(), private_key);
     }
 
     /// Clear all test DH1080 keys
     pub fn clear_test_dh1080_keys() {
-        let mut config = LEGACY_CONFIG.write();
+        let config = LEGACY_CONFIG.write();
         let mut keys = config.dh1080_keys.write();
         keys.clear();
     }
@@ -298,7 +298,7 @@ mod integration_tests {
 
             // Encrypt the topic
             let encrypted = blowfish::encrypt_message(&key_bytes, plaintext_topic, &[]).unwrap();
-            let encrypted_with_prefix = format!("+OK {}", encrypted);
+            let _encrypted_with_prefix = format!("+OK {}", encrypted);
 
             // Decrypt the topic using the same key
             let decrypted = blowfish::decrypt_message(&key_bytes, &encrypted, &[]).unwrap();

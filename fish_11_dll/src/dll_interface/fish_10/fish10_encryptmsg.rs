@@ -54,7 +54,7 @@ fn fish10_encrypt_msg_impl(input: &str) -> Result<String, DllError> {
 
 dll_function_identifier!(FiSH10_EncryptMsg, data, {
     // Parse input: <target> <plaintext_message>
-    let mut input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
+    let input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
     fish10_encrypt_msg_impl(&input_str)
 });
 

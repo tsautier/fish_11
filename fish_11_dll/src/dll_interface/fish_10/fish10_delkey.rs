@@ -3,7 +3,6 @@
 //! This function allows removing legacy Blowfish keys for compatibility
 //! with FiSH 10 encryption.
 
-use crate::dll_interface::utility;
 use crate::platform_types::{BOOL, HWND, c_char, c_int};
 use crate::unified_error::DllError;
 use crate::{buffer_utils, dll_function_identifier, legacy, log_debug, log_info};

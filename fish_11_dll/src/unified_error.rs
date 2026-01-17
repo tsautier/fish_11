@@ -476,6 +476,7 @@ macro_rules! dll_function {
                 };
 
                 // Bind the identifier expected by existing function bodies
+                #[allow(unused_variables)]
                 let $data = input_ptr;
                 $body
             }
@@ -559,6 +560,7 @@ macro_rules! dll_function_identifier {
                     }
                 };
 
+                #[allow(unused_variables)]
                 let $data = input_ptr;
                 $body
             }

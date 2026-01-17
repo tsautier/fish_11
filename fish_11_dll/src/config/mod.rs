@@ -22,6 +22,8 @@ pub use settings::{
     should_process_incoming, should_process_outgoing, update_fish11_config, update_startup_time,
 };
 pub use state_management::{add_nonce, check_nonce, init_ratchet_state, with_ratchet_state_mut};
+
+
 pub mod settings;
 pub mod state_management;
 pub use channel_key_utils::{get_channel_key_type, get_channel_key_with_fallback, has_channel_key};
@@ -249,4 +251,28 @@ pub fn get_decryption_count() -> Result<usize, crate::error::FishError> {
 /// Get the count of key exchange operations
 pub fn get_key_exchange_count() -> Result<usize, crate::error::FishError> {
     with_config(|config| Ok(config.metrics.key_exchange_count))
+}
+
+/// Increment encryption counter
+pub fn increment_encryption_counter() {
+    with_config_mut(|config| {
+        config.metrics.encryption_count = config.metrics.encryption_count.saturating_add(1);
+        Ok(())
+    }).ok();
+}
+
+/// Increment decryption counter
+pub fn increment_decryption_counter() {
+    with_config_mut(|config| {
+        config.metrics.decryption_count = config.metrics.decryption_count.saturating_add(1);
+        Ok(())
+    }).ok();
+}
+
+/// Increment key exchange counter
+pub fn increment_key_exchange_counter() {
+    with_config_mut(|config| {
+        config.metrics.key_exchange_count = config.metrics.key_exchange_count.saturating_add(1);
+        Ok(())
+    }).ok();
 }

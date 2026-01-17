@@ -60,6 +60,7 @@ static _INIT_ONCE: std::sync::Once = std::sync::Once::new();
 
 /// Basic buffer size retrieval - does not include fallback to MIRC_BUFFER_SIZE
 /// For external use, prefer the module-level get_buffer_size() function
+#[allow(dead_code)]
 pub(crate) fn get_buffer_size_basic() -> usize {
     // Single lock acquisition
     let guard_result = LOAD_INFO.lock();
@@ -205,8 +206,8 @@ pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
 
     // Create a structure to hold mIRC client info for logging
     let mut mirc_version = String::from("Unknown mIRC version");
-    let mut buffer_size = DEFAULT_MIRC_BUFFER_SIZE;
-    let mut unicode_mode = false;
+    let buffer_size: usize;
+    let unicode_mode: bool;
 
     if !load.is_null() {
         unsafe {
@@ -239,6 +240,8 @@ pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
             log::info!("CONFIG [mIRC]: unicode_mode = {}", unicode_mode);
         }
     } else {
+        let _buffer_size = DEFAULT_MIRC_BUFFER_SIZE;
+        let _unicode_mode = false;
         // Log the null pointer situation
         #[cfg(debug_assertions)]
         log::warn!("LoadDll called with null pointer - using default buffer size");

@@ -159,7 +159,6 @@ impl FileWriter {
     fn rotate_files(&self) -> Result<(), LogError> {
         use std::fs;
         use std::io::Write;
-        use std::time::{SystemTime, UNIX_EPOCH};
 
         // Clean up any stale lock files from previous crashes
         self.cleanup_stale_lock_files()?;

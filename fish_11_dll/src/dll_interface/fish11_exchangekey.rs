@@ -1,6 +1,6 @@
 use crate::config::{CONFIG, get_key, get_keypair, save_config, set_key, store_keypair};
 use crate::crypto::x25519::{X25519KeyExchange, X25519KeyPair, format_public_key};
-use crate::crypto::{KeyExchange, KeyPair};
+use crate::crypto::KeyExchange;
 use crate::dll_interface::KEY_EXCHANGE_TIMEOUT_SECONDS;
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::{DllError, DllResult};
@@ -214,13 +214,7 @@ dll_function_identifier!(FiSH11_ExchangeKey, data, {
     log_info!("=== Key exchange (serial {:?}) completed ===", start_time);
 
     // Increment key exchange counter
-    crate::config::with_config(|config| {
-        let mut config_mut = config.clone();
-        config_mut.metrics.key_exchange_count =
-            config_mut.metrics.key_exchange_count.saturating_add(1);
-        Ok(config_mut)
-    })
-    .ok();
+    crate::config::increment_key_exchange_counter();
 
     // SECURITY: Clear the source buffer from memory
     crate::utils::secure_clear_string(&mut input);
@@ -364,6 +358,7 @@ fn get_or_generate_keypair_internal() -> DllResult<(X25519KeyPair, bool)> {
 
 /// Get or generate our Curve25519 keypair
 /// TODO : this is a public API for backward compatibility, need to fix this later
+#[allow(dead_code)]
 fn get_or_generate_keypair() -> DllResult<X25519KeyPair> {
     get_or_generate_keypair_internal().map(|(kp, _)| kp)
 }
