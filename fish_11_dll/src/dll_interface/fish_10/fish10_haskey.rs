@@ -50,6 +50,28 @@ dll_function_identifier!(FiSH10_GetKeyInfo, data, {
     }
 });
 
+// Get the actual hex-encoded legacy key for a target
+// Input: <target>
+// Returns: hex-encoded key or error
+dll_function_identifier!(FiSH10_GetKey, data, {
+    let input_str = unsafe { buffer_utils::parse_buffer_input(data)? };
+    let target = crate::utils::normalize_target_lowercase(&input_str);
+
+    if target.is_empty() {
+        return Err(DllError::MissingParameter("target".to_string()));
+    }
+
+    // Get the legacy key for this target
+    if let Some(key) = legacy::get_legacy_key(&target) {
+        #[cfg(debug_assertions)]
+        log_debug!("FiSH10_GetKey: retrieved legacy key for '{}'", target);
+
+        Ok(hex::encode(key))
+    } else {
+        Err(DllError::KeyNotFound(target.to_string()))
+    }
+});
+
 #[cfg(test)]
 mod tests {
     use super::*;

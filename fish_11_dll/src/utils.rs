@@ -1,6 +1,7 @@
 use crate::dll_interface::NICK_VALIDATOR;
 use crate::error::FishError;
 use crate::{buffer_utils, log_debug, log_error, log_warn};
+pub mod key_derivation;
 use base64;
 use base64::Engine;
 use rand::Rng;

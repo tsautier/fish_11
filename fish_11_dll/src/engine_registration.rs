@@ -215,20 +215,28 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
 
     // Extract target from command part
     // Could be "PRIVMSG #channel" or ":prefix PRIVMSG #channel"
-    let (target, is_topic) = if let Some(privmsg_pos) = cmd_part.find(" PRIVMSG ") {
-        (cmd_part[privmsg_pos + 9..].trim(), false)
+    let (target_part, is_topic) = if let Some(privmsg_pos) = cmd_part.find(" PRIVMSG ") {
+        (&cmd_part[privmsg_pos + 9..], false)
+    } else if cmd_part.starts_with("PRIVMSG ") {
+        (&cmd_part[8..], false)
     } else if let Some(notice_pos) = cmd_part.find(" NOTICE ") {
-        (cmd_part[notice_pos + 8..].trim(), false)
+        (&cmd_part[notice_pos + 8..], false)
+    } else if cmd_part.starts_with("NOTICE ") {
+        (&cmd_part[7..], false)
     } else if let Some(topic_pos) = cmd_part.find(" TOPIC ") {
-        (cmd_part[topic_pos + 7..].trim(), true)
+        (&cmd_part[topic_pos + 7..], true)
+    } else if cmd_part.starts_with("TOPIC ") {
+        (&cmd_part[6..], true)
     } else {
         #[cfg(debug_assertions)]
-        log_warn!("Engine: could not extract target from command part");
+        log_warn!("Engine: could not extract target from command part: {}", cmd_part);
         return None;
     };
 
+    let target = target_part.trim();
+
     #[cfg(debug_assertions)]
-    log_debug!("Engine: target={}, message_len={}", target, message.len());
+    log_debug!("Engine: extracted target={}, is_topic={}", target, is_topic);
 
     // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan, etc.)
     let target = crate::utils::normalize_target(target);
@@ -511,7 +519,7 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
     // Reconstruct line with encrypted data
     // Keep prefix if present, replace message with configurable prefix + encrypted data or "+FCEP_TOPIC+ <encrypted>"
     // Add \r\n for IRC protocol compliance
-    let prefix = if is_topic {
+    let prefix = if is_topic && !used_legacy {
         "+FCEP_TOPIC+"
     } else if used_legacy {
         "+OK"

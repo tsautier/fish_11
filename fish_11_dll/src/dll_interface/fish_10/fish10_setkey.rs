@@ -16,35 +16,10 @@ dll_function_identifier!(FiSH10_SetKey, data, {
     let parsed = utility::parse_input(&input_str)?;
 
     let target = parsed.target.to_lowercase();
-    let key_hex = parsed.message.trim();
+    let key_input = parsed.message.trim();
 
-    // Validate key length - Blowfish keys should be between 4 and 56 bytes
-    let key_bytes = hex::decode(key_hex).map_err(|e| DllError::LegacyError {
-        context: "Key decoding failed".to_string(),
-        cause: format!("Invalid hex key: {}", e),
-    })?;
-
-    if key_bytes.len() < 4 || key_bytes.len() > 56 {
-        return Err(DllError::LegacyError {
-            context: format!("Invalid key length for '{}'", target),
-            cause: format!("Blowfish keys must be 4-56 bytes (got {})", key_bytes.len()),
-        });
-    }
-
-    #[cfg(debug_assertions)]
-    log_debug!("FiSH10: setting legacy key for '{}' (length: {})", target, key_bytes.len());
-
-    // Store the key in the legacy key store
-    let config = legacy::LEGACY_CONFIG.write();
-    let mut keys = config.legacy_keys.write();
-    keys.insert(target.to_string(), key_bytes.clone());
-
-    // Also save to persistent storage if configured
-    if let Some(ini_path) = &config.blowfish_ini_path {
-        if let Err(e) = legacy::fish10_config::save_key_to_blowfish_ini(&target, &key_bytes, ini_path) {
-            log_warn!("FiSH10: Failed to save key to blowfish.ini: {}", e);
-        }
-    }
+    // Use the enhanced set_legacy_key function that handles both hex and plain text
+    legacy::set_legacy_key(&target, key_input)?;
 
     log_info!("FiSH10: Successfully set legacy key for '{}'", target);
 
@@ -59,36 +34,10 @@ mod tests {
     fn fish10_set_key_impl(input: &str) -> Result<String, DllError> {
         let parsed = utility::parse_input(input)?;
         let target = parsed.target;
-        let key_hex = parsed.message.trim();
+        let key_input = parsed.message.trim();
 
-        let key_bytes = hex::decode(key_hex).map_err(|e| DllError::LegacyError {
-            context: "Key decoding failed".to_string(),
-            cause: format!("Invalid hex key: {}", e),
-        })?;
-
-        if key_bytes.len() < 4 || key_bytes.len() > 56 {
-            return Err(DllError::LegacyError {
-                context: format!("Invalid key length for '{}'", target),
-                cause: format!("Blowfish keys must be 4-56 bytes (got {})", key_bytes.len()),
-            });
-        }
-
-        #[cfg(debug_assertions)]
-        log_debug!("FiSH10: setting legacy key for '{}' (length: {})", target, key_bytes.len());
-
-        // Store the key in the legacy key store
-        let config = legacy::LEGACY_CONFIG.write();
-        let mut keys = config.legacy_keys.write();
-
-        keys.insert(target.to_string(), key_bytes.clone());
-
-        // Also save to persistent storage if configured
-        if let Some(ini_path) = &config.blowfish_ini_path {
-            if let Err(e) = legacy::fish10_config::save_key_to_blowfish_ini(&target, &key_bytes, ini_path)
-            {
-                log::warn!("FiSH10: failed to save key to blowfish.ini: {}", e);
-            }
-        }
+        // Use the enhanced set_legacy_key function that handles both hex and plain text
+        legacy::set_legacy_key(&target, key_input)?;
 
         #[cfg(debug_assertions)]
         log_debug!("FiSH10: successfully set legacy key for '{}'", target);
@@ -100,6 +49,13 @@ mod tests {
     fn test_fish10_set_key_valid() {
         // Test with valid hex key
         let result = fish10_set_key_impl("#test 6162636465666768"); // "abcdefgh" in hex
+        assert!(result.unwrap().contains("Legacy key set"));
+    }
+
+    #[test]
+    fn test_fish10_set_key_valid_text() {
+        // Test with plain text key (should be converted to hex internally)
+        let result = fish10_set_key_impl("#test MyPlainTextKey");
         assert!(result.unwrap().contains("Legacy key set"));
     }
 

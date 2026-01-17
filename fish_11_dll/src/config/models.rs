@@ -21,7 +21,7 @@ const MAX_PREVIOUS_KEYS: usize = 2;
 /// - Memory: 1.2 KB per channel
 /// - Protection window: ~100 messages (depends on traffic)
 ///
-/// Security trade-off: Larger cache = longer replay protection but more memory.
+/// Security trade-off: larger cache = longer replay protection but more memory.
 const MAX_NONCE_CACHE_SIZE: usize = 100;
 
 /// Data for an entry (user or channel)
@@ -44,12 +44,8 @@ pub struct Fish11Section {
     pub mark_position: u8,
     pub mark_encrypted: String,
     pub no_fish10_legacy: bool,
-    /// Time-to-live for exchange keys in seconds (default: 86400 = 24 hours)
-    /// Valid range: 3600 (1 hour) to 604800 (7 days)
     pub key_ttl: Option<i64>,
-    /// Prefix to use for encrypted messages (default: "+FiSH")
     pub encryption_prefix: String,
-    /// Whether to use fish prefix (default: false/0)
     pub fish_prefix: bool,
 }
 
@@ -176,6 +172,8 @@ pub struct FishConfig {
     pub channel_ratchet_states: HashMap<String, RatchetState>,
     /// Channel nonce caches for anti-replay
     pub channel_nonce_caches: HashMap<String, NonceCache>,
+    /// Plaintext topics for channels
+    pub topics: HashMap<String, String>,
     /// Encryption metrics
     pub metrics: EncryptionMetrics,
     /// Tracks if configuration has unsaved changes (not serialized)
@@ -200,6 +198,7 @@ impl FishConfig {
             channel_keys: HashMap::new(),
             channel_ratchet_states: HashMap::new(),
             channel_nonce_caches: HashMap::new(),
+            topics: HashMap::new(),
             metrics: EncryptionMetrics::default(),
             dirty: std::cell::Cell::new(false),
         }

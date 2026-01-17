@@ -10,6 +10,7 @@ pub mod fish10_engine;
 pub mod fish10_key_management;
 pub mod fish10_message_detection;
 pub mod fish10_integration_tests;
+pub mod fish10_topics;
 
 use crate::unified_error::DllError;
 use parking_lot::RwLock;
@@ -68,6 +69,11 @@ pub fn get_legacy_key(target: &str) -> Option<Vec<u8>> {
     keys.get(target).cloned()
 }
 
+/// Set a legacy key for a target
+pub fn set_legacy_key(target: &str, key_input: &str) -> Result<(), DllError> {
+    crate::legacy::fish10_key_management::set_legacy_key(target, key_input)
+}
+
 /// Get the FiSH 10 engine pointer for registration with fish_inject
 pub fn get_fish10_engine_ptr() -> Option<*const fish10_engine::Fish10Engine> {
     fish10_engine::get_fish10_engine()
@@ -85,6 +91,27 @@ pub fn set_encrypt_topic_setting(
     enabled: bool,
 ) -> Result<(), DllError> {
     fish10_config::set_encrypt_topic_setting(network, channel, enabled)
+}
+
+/// Set a plaintext topic for a channel in the legacy fish10 section
+pub fn set_legacy_topic(channel: &str, topic: &str) -> Result<(), DllError> {
+    crate::config::with_config_mut(|config| {
+        fish10_topics::set_legacy_topic(config, channel, topic)
+    }).map_err(DllError::from)
+}
+
+/// Get a plaintext topic for a channel from the legacy fish10 section
+pub fn get_legacy_topic(channel: &str) -> Result<Option<String>, DllError> {
+    crate::config::with_config(|config| {
+        fish10_topics::get_legacy_topic(config, channel)
+    }).map_err(DllError::from)
+}
+
+/// Remove a plaintext topic for a channel from the legacy fish10 section
+pub fn remove_legacy_topic(channel: &str) -> Result<bool, DllError> {
+    crate::config::with_config_mut(|config| {
+        fish10_topics::remove_legacy_topic(config, channel)
+    }).map_err(DllError::from)
 }
 
 #[cfg(test)]

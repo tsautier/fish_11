@@ -8,12 +8,21 @@ use crate::crypto::dh1080;
 use std::sync::Arc;
 
 /// Set a legacy key for a target
-pub fn set_legacy_key(target: &str, key_hex: &str) -> Result<(), DllError> {
-    // Decode the hex key
-    let key_bytes = hex::decode(key_hex).map_err(|e| DllError::LegacyError {
-        context: format!("Setting key for '{}'", target),
-        cause: format!("Invalid hex key: {}", e),
-    })?;
+///
+/// This function accepts both hexadecimal keys and plain text keys.
+/// If the key is not a valid hex string, it will be treated as plain text and converted to a key.
+pub fn set_legacy_key(target: &str, key_input: &str) -> Result<(), DllError> {
+    // Try to decode as hex first
+    let key_bytes = if is_valid_hex_string(key_input) {
+        // It's a hex string, decode it directly
+        hex::decode(key_input).map_err(|e| DllError::LegacyError {
+            context: format!("Setting key for '{}'", target),
+            cause: format!("Invalid hex key: {}", e),
+        })?
+    } else {
+        // It's not a valid hex string, treat as plain text and convert
+        convert_text_to_key(key_input)
+    };
 
     // Validate key length
     if key_bytes.len() < 4 || key_bytes.len() > 56 {
@@ -43,6 +52,23 @@ pub fn set_legacy_key(target: &str, key_hex: &str) -> Result<(), DllError> {
 
     log::info!("Set legacy key for '{}'", target);
     Ok(())
+}
+
+/// Check if a string is a valid hex string (even number of characters)
+fn is_valid_hex_string(s: &str) -> bool {
+    if s.len() % 2 != 0 {
+        // Hex strings must have even number of characters
+        return false;
+    }
+
+    // Check if all characters are valid hex digits
+    s.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Convert plain text to a key using SHA-256 hashing
+/// This is similar to the password_to_key function but uses SHA-256 for better security
+pub fn convert_text_to_key(text: &str) -> Vec<u8> {
+    crate::utils::key_derivation::text_to_legacy_key(text)
 }
 
 /// Remove a legacy key for a target
@@ -114,6 +140,12 @@ pub fn password_to_key(password: &str) -> Vec<u8> {
 
     // Take first 16 bytes (128 bits) for Blowfish
     result[..16].to_vec()
+}
+
+/// Convert text to a key using SHA-256 hashing (enhanced security)
+/// This is used for converting plain text to keys when hex format is not provided
+pub fn text_to_key(text: &str) -> Vec<u8> {
+    crate::utils::key_derivation::text_to_legacy_key(text)
 }
 
 /// Generate DH1080 key pair for FiSH 10 key exchange

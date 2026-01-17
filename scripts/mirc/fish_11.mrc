@@ -1173,7 +1173,7 @@ alias fish11_help {
   else {
     echo $color(Mode text) -at *** FiSH: help information unavailable
   }
-  
+
   ; Add Master Key help
   echo $color(Mode text) -at $chr(160)
   echo $color(Mode text) -at *** FiSH_11 Master Key commands:
@@ -1182,7 +1182,7 @@ alias fish11_help {
   echo $color(Mode text) -at *** /fish11_masterkey_status - Show master key status
   echo $color(Mode text) -at ***   When unlocked: configuration and logs are encrypted with Argon2id + ChaCha20-Poly1305
   echo $color(Mode text) -at ***   When locked: configuration and logs are stored in plaintext
-  
+
   ; Add FCEP-1 help
   echo $color(Mode text) -at $chr(160)
   echo $color(Mode text) -at *** FiSH_11 FCEP-1 (Channel Encryption v1) commands:
@@ -1193,6 +1193,25 @@ alias fish11_help {
   echo $color(Mode text) -at $chr(160)
   echo $color(Mode text) -at *** FCEP-1 automatically decrypts incoming channel messages
   echo $color(Mode text) -at *** Channel names are case-insensitive (#Secret = #secret)
+
+  ; Add plaintext topic commands
+  echo $color(Mode text) -at $chr(160)
+  echo $color(Mode text) -at *** FiSH_11 Plaintext Topic commands:
+  echo $color(Mode text) -at *** /settopic <#channel> <topic> - Set a plaintext topic for a channel
+  echo $color(Mode text) -at *** /gettopic <#channel> - Get the plaintext topic for a channel
+  echo $color(Mode text) -at *** /removetopic <#channel> - Remove the plaintext topic for a channel
+  echo $color(Mode text) -at *** /etopic <topic> - Encrypt and set a topic for the current channel
+  echo $color(Mode text) -at $chr(160)
+  echo $color(Mode text) -at *** Plaintext topics are stored in the configuration file and can be retrieved later
+
+  ; Add legacy fish10 topic commands
+  echo $color(Mode text) -at $chr(160)
+  echo $color(Mode text) -at *** FiSH_10 Legacy Topic commands:
+  echo $color(Mode text) -at *** /fish10_settopic <#channel> <topic> - Set a plaintext topic in legacy format
+  echo $color(Mode text) -at *** /fish10_gettopic <#channel> - Get a plaintext topic from legacy format
+  echo $color(Mode text) -at *** /fish10_removetopic <#channel> - Remove a plaintext topic from legacy format
+  echo $color(Mode text) -at $chr(160)
+  echo $color(Mode text) -at *** Legacy topics are stored in the configuration file with fish10 compatibility
 }
 
 
@@ -1453,6 +1472,16 @@ menu channel {
     var %topic = $?="Enter encrypted topic for " $+ $chan $+ ":"
     if (%topic != $null) etopic %topic
   }
+  .Set topic (plaintext) :{
+    var %topic = $?="Enter plaintext topic for " $+ $chan $+ ":"
+    if (%topic != $null) settopic $chan %topic
+  }
+  .Get topic (plaintext) :{
+    var %result = $gettopic($chan)
+    if (%result != $null) {
+      echo $color(Mode text) -at *** FiSH_11: Topic for $chan is: %result
+    }
+  }
   .-
   .Encrypted logging
   ..Set key for encrypted logging:/fish11_setlogkey
@@ -1576,7 +1605,7 @@ menu status,channel,nicklist,query {
   .-
   .Set topic (encrypted) :{
     ; Only allow in channel windows
-    if ($chantype($active) != # && $chantype($active) != &) {
+    if ($window($active).type != channel) {
       echo $color(Mode text) -at *** FiSH_11: etopic can only be used in channel windows
       return
     }
@@ -1694,6 +1723,16 @@ menu status,channel,nicklist,query {
   .Set legacy key... :{ var %key = $?="Enter hex Blowfish key (4-56 bytes):" | if (%key != $null) fish10_setkey $active %key }
   .Remove legacy key :fish10_delkey $active
   .-
+  .Set topic (encrypted) :{
+    ; Only allow in channel windows
+    if ($window($active).type != channel) {
+      echo $color(Mode text) -at *** FiSH_10: etopic can only be used in channel windows
+      return
+    }
+    var %topic = $?="Enter encrypted topic for " $+ $active $+ ":"
+    if (%topic != $null) etopic %topic
+  }
+  .-
   .About FiSH_10 compatibility :{
     echo $color(Mode text) -at *** FiSH_10 Legacy Compatibility
     echo $color(Mode text) -at *** Supports DH1080 key exchange and Blowfish ECB encryption
@@ -1764,19 +1803,23 @@ menu @iniviewer {
 ; Encrypted topic alias - transparently encrypts the topic via the injection hook
 alias etopic {
   ; Check if we're in a channel window
-  if ($chantype($active) != # && $chantype($active) != &) {
+  if ($window($active).type != channel) {
     echo $color(Mode text) -at *** FiSH_11: etopic can only be used in channel windows
     return
   }
 
   ; Check if there's a key for this channel (both traditional and FCEP-1)
   var %channelKey = $dll(%Fish11DllFile, FiSH11_FileGetKey, $active)
-  if (%channelKey == $null) {
+  if ($left(%channelKey, 6) == Error:) { set %channelKey $null }
+
+  var %hasLegacyKey = $dll(%Fish11DllFile, FiSH10_HasKey, $active)
+
+  if (%channelKey == $null && %hasLegacyKey != 1) {
     ; No key exists, but the engine may still try to encrypt if a channel key exists
     ; This will be handled by the engine registration code
     echo $color(Mode text) -at *** FiSH_11: no encryption key found for $active, topic will be sent in plain text
   } else {
-    echo $color(Mode text) -at *** FiSH_11: topic will be encrypted for $active
+    echo $color(Mode text) -at *** FiSH_11: topic will be encrypted for $active $+ $iif(%hasLegacyKey == 1, (FiSH 10 legacy))
   }
 
   ; Execute the topic command - encryption will be handled by the engine
@@ -1784,6 +1827,85 @@ alias etopic {
 
   ; Clean up variables
   unset %channelKey
+}
+
+; Set a plaintext topic for a channel
+alias settopic {
+  if ($1 == $null || $2- == $null) {
+    echo 4 -a Syntax: /settopic <#channel> <topic>
+    return
+  }
+
+  var %channel = $1
+  var %topic = $2-
+
+  ; Validate channel name
+  if (!$regex(%channel, /^[#&]/)) {
+    echo $color(Error) -at *** FiSH_11 ERROR: Invalid channel name %channel (must start with # or &)
+    return
+  }
+
+  var %result = $dll(%Fish11DllFile, FiSH11_SetTopic, $+(%channel, $chr(32), %topic))
+
+  if (%result && $left(%result, 6) != Error:) {
+    echo $color(Mode text) -at *** FiSH_11: %result
+  }
+  else {
+    var %error_msg = $iif(%result, %result, "Unknown error - could not set topic for %channel")
+    echo $color(Error) -at *** FiSH_11: error setting topic for %channel - %error_msg
+  }
+}
+
+; Get a plaintext topic for a channel
+alias gettopic {
+  if ($1 == $null) {
+    echo 4 -a Syntax: /gettopic <#channel>
+    return
+  }
+
+  var %channel = $1
+
+  ; Validate channel name
+  if (!$regex(%channel, /^[#&]/)) {
+    echo $color(Error) -at *** FiSH_11 ERROR: Invalid channel name %channel (must start with # or &)
+    return
+  }
+
+  var %result = $dll(%Fish11DllFile, FiSH11_GetTopic, %channel)
+
+  if (%result && $left(%result, 6) != Error:) {
+    echo $color(Mode text) -at *** FiSH_11: Topic for %channel is: %result
+  }
+  else {
+    var %error_msg = $iif(%result, %result, "Unknown error - could not get topic for %channel")
+    echo $color(Error) -at *** FiSH_11: error getting topic for %channel - %error_msg
+  }
+}
+
+; Remove a plaintext topic for a channel
+alias removetopic {
+  if ($1 == $null) {
+    echo 4 -a Syntax: /removetopic <#channel>
+    return
+  }
+
+  var %channel = $1
+
+  ; Validate channel name
+  if (!$regex(%channel, /^[#&]/)) {
+    echo $color(Error) -at *** FiSH_11 ERROR: Invalid channel name %channel (must start with # or &)
+    return
+  }
+
+  var %result = $dll(%Fish11DllFile, FiSH11_RemoveTopic, %channel)
+
+  if (%result && $left(%result, 6) != Error:) {
+    echo $color(Mode text) -at *** FiSH_11: %result
+  }
+  else {
+    var %error_msg = $iif(%result, %result, "Unknown error - could not remove topic for %channel")
+    echo $color(Error) -at *** FiSH_11: error removing topic for %channel - %error_msg
+  }
 }
 
 alias fish_genkey11 { fish11_setkey_safe $1 $2- }
@@ -1810,6 +1932,7 @@ alias fish_logencrypt11 { fish11_logencrypt $1- }
 alias fish_logdecrypt11 { fish11_logdecrypt $1- }
 alias fish_logdecryptfile11 { fish11_logdecryptfile $1- }
 
+
 ; Legacy FiSH 10 aliases
 alias fish10_setkey {
   if ($1 == $null || $2 == $null) {
@@ -1822,6 +1945,85 @@ alias fish10_setkey {
   }
   else {
     echo -a *** FiSH_10: error setting key - %msg
+  }
+}
+
+; Set a plaintext topic for a channel in the legacy fish10 section
+alias fish10_settopic {
+  if ($1 == $null || $2- == $null) {
+    echo 4 -a Syntax: /fish10_settopic <#channel> <topic>
+    return
+  }
+
+  var %channel = $1
+  var %topic = $2-
+
+  ; Validate channel name
+  if (!$regex(%channel, /^[#&]/)) {
+    echo $color(Error) -at *** FiSH_10 ERROR: Invalid channel name %channel (must start with # or &)
+    return
+  }
+
+  var %result = $dll(%Fish11DllFile, FiSH10_SetTopic, $+(%channel, $chr(32), %topic))
+
+  if (%result && $left(%result, 6) != Error:) {
+    echo $color(Mode text) -at *** FiSH_10: %result
+  }
+  else {
+    var %error_msg = $iif(%result, %result, "Unknown error - could not set topic for %channel")
+    echo $color(Error) -at *** FiSH_10: error setting topic for %channel - %error_msg
+  }
+}
+
+; Get a plaintext topic for a channel from the legacy fish10 section
+alias fish10_gettopic {
+  if ($1 == $null) {
+    echo 4 -a Syntax: /fish10_gettopic <#channel>
+    return
+  }
+
+  var %channel = $1
+
+  ; Validate channel name
+  if (!$regex(%channel, /^[#&]/)) {
+    echo $color(Error) -at *** FiSH_10 ERROR: Invalid channel name %channel (must start with # or &)
+    return
+  }
+
+  var %result = $dll(%Fish11DllFile, FiSH10_GetTopic, %channel)
+
+  if (%result && $left(%result, 6) != Error:) {
+    echo $color(Mode text) -at *** FiSH_10: Topic for %channel is: %result
+  }
+  else {
+    var %error_msg = $iif(%result, %result, "Unknown error - could not get topic for %channel")
+    echo $color(Error) -at *** FiSH_10: error getting topic for %channel - %error_msg
+  }
+}
+
+; Remove a plaintext topic for a channel from the legacy fish10 section
+alias fish10_removetopic {
+  if ($1 == $null) {
+    echo 4 -a Syntax: /fish10_removetopic <#channel>
+    return
+  }
+
+  var %channel = $1
+
+  ; Validate channel name
+  if (!$regex(%channel, /^[#&]/)) {
+    echo $color(Error) -at *** FiSH_10 ERROR: Invalid channel name %channel (must start with # or &)
+    return
+  }
+
+  var %result = $dll(%Fish11DllFile, FiSH10_RemoveTopic, %channel)
+
+  if (%result && $left(%result, 6) != Error:) {
+    echo $color(Mode text) -at *** FiSH_10: %result
+  }
+  else {
+    var %error_msg = $iif(%result, %result, "Unknown error - could not remove topic for %channel")
+    echo $color(Error) -at *** FiSH_10: error removing topic for %channel - %error_msg
   }
 }
 
@@ -1840,11 +2042,11 @@ alias fish10_delkey {
 alias fish10_showkey {
   if ($1 == $null) var %target = $active
   else var %target = $1
-  var %key = $dll(%Fish11DllFile, FiSH11_FileGetKey, %target)
-  if (%key == $null) {
-    ; Try to get from legacy store if implemented? 
-    ; Actually FiSH11_FileGetKey might already check it or we need a specific legacy one.
-    ; For now let's assume it works or just report error.
+  var %key = $dll(%Fish11DllFile, FiSH10_GetKey, %target)
+  if ($left(%key, 6) == Error:) {
+    echo -a *** FiSH_10: error retrieving key for %target : %key
+  }
+  elseif (%key == $null) {
     echo -a *** FiSH_10: no key found for %target
   } else {
     echo -a *** FiSH_10: key for %target : %key

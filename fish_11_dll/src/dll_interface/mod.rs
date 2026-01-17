@@ -35,16 +35,19 @@ mod fish11_setfishprefix;
 mod fish11_setmanualchannelkey;
 mod fish11_setmanualchannelkeyfrompassword;
 mod fish11_setnetwork;
+mod fish11_settopic;
 mod fish_10;
 mod utility;
 
 pub use fish_10::fish10_decryptmsg::FiSH10_DecryptMsg;
 pub use fish_10::fish10_encryptmsg::FiSH10_EncryptMsg;
-pub use fish_10::fish10_haskey::{FiSH10_GetKeyInfo, FiSH10_HasKey};
+pub use fish_10::fish10_haskey::{FiSH10_GetKey, FiSH10_GetKeyInfo, FiSH10_HasKey};
 pub use fish_10::fish10_register_engine::{
     FiSH10_GetEngineVersion, FiSH10_IsEngineAvailable, FiSH10_RegisterEngine,
 };
 pub use fish_10::fish10_setkey::FiSH10_SetKey;
+
+pub use fish_10::fish10_settopic::{FiSH10_GetTopic, FiSH10_RemoveTopic, FiSH10_SetTopic};
 
 pub use fish11_getencryptionstats::FiSH11_GetEncryptionStats;
 pub use fish11_getkeyttl::FiSH11_GetKeyTTL;
@@ -62,6 +65,7 @@ pub use fish11_masterkey::{
 pub use fish11_removemanualchannelkey::FiSH11_RemoveManualChannelKey;
 pub use fish11_removeratchetchannelkey::FiSH11_RemoveRatchetChannelKey;
 pub use fish11_setencryptionprefix::FiSH11_SetEncryptionPrefix;
+pub use fish11_settopic::{FiSH11_GetTopic, FiSH11_RemoveTopic, FiSH11_SetTopic};
 pub use fish11_setfishprefix::FiSH11_SetFishPrefix;
 pub use fish11_setmanualchannelkey::FiSH11_SetManualChannelKey;
 pub use fish11_setmanualchannelkeyfrompassword::FiSH11_SetManualChannelKeyFromPassword;

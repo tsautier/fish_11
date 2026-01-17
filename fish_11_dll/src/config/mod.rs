@@ -26,6 +26,7 @@ pub use state_management::{add_nonce, check_nonce, init_ratchet_state, with_ratc
 
 pub mod settings;
 pub mod state_management;
+pub mod topics;
 pub use channel_key_utils::{get_channel_key_type, get_channel_key_with_fallback, has_channel_key};
 pub use channel_keys::{get_channel_key, set_channel_key};
 pub use config_access::{read_config, with_config, with_config_mut, write_config};
@@ -46,6 +47,7 @@ pub use manual_channel_keys::{
     get_manual_channel_key, list_manual_channel_keys, set_manual_channel_key,
 };
 pub use models::{EncryptionMetrics, EntryData, Fish11Section, FishConfig, StartupSection};
+pub use topics::{get_topic, list_topics, remove_topic, set_topic};
 use once_cell::sync::Lazy;
 use std::thread;
 use std::time::{Duration, Instant};
