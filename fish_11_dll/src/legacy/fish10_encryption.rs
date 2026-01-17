@@ -4,6 +4,7 @@
 //! that wrap the raw Blowfish implementation.
 
 use crate::unified_error::DllError;
+use crate::crypto::blowfish;
 
 /// Encryption mode for FiSH messages
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -34,13 +35,13 @@ pub fn legacy_encrypt_with_mode(
     match mode {
         FishEncryptionMode::Ecb => {
             // Encrypt using Blowfish ECB
-            let encrypted = super::blowfish::encrypt_message(&key, message, target.as_bytes())?;
+            let encrypted = blowfish::encrypt_message(&key, message, target.as_bytes())?;
             // Add the legacy +OK prefix
             Ok(format!("+OK {}", encrypted))
         }
         FishEncryptionMode::Cbc => {
             // Encrypt using Blowfish CBC
-            let encrypted = super::blowfish::encrypt_message_cbc(&key, message, target.as_bytes())?;
+            let encrypted = blowfish::encrypt_message_cbc(&key, message, target.as_bytes())?;
             // Add the legacy mcps prefix
             Ok(format!("mcps {}", encrypted))
         }
@@ -70,11 +71,11 @@ pub fn legacy_decrypt(target: &str, encrypted_message: &str) -> Result<String, D
     match mode {
         FishEncryptionMode::Ecb => {
             // Decrypt using Blowfish ECB
-            super::blowfish::decrypt_message(&key, ciphertext, target.as_bytes())
+            blowfish::decrypt_message(&key, ciphertext, target.as_bytes())
         }
         FishEncryptionMode::Cbc => {
             // Decrypt using Blowfish CBC
-            super::blowfish::decrypt_message_cbc(&key, ciphertext, target.as_bytes())
+            blowfish::decrypt_message_cbc(&key, ciphertext, target.as_bytes())
         }
     }
 }
@@ -118,11 +119,12 @@ pub fn legacy_decrypt_topic(target: &str, encrypted_topic: &str) -> Result<Strin
     match mode {
         FishEncryptionMode::Ecb => {
             // Decrypt using Blowfish ECB
-            super::blowfish::decrypt_message(&key, ciphertext, target.as_bytes())
+
+            blowfish::decrypt_message(&key, ciphertext, target.as_bytes())
         }
         FishEncryptionMode::Cbc => {
             // Decrypt using Blowfish CBC
-            super::blowfish::decrypt_message_cbc(&key, ciphertext, target.as_bytes())
+            blowfish::decrypt_message_cbc(&key, ciphertext, target.as_bytes())
         }
     }
 }
@@ -203,7 +205,7 @@ mod tests {
         setup_test_legacy_key("#test", b"testkey12345678");
 
         let topic = "This is a test topic for CBC mode";
-        let result = crate::legacy::encryption::legacy_encrypt_topic_cbc("#test", topic);
+        let result = crate::legacy::fish10_encryption::legacy_encrypt_topic_cbc("#test", topic);
         assert!(result.is_ok());
         let encrypted = result.unwrap();
         assert!(encrypted.starts_with("mcps "));
@@ -221,7 +223,7 @@ mod tests {
 
         // Test that CBC mode is properly detected and decrypted
         let message = "CBC test message";
-        let encrypted = format!("mcps {}", crate::legacy::blowfish::encrypt_message_cbc(b"testkey12345678", message, &[]).unwrap());
+        let encrypted = format!("mcps {}", blowfish::encrypt_message_cbc(b"testkey12345678", message, &[]).unwrap());
         let result = legacy_decrypt("#test", &encrypted);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), message);

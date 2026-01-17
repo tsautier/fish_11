@@ -4,6 +4,8 @@
 //! and converting between different key formats.
 
 use crate::unified_error::DllError;
+use crate::crypto::dh1080;
+use std::sync::Arc;
 
 /// Set a legacy key for a target
 pub fn set_legacy_key(target: &str, key_hex: &str) -> Result<(), DllError> {
@@ -21,14 +23,20 @@ pub fn set_legacy_key(target: &str, key_hex: &str) -> Result<(), DllError> {
         });
     }
 
-    // Store the key
-    let config = super::LEGACY_CONFIG.write();
-    let mut keys = config.legacy_keys.write();
-    keys.insert(target.to_string(), key_bytes.clone());
+    let (keys_arc, ini_path) = {
+        let config = super::LEGACY_CONFIG.read();
+        (Arc::clone(&config.legacy_keys), config.blowfish_ini_path.clone())
+    };
+
+    // Store the key in memory
+    {
+        let mut keys = keys_arc.write();
+        keys.insert(target.to_string(), key_bytes.clone());
+    }
 
     // Save to persistent storage if configured
-    if let Some(ini_path) = &config.blowfish_ini_path {
-        if let Err(e) = super::config::save_key_to_blowfish_ini(target, &key_bytes, ini_path) {
+    if let Some(path) = ini_path {
+        if let Err(e) = super::fish10_config::save_key_to_blowfish_ini(target, &key_bytes, &path) {
             log::warn!("Failed to save legacy key to blowfish.ini: {}", e);
         }
     }
@@ -39,17 +47,20 @@ pub fn set_legacy_key(target: &str, key_hex: &str) -> Result<(), DllError> {
 
 /// Remove a legacy key for a target
 pub fn remove_legacy_key(target: &str) -> Result<(), DllError> {
-    let config = super::LEGACY_CONFIG.read();
+    let (keys_arc, ini_path) = {
+        let config = super::LEGACY_CONFIG.read();
+        (Arc::clone(&config.legacy_keys), config.blowfish_ini_path.clone())
+    };
     
     // First remove from memory
     let removed_from_memory = {
-        let mut keys = config.legacy_keys.write();
+        let mut keys = keys_arc.write();
         keys.remove(target).is_some()
     };
 
     // Then remove from file if path is set
-    if let Some(ini_path) = &config.blowfish_ini_path {
-        if let Err(e) = super::config::remove_key_from_blowfish_ini(target, ini_path) {
+    if let Some(path) = &ini_path {
+        if let Err(e) = super::fish10_config::remove_key_from_blowfish_ini(target, path) {
             log::warn!("LEGACY: Failed to remove key from blowfish.ini: {}", e);
         }
     }
@@ -74,15 +85,21 @@ pub fn remove_legacy_key(target: &str) -> Result<(), DllError> {
 
 /// List all legacy keys
 pub fn list_legacy_keys() -> Vec<String> {
-    let config = super::LEGACY_CONFIG.read();
-    let keys = config.legacy_keys.read();
+    let keys_arc = {
+        let config = super::LEGACY_CONFIG.read();
+        Arc::clone(&config.legacy_keys)
+    };
+    let keys = keys_arc.read();
     keys.keys().cloned().collect()
 }
 
 /// Check if a legacy key exists for a target
 pub fn has_legacy_key(target: &str) -> bool {
-    let config = super::LEGACY_CONFIG.read();
-    let keys = config.legacy_keys.read();
+    let keys_arc = {
+        let config = super::LEGACY_CONFIG.read();
+        Arc::clone(&config.legacy_keys)
+    };
+    let keys = keys_arc.read();
     keys.contains_key(target)
 }
 
@@ -100,8 +117,8 @@ pub fn password_to_key(password: &str) -> Vec<u8> {
 }
 
 /// Generate DH1080 key pair for FiSH 10 key exchange
-pub fn generate_dh1080_keypair() -> Result<super::dh1080::DH1080KeyPair, DllError> {
-    super::dh1080::generate_dh1080_keypair()
+pub fn generate_dh1080_keypair() -> Result<dh1080::DH1080KeyPair, DllError> {
+    dh1080::generate_dh1080_keypair()
 }
 
 /// Compute shared secret using DH1080
@@ -109,12 +126,32 @@ pub fn compute_dh1080_shared_secret(
     private_key: &num_bigint::BigUint,
     other_public_key: &str,
 ) -> Result<String, DllError> {
-    super::dh1080::compute_dh1080_shared_secret(private_key, other_public_key)
+    dh1080::compute_dh1080_shared_secret(private_key, other_public_key)
 }
 
 /// Parse DH1080 public key
 pub fn parse_dh1080_public_key(key_str: &str) -> Result<Vec<u8>, DllError> {
-    super::dh1080::dh1080_base64_decode(key_str)
+    dh1080::dh1080_base64_decode(key_str)
+}
+
+
+pub fn get_legacy_key(target: &str) -> Option<Vec<u8>> {
+    let keys_arc = {
+        let config = super::LEGACY_CONFIG.read();
+        std::sync::Arc::clone(&config.legacy_keys)
+    };
+    let keys = keys_arc.read();
+    keys.get(target).cloned()
+}
+
+pub fn store_legacy_key(target: &str, key: &[u8]) -> Result<(), DllError> {
+    let keys_arc = {
+        let config = super::LEGACY_CONFIG.read();
+        Arc::clone(&config.legacy_keys)
+    };
+    let mut keys = keys_arc.write();
+    keys.insert(target.to_string(), key.to_vec());
+    Ok(())
 }
 
 #[cfg(test)]

@@ -4,7 +4,8 @@
 use crate::config::settings::get_encryption_prefix;
 use crate::crypto::{decrypt_message, encrypt_message};
 use crate::legacy;
-use crate::legacy::message_detection;
+use crate::legacy::fish10_message_detection;
+use crate::crypto::blowfish;
 use once_cell::sync::OnceCell;
 use std::borrow::Cow;
 use std::ffi::{CString, c_char};
@@ -208,7 +209,7 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
     // Skip if already encrypted with FiSH 10 or FiSH 11
     // Get the encryption prefix from config (defaults to "+FiSH")
     let encryption_prefix = get_encryption_prefix().unwrap_or_else(|_| "+FiSH".to_string());
-    if message_detection::is_fish10_message(&message) || message.starts_with(&encryption_prefix) {
+    if fish10_message_detection::is_fish10_message(&message) || message.starts_with(&encryption_prefix) {
         return None;
     }
 
@@ -241,7 +242,7 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
         log_debug!("Engine: attempting topic encryption for '{}'", target);
 
         let key_result = crate::config::get_channel_key_with_fallback(target);
-        
+
         if let Ok(key) = key_result {
             let key_array: &[u8; 32] = match key.as_slice().try_into() {
                 Ok(arr) => arr,
@@ -269,7 +270,11 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
                         enc
                     }
                     Err(e) => {
-                        log_error!("Engine: topic encryption failed for channel '{}': {}", target, e);
+                        log_error!(
+                            "Engine: topic encryption failed for channel '{}': {}",
+                            target,
+                            e
+                        );
                         return None;
                     }
                 };
@@ -278,23 +283,28 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
         } else if let Some(legacy_key) = legacy::get_legacy_key(&target.to_lowercase()) {
             #[cfg(debug_assertions)]
             log_debug!("Engine: using legacy key for topic on '{}'", target);
-            
-            let encrypted = match legacy::blowfish::encrypt_message(&legacy_key, &message, target.as_bytes()) {
-                Ok(enc) => enc,
-                Err(e) => {
-                    log_error!("Engine: legacy topic encryption failed for '{}': {}", target, e);
-                    return None;
-                }
-            };
+
+            let encrypted =
+                match blowfish::encrypt_message(&legacy_key, &message, target.as_bytes()) {
+                    Ok(enc) => enc,
+                    Err(e) => {
+                        log_error!(
+                            "Engine: legacy topic encryption failed for '{}': {}",
+                            target,
+                            e
+                        );
+                        return None;
+                    }
+                };
             (encrypted, true)
         } else {
-             // No key = no encryption, pass through
-             log_debug!(
-                 "Engine: no key for topic on channel '{}' on network '{:?}', not encrypting",
-                 target,
-                 network_name
-             );
-             return None;
+            // No key = no encryption, pass through
+            log_debug!(
+                "Engine: no key for topic on channel '{}' on network '{:?}', not encrypting",
+                target,
+                network_name
+            );
+            return None;
         }
     } else if target.starts_with('#') || target.starts_with('&') {
         #[cfg(debug_assertions)]
@@ -343,17 +353,25 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
                 }
             }
         } else if let Some(legacy_key) = legacy::get_legacy_key(&target.to_lowercase()) {
-             #[cfg(debug_assertions)]
-             log_debug!("Engine: using legacy key for channel message on '{}'", target);
-             
-             let encrypted = match legacy::blowfish::encrypt_message(&legacy_key, &message, target.as_bytes()) {
-                 Ok(enc) => enc,
-                 Err(e) => {
-                     log_error!("Engine: legacy channel message encryption failed for '{}': {}", target, e);
-                     return None;
-                 }
-             };
-             (encrypted, true)
+            #[cfg(debug_assertions)]
+            log_debug!("Engine: using legacy key for channel message on '{}'", target);
+
+            let encrypted = match crate::crypto::blowfish::encrypt_message(
+                &legacy_key,
+                &message,
+                target.as_bytes(),
+            ) {
+                Ok(enc) => enc,
+                Err(e) => {
+                    log_error!(
+                        "Engine: legacy channel message encryption failed for '{}': {}",
+                        target,
+                        e
+                    );
+                    return None;
+                }
+            };
+            (encrypted, true)
         } else {
             // Use ratchet-based encryption (FCEP-1 with forward secrecy)
             match crate::config::with_ratchet_state_mut(target, |state| {
@@ -449,26 +467,30 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
 
             (encrypted, false)
         } else if let Some(legacy_key) = legacy::get_legacy_key(&target.to_lowercase()) {
-             #[cfg(debug_assertions)]
-             log_debug!("Engine: using legacy key for private message on '{}'", target);
-             
-             let encrypted = match legacy::blowfish::encrypt_message(&legacy_key, &message, &[]) {
-                 Ok(enc) => enc,
-                 Err(e) => {
-                     log_error!("Engine: legacy private message encryption failed for '{}': {}", target, e);
-                     return None;
-                 }
-             };
-             (encrypted, true)
+            #[cfg(debug_assertions)]
+            log_debug!("Engine: using legacy key for private message on '{}'", target);
+
+            let encrypted = match blowfish::encrypt_message(&legacy_key, &message, &[]) {
+                Ok(enc) => enc,
+                Err(e) => {
+                    log_error!(
+                        "Engine: legacy private message encryption failed for '{}': {}",
+                        target,
+                        e
+                    );
+                    return None;
+                }
+            };
+            (encrypted, true)
         } else {
-             // No key = no encryption, pass through
-             #[cfg(debug_assertions)]
-             log_debug!(
-                 "Engine: no key for target '{}' on network '{:?}', not encrypting",
-                 target,
-                 network_name
-             );
-             return None;
+            // No key = no encryption, pass through
+            #[cfg(debug_assertions)]
+            log_debug!(
+                "Engine: no key for target '{}' on network '{:?}', not encrypting",
+                target,
+                network_name
+            );
+            return None;
         }
     };
 
@@ -489,12 +511,12 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
     // Reconstruct line with encrypted data
     // Keep prefix if present, replace message with configurable prefix + encrypted data or "+FCEP_TOPIC+ <encrypted>"
     // Add \r\n for IRC protocol compliance
-    let prefix = if is_topic { 
-        "+FCEP_TOPIC+" 
+    let prefix = if is_topic {
+        "+FCEP_TOPIC+"
     } else if used_legacy {
         "+OK"
-    } else { 
-        encryption_prefix.as_str() 
+    } else {
+        encryption_prefix.as_str()
     };
     let encrypted_line = format!("{} :{} {}\r\n", cmd_part, prefix, encrypted);
 
@@ -515,7 +537,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
         let message_part = &line[msg_index + 2..];
 
         let is_fcep = message_part.starts_with("+FCEP_TOPIC+");
-        let is_legacy = message_detection::is_fish10_message(message_part);
+        let is_legacy = fish10_message_detection::is_fish10_message(message_part);
 
         if is_fcep || is_legacy {
             #[cfg(debug_assertions)]
@@ -534,7 +556,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
             let encrypted_payload: Cow<str> = if is_fcep {
                 Cow::Borrowed(message_part["+FCEP_TOPIC+".len()..].trim())
             } else {
-                Cow::Owned(message_detection::extract_fish10_payload(message_part).ok()?)
+                Cow::Owned(fish10_message_detection::extract_fish10_payload(message_part).ok()?)
             };
 
             if is_fcep {
@@ -548,22 +570,38 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
                 };
 
                 let key_array: &[u8; 32] = key.as_slice().try_into().ok()?;
-                let decrypted = decrypt_message(key_array, &encrypted_payload, Some(key_identifier.as_bytes())).ok()?;
+                let decrypted =
+                    decrypt_message(key_array, &encrypted_payload, Some(key_identifier.as_bytes()))
+                        .ok()?;
 
-                log_info!("Engine: successfully decrypted FCEP topic for channel '{}'", key_identifier);
+                log_info!(
+                    "Engine: successfully decrypted FCEP topic for channel '{}'",
+                    key_identifier
+                );
                 let prefix_and_command = &line[..msg_index];
                 return Some(format!("{} :{}\r\n", prefix_and_command, decrypted));
             } else {
                 // Legacy FiSH 10 Topic Decryption
                 if let Some(key) = legacy::get_legacy_key(&key_identifier) {
-                    match legacy::blowfish::decrypt_message(&key, &encrypted_payload, key_identifier.as_bytes()) {
+                    match blowfish::decrypt_message(
+                        &key,
+                        &encrypted_payload,
+                        key_identifier.as_bytes(),
+                    ) {
                         Ok(decrypted) => {
-                            log_info!("Engine: successfully decrypted legacy topic for channel '{}'", key_identifier);
+                            log_info!(
+                                "Engine: successfully decrypted legacy topic for channel '{}'",
+                                key_identifier
+                            );
                             let prefix_and_command = &line[..msg_index];
                             return Some(format!("{} :{}\r\n", prefix_and_command, decrypted));
                         }
                         Err(e) => {
-                            log_error!("Engine: legacy topic decryption failed for channel '{}': {}", key_identifier, e);
+                            log_error!(
+                                "Engine: legacy topic decryption failed for channel '{}': {}",
+                                key_identifier,
+                                e
+                            );
                             return None;
                         }
                     }
@@ -582,7 +620,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
         let message_part = &line[msg_index + 2..];
 
         let is_fcep = message_part.starts_with("+FCEP_TOPIC+");
-        let is_legacy = message_detection::is_fish10_message(message_part);
+        let is_legacy = fish10_message_detection::is_fish10_message(message_part);
 
         if is_fcep || is_legacy {
             #[cfg(debug_assertions)]
@@ -603,7 +641,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
             let encrypted_payload: Cow<str> = if is_fcep {
                 Cow::Borrowed(message_part["+FCEP_TOPIC+".len()..].trim())
             } else {
-                Cow::Owned(message_detection::extract_fish10_payload(message_part).ok()?)
+                Cow::Owned(fish10_message_detection::extract_fish10_payload(message_part).ok()?)
             };
 
             if is_fcep {
@@ -617,22 +655,38 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
                 };
 
                 let key_array: &[u8; 32] = key.as_slice().try_into().ok()?;
-                let decrypted = decrypt_message(key_array, &encrypted_payload, Some(key_identifier.as_bytes())).ok()?;
+                let decrypted =
+                    decrypt_message(key_array, &encrypted_payload, Some(key_identifier.as_bytes()))
+                        .ok()?;
 
-                log_info!("Engine: successfully decrypted incoming FCEP topic for channel '{}'", key_identifier);
+                log_info!(
+                    "Engine: successfully decrypted incoming FCEP topic for channel '{}'",
+                    key_identifier
+                );
                 let prefix_and_command = &line[..msg_index];
                 return Some(format!("{} :{}\r\n", prefix_and_command, decrypted));
             } else {
                 // Legacy FiSH 10 Topic Decryption
                 if let Some(key) = legacy::get_legacy_key(&key_identifier) {
-                    match legacy::blowfish::decrypt_message(&key, &encrypted_payload, key_identifier.as_bytes()) {
+                    match blowfish::decrypt_message(
+                        &key,
+                        &encrypted_payload,
+                        key_identifier.as_bytes(),
+                    ) {
                         Ok(decrypted) => {
-                            log_info!("Engine: successfully decrypted incoming legacy topic for channel '{}'", key_identifier);
+                            log_info!(
+                                "Engine: successfully decrypted incoming legacy topic for channel '{}'",
+                                key_identifier
+                            );
                             let prefix_and_command = &line[..msg_index];
                             return Some(format!("{} :{}\r\n", prefix_and_command, decrypted));
                         }
                         Err(e) => {
-                            log_error!("Engine: incoming legacy topic decryption failed for channel '{}': {}", key_identifier, e);
+                            log_error!(
+                                "Engine: incoming legacy topic decryption failed for channel '{}': {}",
+                                key_identifier,
+                                e
+                            );
                             return None;
                         }
                     }
@@ -659,7 +713,7 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
     let message_part = &line[msg_index + 2..];
 
     // Check for encryption markers
-    let is_legacy = message_detection::is_fish10_message(message_part);
+    let is_legacy = fish10_message_detection::is_fish10_message(message_part);
     let is_fish11 = message_part.starts_with(&encryption_prefix);
 
     if !is_legacy && !is_fish11 {
@@ -677,9 +731,10 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
 
         // Extract sender and target
         let sender_raw = parts[0].trim_start_matches(':');
-        let sender = if let Some(pos) = sender_raw.find('!') { &sender_raw[..pos] } else { sender_raw };
+        let sender =
+            if let Some(pos) = sender_raw.find('!') { &sender_raw[..pos] } else { sender_raw };
         let target_raw = parts[2];
-        
+
         // Normalize target to strip STATUSMSG prefixes (@#chan, +#chan..)
         let target = crate::utils::normalize_target(target_raw);
 
@@ -699,22 +754,29 @@ fn attempt_decryption(line: &str, network: Option<&str>) -> Option<String> {
         );
 
         if let Some(key) = legacy::get_legacy_key(&key_identifier) {
-            if let Ok(payload) = message_detection::extract_fish10_payload(message_part) {
-                match legacy::blowfish::decrypt_message(&key, &payload, key_identifier.as_bytes()) {
+            if let Ok(payload) = fish10_message_detection::extract_fish10_payload(message_part) {
+                match blowfish::decrypt_message(&key, &payload, key_identifier.as_bytes()) {
                     Ok(decrypted) => {
                         #[cfg(debug_assertions)]
-                        log_info!("Engine: successfully decrypted legacy message from '{}'", sender);
+                        log_info!(
+                            "Engine: successfully decrypted legacy message from '{}'",
+                            sender
+                        );
                         let prefix_and_command = &line[..msg_index];
                         return Some(format!("{} :{}\r\n", prefix_and_command, decrypted));
                     }
                     Err(e) => {
-                        log_error!("Engine: legacy decryption failed for sender '{}': {}", sender, e);
+                        log_error!(
+                            "Engine: legacy decryption failed for sender '{}': {}",
+                            sender,
+                            e
+                        );
                         return None;
                     }
                 }
             }
         }
-        
+
         #[cfg(debug_assertions)]
         log_debug!("Engine: no legacy key found for '{}', passing through", key_identifier);
         return None;

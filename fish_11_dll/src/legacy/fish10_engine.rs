@@ -3,11 +3,11 @@
 //! This module provides an engine that can be registered with fish_inject
 //! to automatically detect and process FiSH 10 messages.
 
-use crate::legacy::encryption::{is_legacy_message, legacy_decrypt, legacy_encrypt};
-use crate::legacy::key_management::{
+use crate::legacy::fish10_encryption::{is_legacy_message, legacy_decrypt, legacy_encrypt};
+use crate::legacy::fish10_key_management::{
     compute_dh1080_shared_secret, generate_dh1080_keypair, set_legacy_key,
 };
-use crate::legacy::message_detection::{
+use crate::legacy::fish10_message_detection::{
     extract_dh1080_public_key, is_dh1080_message, parse_dh1080_message_type,
 };
 use crate::unified_error::DllError;
@@ -198,7 +198,7 @@ fn process_outgoing_fish10_topic(_line: &str, target: &str, topic: &str) -> Opti
     // In a real implementation, we'd check the encrypt_topic setting in the INI file
 
     // Encrypt the topic using ECB mode (default for compatibility)
-    match crate::legacy::encryption::legacy_encrypt_topic(target, topic) {
+    match crate::legacy::fish10_encryption::legacy_encrypt_topic(target, topic) {
         Ok(encrypted) => {
             #[cfg(debug_assertions)]
             debug!("FiSH10 Engine: encrypted topic for {}: {}", target, encrypted);
@@ -324,7 +324,7 @@ fn handle_fish10_topic_message(line: &str) -> Option<String> {
     }
 
     // Decrypt the topic
-    match crate::legacy::encryption::legacy_decrypt_topic(target, &payload) {
+    match crate::legacy::fish10_encryption::legacy_decrypt_topic(target, &payload) {
         Ok(decrypted) => {
             #[cfg(debug_assertions)]
             info!("FiSH10 Engine: decrypted topic from {}: {}", target, decrypted);

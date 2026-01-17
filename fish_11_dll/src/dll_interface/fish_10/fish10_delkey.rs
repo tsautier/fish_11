@@ -16,7 +16,7 @@ dll_function_identifier!(FiSH10_DelKey, data, {
     log_debug!("FiSH10: deleting legacy key for '{}'", target);
 
     // Remove the key from the legacy key store
-    legacy::key_management::remove_legacy_key(&target)?;
+    legacy::fish10_key_management::remove_legacy_key(&target)?;
 
     log_info!("FiSH10: successfully removed legacy key for '{}'", target);
 

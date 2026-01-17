@@ -7,15 +7,15 @@ use fish_11::legacy;
 use fish_11::unified_error::DllError;
 
 fn clear_test_legacy_keys() {
-    let keys = legacy::key_management::list_legacy_keys();
+    let keys = legacy::fish10_key_management::list_legacy_keys();
     for k in keys {
-        let _ = legacy::key_management::remove_legacy_key(&k);
+        let _ = legacy::fish10_key_management::remove_legacy_key(&k);
     }
 }
 
 fn setup_test_legacy_key(name: &str, key_bytes: &[u8]) {
     let hex = key_bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>();
-    legacy::key_management::set_legacy_key(name, &hex).expect("failed to set test key");
+    legacy::fish10_key_management::set_legacy_key(name, &hex).expect("failed to set test key");
 }
 
 #[test]
@@ -34,30 +34,30 @@ fn test_legacy_key_management() {
     clear_test_legacy_keys();
 
     // Test setting a key
-    legacy::key_management::set_legacy_key("#test", "6162636465666768").unwrap();
+    legacy::fish10_key_management::set_legacy_key("#test", "6162636465666768").unwrap();
 
     // Test that the key exists
-    assert!(legacy::key_management::has_legacy_key("#test"));
+    assert!(legacy::fish10_key_management::has_legacy_key("#test"));
 
     // Test listing keys
-    let keys = legacy::key_management::list_legacy_keys();
+    let keys = legacy::fish10_key_management::list_legacy_keys();
     assert!(keys.contains(&String::from("#test")));
 
     // Test removing the key
-    legacy::key_management::remove_legacy_key("#test").unwrap();
-    assert!(!legacy::key_management::has_legacy_key("#test"));
+    legacy::fish10_key_management::remove_legacy_key("#test").unwrap();
+    assert!(!legacy::fish10_key_management::has_legacy_key("#test"));
 }
 
 #[test]
 fn test_legacy_message_detection() {
-    assert!(legacy::encryption::is_legacy_message("+OK abc123"));
-    assert!(!legacy::encryption::is_legacy_message("Hello world"));
-    assert!(!legacy::encryption::is_legacy_message("+FISH abc123"));
+    assert!(legacy::fish10_encryption::is_legacy_message("+OK abc123"));
+    assert!(!legacy::fish10_encryption::is_legacy_message("Hello world"));
+    assert!(!legacy::fish10_encryption::is_legacy_message("+FISH abc123"));
 }
 
 #[test]
 fn test_password_to_key_conversion() {
-    let key = legacy::key_management::password_to_key("testpassword");
+    let key = legacy::fish10_key_management::password_to_key("testpassword");
     assert_eq!(key.len(), 16); // Should be 16 bytes (128 bits)
 }
 
@@ -67,7 +67,7 @@ fn test_legacy_encryption_format() {
     setup_test_legacy_key("#test", b"testkey12345678");
 
     // Test encryption produces the right format
-    let result = legacy::encryption::legacy_encrypt("#test", "Hello");
+    let result = legacy::fish10_encryption::legacy_encrypt("#test", "Hello");
     assert!(result.is_ok());
     let encrypted = result.unwrap();
     assert!(encrypted.starts_with("+OK "));
@@ -75,7 +75,7 @@ fn test_legacy_encryption_format() {
 
 #[test]
 fn test_invalid_key_length() {
-    let result = legacy::key_management::set_legacy_key("#test", "6162"); // Too short
+    let result = legacy::fish10_key_management::set_legacy_key("#test", "6162"); // Too short
     assert!(result.is_err());
 
     if let Err(DllError::LegacyError { context, cause }) = result {

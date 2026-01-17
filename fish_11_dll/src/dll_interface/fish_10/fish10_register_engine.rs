@@ -25,11 +25,11 @@ pub unsafe extern "C" fn FiSH10_RegisterEngine() -> *const crate::legacy::fish10
 
     match get_fish10_engine_ptr() {
         Some(ptr) => {
-            info!("FiSH10_RegisterEngine: Returning FiSH 10 engine pointer");
+            info!("FiSH10_RegisterEngine: returning FiSH 10 engine pointer");
             ptr
         }
         None => {
-            error!("FiSH10_RegisterEngine: Failed to get FiSH 10 engine pointer");
+            error!("FiSH10_RegisterEngine: failed to get FiSH 10 engine pointer");
             std::ptr::null()
         }
     }
@@ -59,7 +59,7 @@ mod tests {
 
     #[test]
     fn test_engine_version() {
-        let version = unsafe { FiSH10_GetEngineVersion() };
+        let version = FiSH10_GetEngineVersion() ;
         assert_eq!(version, FISH_INJECT_ENGINE_VERSION);
     }
 

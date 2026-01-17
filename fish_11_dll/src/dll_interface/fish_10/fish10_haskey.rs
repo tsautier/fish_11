@@ -43,7 +43,7 @@ dll_function_identifier!(FiSH10_GetKeyInfo, data, {
     if let Some(key) = legacy::get_legacy_key(&target) {
         #[cfg(debug_assertions)]
         log_debug!("FiSH10_GetKeyInfo: found legacy key for '{}' ({} bytes)", target, key.len());
-        
+
         Ok(format!("Legacy Blowfish key: {} bytes", key.len()))
     } else {
         Err(DllError::KeyNotFound(target.to_string()))
@@ -68,7 +68,7 @@ mod tests {
     #[test]
     fn test_fish10_haskey_not_exists() {
         clear_test_legacy_keys();
-        
+
         let config = legacy::LEGACY_CONFIG.read();
         let keys = config.legacy_keys.read();
         assert!(!keys.contains_key("nonexistent"));

@@ -224,7 +224,7 @@ pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
             let global_info_result = LOAD_INFO.lock();
             if global_info_result.is_err() {
                 log::error!(
-                    "FATAL: Failed to acquire LOAD_INFO mutex lock in LoadDll. DLL may be in corrupted state."
+                    "FATAL: failed to acquire LOAD_INFO mutex lock in LoadDll. DLL may be in corrupted state."
                 );
                 return 0; // Return failure
             }

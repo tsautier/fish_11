@@ -5,7 +5,7 @@
 
 use crate::unified_error::DllError;
 
-/// FiSH 10 message prefixes
+/// FiSH 10 + mircryption message prefixes
 pub const FISH10_PREFIX: &str = "+OK ";
 pub const MCPS_PREFIX: &str = "mcps ";
 

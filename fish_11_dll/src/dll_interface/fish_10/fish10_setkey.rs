@@ -31,9 +31,8 @@ dll_function_identifier!(FiSH10_SetKey, data, {
         });
     }
 
-    
-    
-    log_debug!("FiSH10: Setting legacy key for '{}' (length: {})", target, key_bytes.len());
+    #[cfg(debug_assertions)]
+    log_debug!("FiSH10: setting legacy key for '{}' (length: {})", target, key_bytes.len());
 
     // Store the key in the legacy key store
     let config = legacy::LEGACY_CONFIG.write();
@@ -42,7 +41,7 @@ dll_function_identifier!(FiSH10_SetKey, data, {
 
     // Also save to persistent storage if configured
     if let Some(ini_path) = &config.blowfish_ini_path {
-        if let Err(e) = legacy::config::save_key_to_blowfish_ini(&target, &key_bytes, ini_path) {
+        if let Err(e) = legacy::fish10_config::save_key_to_blowfish_ini(&target, &key_bytes, ini_path) {
             log_warn!("FiSH10: Failed to save key to blowfish.ini: {}", e);
         }
     }
@@ -55,7 +54,6 @@ dll_function_identifier!(FiSH10_SetKey, data, {
 #[cfg(test)]
 mod tests {
     use super::*;
-    //use crate::legacy::test_utils::setup_test_legacy_key;
 
     // Test helper that mirrors the logic used by the DLL entrypoint.
     fn fish10_set_key_impl(input: &str) -> Result<String, DllError> {
@@ -81,12 +79,12 @@ mod tests {
         // Store the key in the legacy key store
         let config = legacy::LEGACY_CONFIG.write();
         let mut keys = config.legacy_keys.write();
-        
+
         keys.insert(target.to_string(), key_bytes.clone());
 
         // Also save to persistent storage if configured
         if let Some(ini_path) = &config.blowfish_ini_path {
-            if let Err(e) = legacy::config::save_key_to_blowfish_ini(&target, &key_bytes, ini_path)
+            if let Err(e) = legacy::fish10_config::save_key_to_blowfish_ini(&target, &key_bytes, ini_path)
             {
                 log::warn!("FiSH10: failed to save key to blowfish.ini: {}", e);
             }

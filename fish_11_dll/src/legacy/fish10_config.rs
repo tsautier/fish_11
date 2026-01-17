@@ -4,7 +4,6 @@
 //! and managing legacy key configuration.
 
 use crate::unified_error::DllError;
-
 use std::path::PathBuf;
 
 /// Load legacy configuration from blowfish.ini
@@ -105,7 +104,7 @@ fn load_keys_from_blowfish_ini(
                     None => {
                         #[cfg(debug_assertions)]
                         log::warn!("LEGACY: Found 'key=' without a section, skipping");
-                        
+
                         continue;
                     }
                 }
@@ -197,7 +196,11 @@ pub fn remove_key_from_blowfish_ini(target: &str, path: &str) -> Result<(), DllE
 }
 
 /// Internal helper to add, update, or remove a key in blowfish.ini
-fn update_blowfish_ini_key(target: &str, key: Option<&[u8]>, path_str: &str) -> Result<(), DllError> {
+fn update_blowfish_ini_key(
+    target: &str,
+    key: Option<&[u8]>,
+    path_str: &str,
+) -> Result<(), DllError> {
     use std::fs;
     use std::io::{BufRead, BufReader, Write};
     use std::path::Path;
@@ -221,7 +224,7 @@ fn update_blowfish_ini_key(target: &str, key: Option<&[u8]>, path_str: &str) -> 
                 context: "Updating blowfish.ini".to_string(),
                 cause: format!("Failed to read line: {}", e),
             })?;
-            
+
             let trimmed = line.trim();
 
             // Handle section headers
@@ -232,30 +235,30 @@ fn update_blowfish_ini_key(target: &str, key: Option<&[u8]>, path_str: &str) -> 
             }
 
             if let Some((key_name, _)) = parse_ini_line(trimmed) {
-                 // Determine what target this line refers to
-                 let line_target = if key_name.eq_ignore_ascii_case("key") {
-                     // If it's "key=...", it refers to the current section
-                     current_section.clone()
-                 } else {
-                     // Otherwise it's "target=..."
-                     Some(key_name.clone())
-                 };
+                // Determine what target this line refers to
+                let line_target = if key_name.eq_ignore_ascii_case("key") {
+                    // If it's "key=...", it refers to the current section
+                    current_section.clone()
+                } else {
+                    // Otherwise it's "target=..."
+                    Some(key_name.clone())
+                };
 
-                 if let Some(t) = line_target {
-                     if t.to_lowercase() == target_lower {
-                         found = true;
-                         if let Some(k) = key {
-                             // Preserve the format (either key=value or target=value)
-                             if key_name.eq_ignore_ascii_case("key") {
-                                 lines.push(format!("key={}", hex::encode(k)));
-                             } else {
-                                 lines.push(format!("{}={}", target, hex::encode(k)));
-                             }
-                         }
-                         // If key is None, we skip (delete)
-                         continue;
-                     }
-                 }
+                if let Some(t) = line_target {
+                    if t.to_lowercase() == target_lower {
+                        found = true;
+                        if let Some(k) = key {
+                            // Preserve the format (either key=value or target=value)
+                            if key_name.eq_ignore_ascii_case("key") {
+                                lines.push(format!("key={}", hex::encode(k)));
+                            } else {
+                                lines.push(format!("{}={}", target, hex::encode(k)));
+                            }
+                        }
+                        // If key is None, we skip (delete)
+                        continue;
+                    }
+                }
             }
             lines.push(line);
         }
@@ -263,7 +266,7 @@ fn update_blowfish_ini_key(target: &str, key: Option<&[u8]>, path_str: &str) -> 
 
     if !found {
         if let Some(k) = key {
-             lines.push(format!("{}={}", target, hex::encode(k)));
+            lines.push(format!("{}={}", target, hex::encode(k)));
         }
     }
 
@@ -360,8 +363,7 @@ pub fn set_encrypt_topic_setting(
         Ini::new()
     };
 
-    conf.with_section(Some(section_name.clone()))
-        .set("encrypt_topic", value);
+    conf.with_section(Some(section_name.clone())).set("encrypt_topic", value);
 
     conf.write_to_file(&ini_path).map_err(|e| DllError::LegacyError {
         context: "Writing to blowfish.ini".to_string(),

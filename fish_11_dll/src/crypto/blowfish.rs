@@ -1,12 +1,12 @@
-//! Blowfish encryption implementation for FiSH 10 compatibility
+//! Legacy blowfish encryption implementation for FiSH 10 compatibility
 //!
 //! This module provides the Blowfish encryption algorithm used by FiSH 10
 //! for legacy compatibility purposes, with the custom base64 alphabet.
 
 use crate::unified_error::DllError;
+use blowfish::Blowfish;
 use blowfish::cipher::generic_array::GenericArray;
 use blowfish::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
-use blowfish::Blowfish;
 use byteorder::BigEndian;
 
 /// FiSH 10 specific Base64 alphabet for encrypted messages
@@ -68,6 +68,7 @@ fn fish10_b64_decode(s: &str) -> Result<Vec<u8>, DllError> {
     let mut result = Vec::with_capacity(s.len() / 12 * 8);
     let bytes = s.as_bytes();
     let mut i = 0;
+
     while i < bytes.len() {
         let mut right = 0u32;
         let mut left = 0u32;
@@ -193,19 +194,17 @@ pub fn encrypt_message_cbc(
     };
 
     // Initialize CBC mode with Blowfish
-    
-    let cipher = Blowfish::<BigEndian>::new_from_slice(key).map_err(|e| {
-        DllError::LegacyError {
-            context: "Blowfish init".to_string(),
-            cause: format!("Invalid key: {}", e),
-        }
+
+    let cipher = Blowfish::<BigEndian>::new_from_slice(key).map_err(|e| DllError::LegacyError {
+        context: "Blowfish init".to_string(),
+        cause: format!("Invalid key: {}", e),
     })?;
 
     // For CBC mode, we need to handle it manually since the cipher crate doesn't have a direct CBC type
     // This is a simplified approach - in a real implementation, you'd use a proper CBC implementation
     let mut ciphertext = Vec::with_capacity(bytes.len());
     let block_size = 8; // Blowfish block size
-    
+
     // Simple CBC encryption (for demonstration only)
     let mut prev_block_array = iv;
     for chunk in bytes.chunks(block_size) {
@@ -214,17 +213,17 @@ pub fn encrypt_message_cbc(
         if block.len() < block_size {
             block.resize(block_size, 0);
         }
-        
+
         // XOR with previous block
         for i in 0..block_size {
             block[i] ^= prev_block_array[i];
         }
-        
+
         // Encrypt the block
         let mut output_block = GenericArray::clone_from_slice(&block);
         cipher.encrypt_block(&mut output_block);
         ciphertext.extend_from_slice(&output_block);
-        
+
         // Update previous block for next iteration
         prev_block_array.copy_from_slice(&output_block);
     }
@@ -254,30 +253,28 @@ pub fn decrypt_message_cbc(
     };
 
     // Initialize Blowfish for decryption
-    let cipher = Blowfish::<BigEndian>::new_from_slice(key).map_err(|e| {
-        DllError::LegacyError {
-            context: "Blowfish init".to_string(),
-            cause: format!("Invalid key: {}", e),
-        }
+    let cipher = Blowfish::<BigEndian>::new_from_slice(key).map_err(|e| DllError::LegacyError {
+        context: "Blowfish init".to_string(),
+        cause: format!("Invalid key: {}", e),
     })?;
 
     // Simple CBC decryption (for demonstration only)
     let mut plaintext = Vec::with_capacity(ciphertext.len());
     let block_size = 8; // Blowfish block size
-    
+
     let mut prev_block_array = iv;
     for chunk in ciphertext.chunks(block_size) {
         let original_block = chunk.to_vec();
-        
+
         // Decrypt the block
         let mut output_block = GenericArray::clone_from_slice(chunk);
         cipher.decrypt_block(&mut output_block);
-        
+
         // XOR with previous block
         for i in 0..block_size {
             output_block[i] ^= prev_block_array[i];
         }
-        
+
         plaintext.extend_from_slice(&output_block);
         prev_block_array.copy_from_slice(&original_block);
     }
