@@ -193,23 +193,23 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
     #[cfg(debug_assertions)]
     log_debug!("Engine: attempting to encrypt outgoing line");
 
-    // Parse the line to extract target and message
-    // Format expected: "PRIVMSG target :message" or ":prefix PRIVMSG target :message"
-    let parts: Vec<&str> = line.split(" :").collect();
+    // Clean the line and extract the message part
+    let line_content = line.trim_end_matches(|c| c == '\r' || c == '\n');
+    let parts: Vec<&str> = line_content.splitn(2, " :").collect();
 
     if parts.len() < 2 {
-        log_warn!("Engine: malformed outgoing line (no message part)");
+        #[cfg(debug_assertions)]
+        log_debug!("Engine: skipping line with no message separator (not a typical PRIVMSG/TOPIC)");
         return None;
     }
 
-    // Get the command part (before the first " :")
     let cmd_part = parts[0];
-    let message = parts[1..].join(" :");
+    let message = parts[1];
 
     // Skip if already encrypted with FiSH 10 or FiSH 11
     // Get the encryption prefix from config (defaults to "+FiSH")
     let encryption_prefix = get_encryption_prefix().unwrap_or_else(|_| "+FiSH".to_string());
-    if fish10_message_detection::is_fish10_message(&message) || message.starts_with(&encryption_prefix) {
+    if fish10_message_detection::is_fish10_message(message) || message.starts_with(&encryption_prefix) {
         return None;
     }
 
@@ -260,23 +260,10 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
                 }
             };
 
-            // Log message content if DEBUG flag is enabled for sensitive content
-            #[cfg(debug_assertions)]
-            log_debug!("Engine: topic encryption input for channel '{}': '{}'", target, &message);
-
             // Encrypt the message with the channel name as Associated Data (to prevent cross-channel replay)
             let encrypted =
                 match encrypt_message(key_array, &message, Some(target), Some(target.as_bytes())) {
-                    Ok(enc) => {
-                        #[cfg(debug_assertions)]
-                        log_debug!(
-                            "Engine: topic encrypted output for channel '{}': '{}'",
-                            target,
-                            &enc
-                        );
-
-                        enc
-                    }
+                    Ok(enc) => enc,
                     Err(e) => {
                         log_error!(
                             "Engine: topic encryption failed for channel '{}': {}",
@@ -307,11 +294,6 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
             (encrypted, true)
         } else {
             // No key = no encryption, pass through
-            log_debug!(
-                "Engine: no key for topic on channel '{}' on network '{:?}', not encrypting",
-                target,
-                network_name
-            );
             return None;
         }
     } else if target.starts_with('#') || target.starts_with('&') {
@@ -513,20 +495,21 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
     #[cfg(debug_assertions)]
     log_info!("Engine: successfully encrypted {} to '{}'", msg_type, target);
 
-    // Get the encryption prefix from config (defaults to "+FiSH")
-    let encryption_prefix = get_encryption_prefix().unwrap_or_else(|_| "+FiSH".to_string());
-
     // Reconstruct line with encrypted data
-    // Keep prefix if present, replace message with configurable prefix + encrypted data or "+FCEP_TOPIC+ <encrypted>"
-    // Add \r\n for IRC protocol compliance
-    let prefix = if is_topic && !used_legacy {
-        "+FCEP_TOPIC+"
-    } else if used_legacy {
-        "+OK"
+    // For FiSH 11 topics, use space after prefix. For FiSH 10 legacy, no space.
+    let encrypted_line = if is_topic {
+        if used_legacy {
+            format!("{} :+OK{}\r\n", cmd_part, encrypted)
+        } else {
+            format!("{} :+FCEP_TOPIC+ {}\r\n", cmd_part, encrypted)
+        }
     } else {
-        encryption_prefix.as_str()
+        let prefix = if used_legacy { "+OK" } else { encryption_prefix.as_str() };
+        format!("{} :{} {}\r\n", cmd_part, prefix, encrypted)
     };
-    let encrypted_line = format!("{} :{} {}\r\n", cmd_part, prefix, encrypted);
+
+    #[cfg(debug_assertions)]
+    log_info!("Engine: outgoing line reconstructed: '{}'", encrypted_line.trim_end());
 
     Some(encrypted_line)
 }

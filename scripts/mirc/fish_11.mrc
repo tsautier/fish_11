@@ -1810,7 +1810,8 @@ alias etopic {
 
   ; Check if there's a key for this channel (both traditional and FCEP-1)
   var %channelKey = $dll(%Fish11DllFile, FiSH11_FileGetKey, $active)
-  if ($left(%channelKey, 6) == Error:) { set %channelKey $null }
+  ; Robust error check: if it doesn't look like a valid key or starts with error indicators
+  if ($left(%channelKey, 6) == Error: || $left(%channelKey, 3) == no ) { set %channelKey $null }
 
   var %hasLegacyKey = $dll(%Fish11DllFile, FiSH10_HasKey, $active)
 
@@ -1819,7 +1820,7 @@ alias etopic {
     ; This will be handled by the engine registration code
     echo $color(Mode text) -at *** FiSH_11: no encryption key found for $active, topic will be sent in plain text
   } else {
-    echo $color(Mode text) -at *** FiSH_11: topic will be encrypted for $active $+ $iif(%hasLegacyKey == 1, (FiSH 10 legacy))
+    echo $color(Mode text) -at *** FiSH_11: topic will be encrypted for $active $iif(%hasLegacyKey == 1, (FiSH 10 legacy))
   }
 
   ; Execute the topic command - encryption will be handled by the engine
@@ -1931,7 +1932,6 @@ alias fish_setlogkey11 { fish11_setlogkey $1- }
 alias fish_logencrypt11 { fish11_logencrypt $1- }
 alias fish_logdecrypt11 { fish11_logdecrypt $1- }
 alias fish_logdecryptfile11 { fish11_logdecryptfile $1- }
-
 
 ; Legacy FiSH 10 aliases
 alias fish10_setkey {
