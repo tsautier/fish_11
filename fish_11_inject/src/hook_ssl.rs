@@ -492,33 +492,88 @@ pub unsafe fn install_ssl_hooks(
     ssl_get_fd: SslGetFdFn,
     ssl_is_init_finished: SslIsInitFinishedProc,
 ) -> Result<(), String> {
+    let mut hooks_installed = SSL_HOOKS_INSTALLED.lock().unwrap_or_else(handle_poison);
+
+    if *hooks_installed {
+        return Err("SSL hooks are already installed".to_string());
+    }
+
     let mut ssl_read_hook = SSL_READ_HOOK.lock().unwrap_or_else(handle_poison);
     let mut ssl_write_hook = SSL_WRITE_HOOK.lock().unwrap_or_else(handle_poison);
+    let mut original_ssl_read = ORIGINAL_SSL_READ.lock().unwrap_or_else(handle_poison);
+    let mut original_ssl_write = ORIGINAL_SSL_WRITE.lock().unwrap_or_else(handle_poison);
+    let mut ssl_get_fd_slot = SSL_GET_FD.lock().unwrap_or_else(handle_poison);
+    let mut ssl_is_init_finished_slot =
+        SSL_IS_INIT_FINISHED.lock().unwrap_or_else(handle_poison);
 
-    *SSL_GET_FD.lock().unwrap_or_else(handle_poison) = Some(ssl_get_fd);
-    *SSL_IS_INIT_FINISHED.lock().unwrap_or_else(handle_poison) = Some(ssl_is_init_finished);
+    *original_ssl_read = Some(ssl_read);
+    *original_ssl_write = Some(ssl_write);
+    *ssl_get_fd_slot = Some(ssl_get_fd);
+    *ssl_is_init_finished_slot = Some(ssl_is_init_finished);
 
-    *ssl_read_hook = Some(
-        GenericDetour::new(ssl_read, hooked_ssl_read)
-            .map_err(|e| format!("Failed to create SSL_read hook: {}", e))?,
-    );
+    *ssl_read_hook = match GenericDetour::new(ssl_read, hooked_ssl_read) {
+        Ok(hook) => Some(hook),
+        Err(e) => {
+            *original_ssl_read = None;
+            *original_ssl_write = None;
+            *ssl_get_fd_slot = None;
+            *ssl_is_init_finished_slot = None;
+            return Err(format!("Failed to create SSL_read hook: {}", e));
+        }
+    };
 
-    *ssl_write_hook = Some(
-        GenericDetour::new(ssl_write, hooked_ssl_write)
-            .map_err(|e| format!("Failed to create SSL_write hook: {}", e))?,
-    );
+    *ssl_write_hook = match GenericDetour::new(ssl_write, hooked_ssl_write) {
+        Ok(hook) => Some(hook),
+        Err(e) => {
+            *ssl_read_hook = None;
+            *original_ssl_read = None;
+            *original_ssl_write = None;
+            *ssl_get_fd_slot = None;
+            *ssl_is_init_finished_slot = None;
+            return Err(format!("Failed to create SSL_write hook: {}", e));
+        }
+    };
 
-    ssl_read_hook
+    if let Err(e) = ssl_read_hook
         .as_mut()
         .unwrap()
         .enable()
-        .map_err(|e| format!("Failed to enable SSL_read hook: {}", e))?;
+        .map_err(|e| format!("Failed to enable SSL_read hook: {}", e))
+    {
+        *ssl_read_hook = None;
+        *ssl_write_hook = None;
+        *original_ssl_read = None;
+        *original_ssl_write = None;
+        *ssl_get_fd_slot = None;
+        *ssl_is_init_finished_slot = None;
+        return Err(e);
+    }
 
-    ssl_write_hook
+    if let Err(e) = ssl_write_hook
         .as_mut()
         .unwrap()
         .enable()
-        .map_err(|e| format!("Failed to enable SSL_write hook: {}", e))?;
+        .map_err(|e| format!("Failed to enable SSL_write hook: {}", e))
+    {
+        if let Some(hook) = ssl_read_hook.as_mut() {
+            if let Err(disable_err) = hook.disable() {
+                error!(
+                    "Failed to roll back SSL_read hook after SSL_write enable failure: {:?}",
+                    disable_err
+                );
+            }
+        }
+
+        *ssl_read_hook = None;
+        *ssl_write_hook = None;
+        *original_ssl_read = None;
+        *original_ssl_write = None;
+        *ssl_get_fd_slot = None;
+        *ssl_is_init_finished_slot = None;
+        return Err(e);
+    }
+
+    *hooks_installed = true;
 
     Ok(())
 }

@@ -12,6 +12,36 @@ use std::sync::atomic::Ordering;
 use windows::Win32::Foundation::{HMODULE, HWND};
 use windows::Win32::UI::WindowsAndMessaging::{MB_ICONEXCLAMATION, MB_OK, MessageBoxW};
 
+fn write_mirc_output_buffer(
+    context: &str,
+    data: *mut c_char,
+    max_bytes: usize,
+    src: *const c_char,
+    src_len: usize,
+) -> Result<usize, ()> {
+    if data.is_null() {
+        error!("{} : data buffer pointer is null.", context);
+        return Err(());
+    }
+
+    if max_bytes == 0 {
+        error!(
+            "{} : mIRC reported a zero-sized output buffer (m_bytes == 0), refusing to write.",
+            context
+        );
+        return Err(());
+    }
+
+    let copy_len = std::cmp::min(src_len, max_bytes.saturating_sub(1));
+
+    unsafe {
+        std::ptr::copy_nonoverlapping(src, data, copy_len);
+        *data.add(copy_len) = 0;
+    }
+
+    Ok(copy_len)
+}
+
 #[repr(C)]
 pub struct LOADINFO {
     pub m_version: u32, // mVersion (DWORD)
@@ -76,6 +106,12 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
 
     #[cfg(debug_assertions)]
     info!("LoadDll() : MAX_MIRC_RETURN_BYTES set to {}", max_len);
+
+    if max_len == 0 {
+        error!(
+            "LoadDll() : mIRC reported m_bytes == 0. Output-returning exports will refuse to write to avoid memory corruption."
+        );
+    }
 
     info!(
         "=== LoadDll() called. mIRC version: {}, Unicode: {}, MaxBytes: {} === ",
@@ -230,11 +266,6 @@ pub extern "C" fn FiSH11_InjectDebugInfo(
     _show: i32,
     _nopause: i32,
 ) -> i32 {
-    if data.is_null() {
-        error!("FiSH11_InjectDebugInfo() : data buffer pointer is null.");
-        return MIRC_HALT;
-    }
-
     let max_bytes = *MAX_MIRC_RETURN_BYTES.lock().unwrap();
 
     // Collect socket statistics (DashMap - thread-safe iteration)
@@ -302,23 +333,23 @@ pub extern "C" fn FiSH11_InjectDebugInfo(
         );
     }
 
-    unsafe {
-        // Copy to output buffer safely
-        let src = c_command.as_ptr();
-        let src_len = c_command.as_bytes().len();
-        std::ptr::copy_nonoverlapping(src, data, std::cmp::min(src_len, max_bytes as usize - 1));
+    let copied_len = match write_mirc_output_buffer(
+        "FiSH11_InjectDebugInfo()",
+        data.cast(),
+        max_bytes,
+        c_command.as_ptr(),
+        c_command.as_bytes().len(),
+    ) {
+        Ok(copied_len) => copied_len,
+        Err(()) => return MIRC_HALT,
+    };
 
-        // Null terminate
-        *data.add(std::cmp::min(src_len, max_bytes as usize - 1)) = 0;
-
-        #[cfg(debug_assertions)]
-        {
-            let copied_len = std::cmp::min(src_len, max_bytes as usize - 1);
-            debug!(
-                "[DLL_INTERFACE DEBUG] FiSH11_InjectDebugInfo() : copied {} bytes to mIRC data buffer, null-terminated.",
-                copied_len
-            );
-        }
+    #[cfg(debug_assertions)]
+    {
+        debug!(
+            "[DLL_INTERFACE DEBUG] FiSH11_InjectDebugInfo() : copied {} bytes to mIRC data buffer, null-terminated.",
+            copied_len
+        );
     }
 
     // Return as mIRC command to execute
@@ -365,38 +396,39 @@ pub extern "system" fn FiSH11_InjectVersion(
         );
     }
 
-    unsafe {
-        if !data.is_null() {
-            let max_bytes = *MAX_MIRC_RETURN_BYTES.lock().unwrap();
-            let src = data_str.as_ptr();
-            let src_len = data_str.as_bytes_with_nul().len();
-            let copy_len = std::cmp::min(src_len, max_bytes as usize - 1);
+    let max_bytes = *MAX_MIRC_RETURN_BYTES.lock().unwrap();
+    let src_len = data_str.as_bytes_with_nul().len();
 
-            #[cfg(debug_assertions)]
-            {
-                debug!(
-                    "[DLL_INTERFACE DEBUG] FiSH11_InjectVersion() : MAX_MIRC_RETURN_BYTES : {}, src_len: {}, copy_len: {}",
-                    max_bytes, src_len, copy_len
-                );
-            }
-
-            std::ptr::copy_nonoverlapping(src, data, copy_len);
-            *data.add(copy_len) = 0;
-
-            #[cfg(debug_assertions)]
-            {
-                debug!(
-                    "[DLL_INTERFACE DEBUG] FiSH11_InjectVersion() : copied {} bytes to mIRC data buffer, null-terminated.",
-                    copy_len
-                );
-            }
-
-            info!("FiSH11_InjectVersion() : returned version info (len {})", copy_len);
-        } else {
-            error!("FiSH11_InjectVersion() : data buffer pointer is null.");
-            return MIRC_HALT;
-        }
+    #[cfg(debug_assertions)]
+    {
+        debug!(
+            "[DLL_INTERFACE DEBUG] FiSH11_InjectVersion() : MAX_MIRC_RETURN_BYTES : {}, src_len: {}, copy_len: {}",
+            max_bytes,
+            src_len,
+            std::cmp::min(src_len, max_bytes.saturating_sub(1))
+        );
     }
+
+    let copy_len = match write_mirc_output_buffer(
+        "FiSH11_InjectVersion()",
+        data,
+        max_bytes,
+        data_str.as_ptr(),
+        src_len,
+    ) {
+        Ok(copy_len) => copy_len,
+        Err(()) => return MIRC_HALT,
+    };
+
+    #[cfg(debug_assertions)]
+    {
+        debug!(
+            "[DLL_INTERFACE DEBUG] FiSH11_InjectVersion() : copied {} bytes to mIRC data buffer, null-terminated.",
+            copy_len
+        );
+    }
+
+    info!("FiSH11_InjectVersion() : returned version info (len {})", copy_len);
 
     MIRC_IDENTIFIER
 }
