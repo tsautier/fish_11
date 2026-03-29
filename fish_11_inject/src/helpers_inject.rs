@@ -7,15 +7,17 @@ use crate::hook_ssl::{
     uninstall_ssl_hooks,
 };
 use crate::pointer_validation::validate_function_pointer;
-use crate::{LOGGER_INITIALIZED, Ordering};
 use log::{LevelFilter, error, info, warn};
 use retour::GenericDetour;
 use std::fs::OpenOptions;
 use std::io;
+use std::sync::atomic::Ordering;
 use std::sync::PoisonError;
 use windows::Win32::Foundation::FARPROC;
 use windows::Win32::System::LibraryLoader::{GetModuleHandleA, GetProcAddress};
 use windows::core::PCSTR;
+
+use crate::LOGGER_INITIALIZED;
 
 /// Custom logger that writes with timestamps
 struct TimestampLogger {

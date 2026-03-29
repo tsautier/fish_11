@@ -1,8 +1,9 @@
-use crate::helpers_inject::install_hooks;
+use crate::helpers_inject::{cleanup_hooks, init_logger, install_hooks};
 use crate::{
-    ACTIVE_SOCKETS, DISCARDED_SOCKETS, DLL_HANDLE_PTR, ENGINES, LOADED, MAX_MIRC_RETURN_BYTES,
-    MIRC_HALT, MIRC_IDENTIFIER, VERSION_SHOWN, cleanup_hooks,
+    ACTIVE_SOCKETS, DISCARDED_SOCKETS, DLL_HANDLE, ENGINES, LOADED, MAX_MIRC_RETURN_BYTES,
+    MIRC_HALT, MIRC_IDENTIFIER, VERSION_SHOWN,
 };
+use crate::engines::InjectEngines;
 use fish_11_core::globals::{
     BUILD_DATE, BUILD_NUMBER, BUILD_TIME, BUILD_VERSION, MIRC_RETURN_DATA_COMMAND,
 };
@@ -59,6 +60,8 @@ pub struct LOADINFO {
 ///
 /// So this is the second entry point after DllMain().
 pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
+    init_logger();
+
     #[cfg(debug_assertions)]
     info!("=== LoadDll: function called ===");
 
@@ -117,6 +120,24 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
         "=== LoadDll() called. mIRC version: {}, Unicode: {}, MaxBytes: {} === ",
         li.m_version, li.m_unicode, max_len
     );
+
+    match ENGINES.lock() {
+        Ok(mut engines) => {
+            if engines.is_none() {
+                *engines = Some(std::sync::Arc::new(InjectEngines::new()));
+                #[cfg(debug_assertions)]
+                info!("LoadDll() : InjectEngines container initialized successfully.");
+            }
+        }
+        Err(e) => {
+            error!("LoadDll() : failed to lock ENGINES to initialize: {}", e);
+            let mut engines = e.into_inner();
+            if engines.is_none() {
+                *engines = Some(std::sync::Arc::new(InjectEngines::new()));
+                warn!("LoadDll() : InjectEngines initialized after lock recovery.");
+            }
+        }
+    }
 
     // Check minimum mIRC version if needed
     if li.m_version < 700 {
@@ -196,6 +217,8 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
 
     info!("=== LoadDll() finished successfully ===");
 
+    LOADED.store(true, Ordering::SeqCst);
+
     #[cfg(debug_assertions)]
     info!("LoadDll() : setting m_keep = 1 to keep DLL loaded");
 
@@ -236,16 +259,7 @@ pub extern "system" fn UnloadDll(action: c_int) -> c_int {
             }
         }
 
-        match DLL_HANDLE_PTR.lock() {
-            Ok(mut handle) => {
-                *handle = None;
-            }
-            Err(e) => {
-                error!("UnloadDll() : failed to lock DLL_HANDLE_PTR for cleanup: {}", e);
-                // Attempt to recover
-                drop(e.into_inner());
-            }
-        }
+        DLL_HANDLE.store(std::ptr::null_mut(), Ordering::SeqCst);
         LOADED.store(false, Ordering::SeqCst);
         VERSION_SHOWN.store(false, Ordering::Relaxed);
         // HOOKS_INSTALLED should be false after cleanup_hooks
