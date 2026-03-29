@@ -33,6 +33,11 @@ pub const DEFAULT_MIRC_BUFFER_SIZE: usize = 4096;
 // modern mIRC versions support larger buffers, so we align this with DLL_BUFFER_SIZE.
 pub const MAX_MIRC_BUFFER_SIZE: usize = DLL_BUFFER_SIZE;
 
+/// Hard cap on bytes copied for mIRC DLL **result** strings (including the terminating NUL).
+/// [`LOADINFO.m_bytes`] and `get_buffer_size()` may report a larger allocation on modern mIRC;
+/// FiSH still caps each write at this value so behaviour stays safe for older clients and scripts.
+pub const MIRC_DLL_RESULT_PAYLOAD_CAP: usize = 900;
+
 /// Timeout duration for key exchange operations in seconds
 pub const KEY_EXCHANGE_TIMEOUT_SECONDS: u64 = 10;
 

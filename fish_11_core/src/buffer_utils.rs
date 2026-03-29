@@ -3,6 +3,7 @@
 //! This module provides buffer management functions that are independent of
 //! platform-specific interfaces. The actual buffer I/O will be handled by
 //! wrapper crates (fish_11_dll, fish_11_lib).
+use crate::globals::MIRC_DLL_RESULT_PAYLOAD_CAP;
 use std::ffi::{CStr, CString, c_char};
 use std::ptr;
 
@@ -31,10 +32,10 @@ impl std::fmt::Display for BufferError {
 
 /// # Safely writes a CString to a buffer.
 ///
-/// mIRC expects DLL return buffers to be no larger than 900 bytes (including the null terminator).
-/// Using 900 as the buffer size is the historical and recommended standard for mIRC DLLs.
+/// mIRC expects DLL return buffers to be no larger than [`MIRC_DLL_RESULT_PAYLOAD_CAP`] bytes
+/// (including the null terminator). That constant is the historical safe maximum for mIRC DLLs.
 /// This prevents buffer overflows, memory corruption, and client crashes when displaying results.
-/// The 900-byte limit is sufficient for most mIRC commands, including /echo, /notice, and custom output.
+/// That limit is sufficient for most mIRC commands, including /echo, /notice, and custom output.
 ///
 /// # Best practices:
 /// - Always ensure the buffer is null-terminated.
@@ -42,7 +43,7 @@ impl std::fmt::Display for BufferError {
 /// - For all DLL result functions, use this helper with 900 as the default size.
 ///
 /// Example usage:
-///     crate::buffer_utils::write_cstring_to_buffer(data, 900, &result)
+///     crate::buffer_utils::write_cstring_to_buffer(data, crate::globals::MIRC_DLL_RESULT_PAYLOAD_CAP, &result)
 ///
 /// # Safety
 /// Efficiently write a CString to the buffer with bounds checking
@@ -64,7 +65,7 @@ pub unsafe fn write_cstring_to_buffer(
 
     // Only clear/write what we actually need, not the entire reported buffer size
     // This prevents writing beyond the actual allocated buffer in tests
-    let safe_len = copy_len.min(900); // Cap at mIRC limit
+    let safe_len = copy_len.min(MIRC_DLL_RESULT_PAYLOAD_CAP);
 
     // Clear the entire buffer to prevent garbage data
     ptr::write_bytes(data as *mut u8, 0, buffer_size);

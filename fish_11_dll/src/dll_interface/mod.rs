@@ -84,11 +84,14 @@ pub mod key_management;
 pub use fish_11_core::globals::{
     CRATE_VERSION, CURRENT_YEAR, DEFAULT_MIRC_BUFFER_SIZE, FUNCTION_TIMEOUT_SECONDS,
     KEY_EXCHANGE_TIMEOUT_SECONDS, MAX_MIRC_BUFFER_SIZE, MIRC_BUFFER_SIZE, MIRC_COMMAND,
-    MIRC_CONTINUE, MIRC_ERROR, MIRC_HALT, MIRC_IDENTIFIER, MIRC_TYPICAL_BUFFER_SIZE,
-    NICK_VALIDATOR,
+    MIRC_CONTINUE, MIRC_ERROR, MIRC_HALT, MIRC_IDENTIFIER, MIRC_DLL_RESULT_PAYLOAD_CAP,
+    MIRC_TYPICAL_BUFFER_SIZE, NICK_VALIDATOR,
 };
-/// Returns the maximum amount of data that can be written into the output buffer.
-/// This implementation includes fallback to global buffer size if LOAD_INFO is not available.
+/// Returns the maximum amount of data that can be written into the output buffer (excluding the
+/// terminating NUL that mIRC reserves). Falls back to [`MIRC_BUFFER_SIZE`] when [`LOAD_INFO`](crate::dll_interface::core::LOAD_INFO) is unset.
+///
+/// Note: [`crate::buffer_utils::write_cstring_to_buffer`] still caps each **copied** result string
+/// to [`MIRC_DLL_RESULT_PAYLOAD_CAP`] bytes including NUL — see the buffer module docs.
 pub(crate) fn get_buffer_size() -> usize {
     use self::core::LOAD_INFO;
 

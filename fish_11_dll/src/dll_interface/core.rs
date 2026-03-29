@@ -1,4 +1,4 @@
-use crate::dll_interface::DEFAULT_MIRC_BUFFER_SIZE;
+use crate::dll_interface::{DEFAULT_MIRC_BUFFER_SIZE, MIRC_BUFFER_SIZE};
 use crate::platform_types::{BOOL, HWND, c_int};
 use crate::{log_debug, log_info};
 use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION};
@@ -57,6 +57,35 @@ unsafe impl Sync for LOADINFO {}
 
 pub(crate) static LOAD_INFO: Mutex<Option<LOADINFO>> = Mutex::new(None);
 static _INIT_ONCE: std::sync::Once = std::sync::Once::new();
+
+/// When [`LoadDll`] is called with a null [`LOADINFO`] pointer, mIRC’s struct cannot be updated
+/// (no `m_keep`). We still store a synthetic [`LOADINFO`] using the same byte count as the
+/// [`MIRC_BUFFER_SIZE`] fallback so [`crate::dll_interface::get_buffer_size`] stays consistent with that path.
+fn install_synthetic_loadinfo_for_null_pointer() -> Result<(usize, bool), ()> {
+    let bytes_usize = MIRC_BUFFER_SIZE
+        .lock()
+        .map(|g| *g)
+        .unwrap_or(DEFAULT_MIRC_BUFFER_SIZE);
+    let synthetic = LOADINFO {
+        m_version: 0,
+        m_hwnd: std::ptr::null_mut(),
+        m_keep: TRUE,
+        m_unicode: 0,
+        m_beta: 0,
+        m_bytes: bytes_usize.min(u32::MAX as usize) as u32,
+        m_extra: 0,
+    };
+    let global_info_result = LOAD_INFO.lock();
+    if global_info_result.is_err() {
+        log::error!(
+            "FATAL: failed to acquire LOAD_INFO mutex lock in LoadDll (synthetic LOADINFO). DLL may be in corrupted state."
+        );
+        return Err(());
+    }
+    let mut global_info = global_info_result.unwrap();
+    *global_info = Some(synthetic);
+    Ok((bytes_usize, false))
+}
 
 /// Basic buffer size retrieval - does not include fallback to MIRC_BUFFER_SIZE
 /// For external use, prefer the module-level get_buffer_size() function
@@ -240,11 +269,18 @@ pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
             log::info!("CONFIG [mIRC]: unicode_mode = {}", unicode_mode);
         }
     } else {
-        let _buffer_size = DEFAULT_MIRC_BUFFER_SIZE;
-        let _unicode_mode = false;
-        // Log the null pointer situation
-        #[cfg(debug_assertions)]
-        log::warn!("LoadDll called with null pointer - using default buffer size");
+        match install_synthetic_loadinfo_for_null_pointer() {
+            Ok((bs, um)) => {
+                buffer_size = bs;
+                unicode_mode = um;
+            }
+            Err(()) => return 0,
+        }
+        log::warn!(
+            "LoadDll called with null LOADINFO pointer — synthetic LOADINFO installed (m_bytes={}, unicode_mode={}, m_keep not set on client struct)",
+            buffer_size,
+            unicode_mode
+        );
     }
 
     // Log successful initialization
@@ -346,7 +382,17 @@ pub extern "C" fn LoadDll(load: *mut LOADINFO) -> BOOL {
             log::info!("CONFIG: unicode_mode = {}", unicode_mode);
         }
     } else {
-        log::warn!("LoadDll called with null pointer - using default buffer size");
+        match install_synthetic_loadinfo_for_null_pointer() {
+            Ok((bs, um)) => {
+                buffer_size = bs;
+                unicode_mode = um;
+            }
+            Err(()) => return 0,
+        }
+        log::warn!(
+            "LoadDll called with null LOADINFO pointer — synthetic LOADINFO installed (m_bytes={}, m_keep not set on client struct)",
+            buffer_size
+        );
     }
 
     log::info!(

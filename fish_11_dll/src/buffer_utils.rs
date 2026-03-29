@@ -1,5 +1,14 @@
 //! Centralized buffer management utilities for mIRC DLL interface
+//!
+//! # mIRC buffer contract
+//! - [`crate::dll_interface::get_buffer_size`] returns how many bytes we may touch in the
+//!   caller buffer (from [`LOADINFO`](crate::dll_interface::core::LOADINFO) or fallbacks), capped by
+//!   [`MAX_MIRC_BUFFER_SIZE`](fish_11_core::globals::MAX_MIRC_BUFFER_SIZE).
+//! - [`write_cstring_to_buffer`] still limits each **copied** result to
+//!   [`MIRC_DLL_RESULT_PAYLOAD_CAP`](fish_11_core::globals::MIRC_DLL_RESULT_PAYLOAD_CAP) bytes
+//!   (including NUL), matching mIRC’s historical safe limit even when the client reports a larger buffer.
 use crate::dll_interface::{MIRC_IDENTIFIER, get_buffer_size};
+use fish_11_core::globals::MIRC_DLL_RESULT_PAYLOAD_CAP;
 use std::ffi::{CStr, CString, c_char};
 use std::os::raw::c_int;
 use std::ptr;
@@ -29,23 +38,12 @@ impl std::fmt::Display for BufferError {
 
 /// # Safely writes a CString to a mIRC DLL result buffer.
 ///
-/// mIRC expects DLL return buffers to be no larger than 900 bytes (including the null terminator).
-/// Using 900 as the buffer size is the historical and recommended standard for mIRC DLLs.
-/// This prevents buffer overflows, memory corruption, and client crashes when displaying results.
-/// The 900-byte limit is sufficient for most mIRC commands, including /echo, /notice, and custom output.
-/// If your DLL function needs to return a result to mIRC, always use 900 as the buffer size unless you have a
-/// specific reason and know the client can handle a larger buffer.
-///
-/// # Best practices:
-/// - Always ensure the buffer is null-terminated.
-/// - Filter out non-ASCII or non-printable characters if the result will be displayed in mIRC.
-/// - For all DLL result functions, use this helper with 900 as the default size.
-///
-/// Example usage:
-///     crate::buffer_utils::write_cstring_to_buffer(data, 900, &result)
+/// The copied payload (including NUL) is capped at [`MIRC_DLL_RESULT_PAYLOAD_CAP`]. The `buffer_size`
+/// argument should be the caller’s usable size (typically from [`get_buffer_size`]); we clear that full
+/// span but only copy up to the cap — see the [module-level contract](self).
 ///
 /// # Safety
-/// Efficiently write a CString to the mIRC buffer with bounds checking
+/// `data` must point to at least `buffer_size` writable bytes.
 pub unsafe fn write_cstring_to_buffer(
     data: *mut c_char,
     buffer_size: usize,
@@ -64,7 +62,7 @@ pub unsafe fn write_cstring_to_buffer(
 
     // Only clear/write what we actually need, not the entire reported buffer size
     // This prevents writing beyond the actual allocated buffer in tests
-    let safe_len = copy_len.min(900); // Cap at mIRC limit
+    let safe_len = copy_len.min(MIRC_DLL_RESULT_PAYLOAD_CAP);
 
     // Clear the entire buffer to prevent garbage data
     ptr::write_bytes(data as *mut u8, 0, buffer_size);
