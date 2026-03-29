@@ -14,8 +14,15 @@ use sha2::{Digest, Sha256};
 use std::ffi::c_int;
 use std::sync::{Arc, Mutex as StdMutex};
 use windows::Win32::Networking::WinSock::{
-    SOCKADDR, SOCKET, SOCKET_ERROR, WSAEINTR, WSAGetLastError,
+    SOCKADDR, SOCKET, SOCKET_ERROR, WSAEINTR, WSAEINVAL, WSAGetLastError, WSASetLastError,
 };
+
+/// Return [`SOCKET_ERROR`] and set a Winsock error for callers (`WSAGetLastError`).
+#[inline]
+unsafe fn wsa_fail(code: i32) -> c_int {
+    WSASetLastError(code);
+    SOCKET_ERROR
+}
 
 // Type definitions for Winsock functions and ensure "system" ABI (stdcall) for function types
 pub type RecvFn = unsafe extern "system" fn(SOCKET, *mut u8, c_int, c_int) -> c_int;
@@ -53,14 +60,14 @@ pub unsafe extern "system" fn hooked_recv(
         Ok(guard) => guard,
         Err(e) => {
             error!("Failed to acquire RECV_HOOK lock: {}", e);
-            return -1;
+            return wsa_fail(WSAEINTR.0);
         }
     };
     let original = match hook_guard.as_ref() {
         Some(hook) => hook,
         None => {
             error!("Original recv() function not available!");
-            return -1;
+            return wsa_fail(WSAEINVAL.0);
         }
     };
 
@@ -202,14 +209,14 @@ pub unsafe extern "system" fn hooked_send(
             Ok(guard) => guard,
             Err(e) => {
                 error!("Failed to acquire SEND_HOOK lock: {}", e);
-                return -1;
+                return wsa_fail(WSAEINTR.0);
             }
         };
         let original = match hook_guard.as_ref() {
             Some(hook) => hook,
             None => {
                 error!("Original send function not available!");
-                return -1;
+                return wsa_fail(WSAEINVAL.0);
             }
         };
         return original.call(s, buf, len, flags);
@@ -223,14 +230,14 @@ pub unsafe extern "system" fn hooked_send(
             Ok(guard) => guard,
             Err(e) => {
                 error!("Failed to acquire SEND_HOOK lock: {}", e);
-                return -1;
+                return wsa_fail(WSAEINTR.0);
             }
         };
         let original = match hook_guard.as_ref() {
             Some(hook) => hook,
             None => {
                 error!("Original send function not available!");
-                return -1;
+                return wsa_fail(WSAEINVAL.0);
             }
         };
         return original.call(s, buf, len, flags);
@@ -307,14 +314,14 @@ pub unsafe extern "system" fn hooked_send(
             Ok(guard) => guard,
             Err(e) => {
                 error!("Failed to acquire SEND_HOOK lock: {}", e);
-                return -1;
+                return wsa_fail(WSAEINTR.0);
             }
         };
         let original = match hook_guard.as_ref() {
             Some(hook) => hook,
             None => {
                 error!("Original send function not available !");
-                return -1;
+                return wsa_fail(WSAEINVAL.0);
             }
         };
         original.call(s, buf, len, flags)
@@ -342,14 +349,14 @@ pub unsafe extern "system" fn hooked_connect(
         Ok(guard) => guard,
         Err(e) => {
             error!("Failed to acquire CONNECT_HOOK lock: {}", e);
-            return -1;
+            return wsa_fail(WSAEINTR.0);
         }
     };
     let original = match hook_guard.as_ref() {
         Some(hook) => hook,
         None => {
             error!("Original connect() function not available!");
-            return -1;
+            return wsa_fail(WSAEINVAL.0);
         }
     };
 
@@ -403,14 +410,14 @@ pub unsafe extern "system" fn hooked_closesocket(s: SOCKET) -> c_int {
             Ok(guard) => guard,
             Err(e) => {
                 error!("Failed to acquire CLOSESOCKET_HOOK lock: {}", e);
-                return -1;
+                return wsa_fail(WSAEINTR.0);
             }
         };
         let original = match hook_guard.as_ref() {
             Some(hook) => hook,
             None => {
                 error!("Original closesocket() function not available !");
-                return -1;
+                return wsa_fail(WSAEINVAL.0);
             }
         };
         original.call(s)

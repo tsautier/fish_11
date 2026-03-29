@@ -230,6 +230,11 @@ pub extern "C" fn FiSH11_InjectDebugInfo(
     _show: i32,
     _nopause: i32,
 ) -> i32 {
+    if data.is_null() {
+        error!("FiSH11_InjectDebugInfo() : data buffer pointer is null.");
+        return MIRC_HALT;
+    }
+
     let max_bytes = *MAX_MIRC_RETURN_BYTES.lock().unwrap();
 
     // Collect socket statistics (DashMap - thread-safe iteration)
