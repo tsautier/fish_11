@@ -3,8 +3,8 @@ use crate::hook_socket::get_or_create_socket;
 use crate::pointer_validation::validate_function_pointer;
 use crate::socket::state::SocketState;
 use crate::ssl_mapping::SslSocketMapping;
-use lazy_static::lazy_static;
 use log::{debug, error, info, trace, warn};
+use once_cell::sync::Lazy;
 use retour::GenericDetour;
 use std::ffi::{CString, c_int, c_void};
 use std::sync::Mutex as StdMutex;
@@ -38,26 +38,30 @@ pub type SslGetFdFn = unsafe extern "C" fn(*mut SSL) -> c_int;
 pub type SslSetFdFn = unsafe extern "C" fn(*mut SSL, c_int) -> c_int;
 pub type SslIsInitFinishedProc = unsafe extern "C" fn(*mut SSL) -> i32;
 
-lazy_static! {
-    static ref SSL_IS_INIT_FINISHED: StdMutex<Option<SslIsInitFinishedProc>> = StdMutex::new(None);
-}
+static SSL_IS_INIT_FINISHED: Lazy<StdMutex<Option<SslIsInitFinishedProc>>> =
+    Lazy::new(|| StdMutex::new(None));
 
-lazy_static! {
-    pub static ref SSL_READ_HOOK: StdMutex<Option<GenericDetour<SslReadFn>>> = StdMutex::new(None);
-    pub static ref SSL_WRITE_HOOK: StdMutex<Option<GenericDetour<SslWriteFn>>> =
-        StdMutex::new(None);
-    pub static ref SSL_CONNECT_HOOK: StdMutex<Option<GenericDetour<SslConnectFn>>> =
-        StdMutex::new(None);
-    pub static ref SSL_NEW_HOOK: StdMutex<Option<GenericDetour<SslNewFn>>> = StdMutex::new(None);
-    pub static ref SSL_GET_FD: StdMutex<Option<SslGetFdFn>> = StdMutex::new(None);
-    pub static ref SSL_FREE_HOOK: StdMutex<Option<GenericDetour<SslFreeFn>>> = StdMutex::new(None);
-    pub static ref SSL_HOOKS_INSTALLED: StdMutex<bool> = StdMutex::new(false);
-    pub static ref ORIGINAL_SSL_READ: StdMutex<Option<SslReadFn>> = StdMutex::new(None);
-    pub static ref ORIGINAL_SSL_WRITE: StdMutex<Option<SslWriteFn>> = StdMutex::new(None);
-    pub static ref ORIGINAL_SSL_CONNECT: StdMutex<Option<SslConnectFn>> = StdMutex::new(None);
-    pub static ref ORIGINAL_SSL_NEW: StdMutex<Option<SslNewFn>> = StdMutex::new(None);
-    pub static ref ORIGINAL_SSL_FREE: StdMutex<Option<SslFreeFn>> = StdMutex::new(None);
-}
+pub static SSL_READ_HOOK: Lazy<StdMutex<Option<GenericDetour<SslReadFn>>>> =
+    Lazy::new(|| StdMutex::new(None));
+pub static SSL_WRITE_HOOK: Lazy<StdMutex<Option<GenericDetour<SslWriteFn>>>> =
+    Lazy::new(|| StdMutex::new(None));
+pub static SSL_CONNECT_HOOK: Lazy<StdMutex<Option<GenericDetour<SslConnectFn>>>> =
+    Lazy::new(|| StdMutex::new(None));
+pub static SSL_NEW_HOOK: Lazy<StdMutex<Option<GenericDetour<SslNewFn>>>> =
+    Lazy::new(|| StdMutex::new(None));
+pub static SSL_GET_FD: Lazy<StdMutex<Option<SslGetFdFn>>> = Lazy::new(|| StdMutex::new(None));
+pub static SSL_FREE_HOOK: Lazy<StdMutex<Option<GenericDetour<SslFreeFn>>>> =
+    Lazy::new(|| StdMutex::new(None));
+pub static SSL_HOOKS_INSTALLED: Lazy<StdMutex<bool>> = Lazy::new(|| StdMutex::new(false));
+pub static ORIGINAL_SSL_READ: Lazy<StdMutex<Option<SslReadFn>>> =
+    Lazy::new(|| StdMutex::new(None));
+pub static ORIGINAL_SSL_WRITE: Lazy<StdMutex<Option<SslWriteFn>>> =
+    Lazy::new(|| StdMutex::new(None));
+pub static ORIGINAL_SSL_CONNECT: Lazy<StdMutex<Option<SslConnectFn>>> =
+    Lazy::new(|| StdMutex::new(None));
+pub static ORIGINAL_SSL_NEW: Lazy<StdMutex<Option<SslNewFn>>> = Lazy::new(|| StdMutex::new(None));
+pub static ORIGINAL_SSL_FREE: Lazy<StdMutex<Option<SslFreeFn>>> =
+    Lazy::new(|| StdMutex::new(None));
 
 static SSL_SET_FD_HOOK: StdMutex<Option<GenericDetour<SslSetFdFn>>> = StdMutex::new(None);
 
@@ -299,6 +303,10 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
         return bytes_read;
     }
 
+    if buf.is_null() {
+        return bytes_read;
+    }
+
     let socket_info = get_or_create_socket(socket_id, true);
     let data_slice = std::slice::from_raw_parts(buf, bytes_read as usize);
 
@@ -308,7 +316,34 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
         error!("Error processing received SSL lines: {:?}", e);
     }
 
-    bytes_read
+    // Match hooked_recv: engines write decrypted/processed lines into processed_incoming_buffer;
+    // mIRC must see that data, not only the raw TLS plaintext in buf.
+    let processed_buffer = socket_info.get_processed_buffer();
+
+    let safe_len = if num > 0 { num as usize } else { 0 };
+    let bytes_to_copy = std::cmp::min(safe_len, processed_buffer.len());
+
+    if bytes_to_copy > 0 {
+        let target_buf = std::slice::from_raw_parts_mut(buf, bytes_to_copy);
+        target_buf.copy_from_slice(&processed_buffer[..bytes_to_copy]);
+
+        #[cfg(debug_assertions)]
+        {
+            debug!(
+                "[SSL_read] socket {}: returning {} bytes to app (processed had {} bytes)",
+                socket_id,
+                bytes_to_copy,
+                processed_buffer.len()
+            );
+            if let Ok(text) = std::str::from_utf8(&processed_buffer[..bytes_to_copy]) {
+                trace!("[SSL_read] returning to app: {}", text.trim_end());
+            }
+        }
+    }
+
+    socket_info.clear_processed_buffer();
+
+    bytes_to_copy as c_int
 }
 
 unsafe extern "C" fn hooked_ssl_write(ssl: *mut SSL, buf: *const u8, num: c_int) -> c_int {

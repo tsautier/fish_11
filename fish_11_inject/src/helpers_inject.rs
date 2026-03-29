@@ -319,9 +319,12 @@ unsafe fn get_winsock_function(func_name: &str) -> FARPROC {
     let ws2_32 = match GetModuleHandleA(PCSTR::from_raw(ws2_32_cstr.as_ptr())) {
         Ok(handle) => handle,
         Err(e) => {
-            #[cfg(debug_assertions)]
-            error!("get_winsock_function: failed to get ws2_32.dll handle: {}", e);
-            panic!("Failed to get ws2_32.dll handle");
+            error!(
+                "get_winsock_function: failed to get ws2_32.dll module handle ({}): {}",
+                func_name.trim_end_matches('\0'),
+                e
+            );
+            return None;
         }
     };
 

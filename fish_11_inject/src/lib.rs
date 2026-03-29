@@ -29,7 +29,6 @@ use buffer_pool::BufferPool;
 use dashmap::DashMap;
 use engines::InjectEngines;
 use fish_11_core::globals::{MIRC_HALT, MIRC_IDENTIFIER};
-use lazy_static::lazy_static;
 use log::{error, info, warn};
 use once_cell::sync::Lazy;
 use socket::info::SocketInfo;
@@ -51,12 +50,12 @@ pub static BUFFER_POOL: Lazy<Arc<BufferPool>> = Lazy::new(|| BufferPool::new());
 /// Thread-safe socket tracking using DashMap for better concurrency
 pub static ACTIVE_SOCKETS: Lazy<DashMap<u32, Arc<SocketInfo>>> = Lazy::new(DashMap::new);
 
-lazy_static! {
-    static ref DISCARDED_SOCKETS: Mutex<Vec<u32>> = Mutex::new(Vec::new());
-    static ref ENGINES: Mutex<Option<Arc<InjectEngines>>> = Mutex::new(None);
-    static ref DLL_HANDLE_PTR: Mutex<Option<SendHMODULE>> = Mutex::new(None);
-    static ref MAX_MIRC_RETURN_BYTES: Mutex<usize> = Mutex::new(4096);
-}
+pub(crate) static DISCARDED_SOCKETS: Lazy<Mutex<Vec<u32>>> = Lazy::new(|| Mutex::new(Vec::new()));
+pub(crate) static ENGINES: Lazy<Mutex<Option<Arc<InjectEngines>>>> =
+    Lazy::new(|| Mutex::new(None));
+pub(crate) static DLL_HANDLE_PTR: Lazy<Mutex<Option<SendHMODULE>>> =
+    Lazy::new(|| Mutex::new(None));
+pub(crate) static MAX_MIRC_RETURN_BYTES: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::new(4096));
 
 /// Global flags
 static LOADED: AtomicBool = AtomicBool::new(false);

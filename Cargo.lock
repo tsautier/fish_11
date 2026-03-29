@@ -620,7 +620,6 @@ dependencies = [
  "chrono",
  "dashmap",
  "fish_11_core",
- "lazy_static",
  "log",
  "once_cell",
  "parking_lot",
