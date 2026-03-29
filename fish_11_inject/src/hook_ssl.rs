@@ -5,7 +5,7 @@ use crate::socket::state::SocketState;
 use crate::ssl_mapping::SslSocketMapping;
 use log::{debug, error, info, trace, warn};
 use once_cell::sync::Lazy;
-use retour::GenericDetour;
+use retour::{Function, GenericDetour};
 use std::ffi::{CString, c_int, c_void};
 use std::sync::Mutex as StdMutex;
 use windows::Win32::Foundation::FARPROC;
@@ -30,6 +30,11 @@ unsafe impl Send for SSL {}
 unsafe impl Sync for SSL {}
 
 pub type SslReadFn = unsafe extern "C" fn(*mut SSL, *mut u8, c_int) -> c_int;
+
+#[inline]
+unsafe fn ssl_read_detour_original(hook: &GenericDetour<SslReadFn>) -> SslReadFn {
+    std::mem::transmute(hook.trampoline())
+}
 pub type SslWriteFn = unsafe extern "C" fn(*mut SSL, *const u8, c_int) -> c_int;
 pub type SslConnectFn = unsafe extern "C" fn(*mut SSL) -> c_int;
 pub type SslNewFn = unsafe extern "C" fn(*mut c_void) -> *mut SSL;
@@ -218,23 +223,26 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
             return -1;
         }
     };
-    let original = match ssl_read_guard.as_ref() {
-        Some(hook) => hook,
+    let original_fn: SslReadFn = match ssl_read_guard.as_ref() {
+        Some(hook) => unsafe { ssl_read_detour_original(hook) },
         None => {
             error!("Original SSL_read() function not available!");
             return -1;
         }
     };
+    // Drop the guard to release the lock
+    drop(ssl_read_guard);
 
     let socket_id = match get_socket_from_ssl_context(ssl) {
         Some(id) => id,
         None => {
             error!("SSL_read called on unknown SSL context {:p}", ssl);
-            return original.call(ssl, buf, num);
+            return original_fn(ssl, buf, num);
         }
     };
 
-    let bytes_read = original.call(ssl, buf, num);
+    // Call the original SSL_read function
+    let bytes_read = original_fn(ssl, buf, num);
 
     if bytes_read > 0 && !buf.is_null() {
         let data_slice = std::slice::from_raw_parts(buf, bytes_read as usize);
@@ -515,69 +523,65 @@ pub unsafe fn install_ssl_hooks(
     Ok(())
 }
 
+/// Same rationale as [`crate::hook_socket::uninstall_socket_hooks`]: avoid blocking forever on unload.
+unsafe fn uninstall_one_ssl_detour<T: Copy + Function>(
+    hook_label: &'static str,
+    mutex: &StdMutex<Option<GenericDetour<T>>>,
+) {
+    let mut guard = match crate::lock_utils::try_lock_timeout(
+        mutex,
+        crate::lock_utils::UNINSTALL_HOOK_LOCK_TIMEOUT,
+    ) {
+        Ok(g) => g,
+        Err(e) => {
+            error!(
+                "uninstall_ssl_hooks: timed out acquiring {} mutex: {}",
+                hook_label, e
+            );
+            return;
+        }
+    };
+
+    if let Some(hook) = guard.take() {
+        if let Err(e) = hook.disable() {
+            error!("Failed to disable {} hook: {:?}", hook_label, e);
+        }
+    }
+}
+
+fn clear_ssl_slot<T>(label: &'static str, mutex: &StdMutex<T>, value: T) {
+    match crate::lock_utils::try_lock_timeout(
+        mutex,
+        crate::lock_utils::UNINSTALL_HOOK_LOCK_TIMEOUT,
+    ) {
+        Ok(mut g) => *g = value,
+        Err(e) => error!(
+            "uninstall_ssl_hooks: timed out clearing {}: {}",
+            label, e
+        ),
+    }
+}
+
 pub fn uninstall_ssl_hooks() {
     #[cfg(debug_assertions)]
     info!("Uninstalling SSL hooks...");
 
-    {
-        let mut hook_opt = SSL_READ_HOOK.lock().unwrap_or_else(handle_poison);
-
-        if let Some(hook) = hook_opt.take() {
-            unsafe {
-                if let Err(e) = hook.disable() {
-                    error!("Failed to disable SSL_read hook: {:?}", e);
-                }
-            }
-        }
-    }
-
-    {
-        let mut hook_opt = SSL_WRITE_HOOK.lock().unwrap_or_else(handle_poison);
-
-        if let Some(hook) = hook_opt.take() {
-            unsafe {
-                if let Err(e) = hook.disable() {
-                    error!("Failed to disable SSL_write hook: {:?}", e);
-                }
-            }
-        }
-    }
-
-    {
-        let mut hook_opt = SSL_CONNECT_HOOK.lock().unwrap_or_else(handle_poison);
-
-        if let Some(hook) = hook_opt.take() {
-            unsafe {
-                let _ = hook.disable();
-            }
-        }
-    }
-    {
-        let mut hook_opt = SSL_NEW_HOOK.lock().unwrap_or_else(handle_poison);
-
-        if let Some(hook) = hook_opt.take() {
-            unsafe {
-                let _ = hook.disable();
-            }
-        }
-    }
-    {
-        let mut hook_opt = SSL_FREE_HOOK.lock().unwrap_or_else(handle_poison);
-
-        if let Some(hook) = hook_opt.take() {
-            unsafe {
-                let _ = hook.disable();
-            }
-        }
+    unsafe {
+        uninstall_one_ssl_detour("SSL_read", &*SSL_READ_HOOK);
+        uninstall_one_ssl_detour("SSL_write", &*SSL_WRITE_HOOK);
+        uninstall_one_ssl_detour("SSL_connect", &*SSL_CONNECT_HOOK);
+        uninstall_one_ssl_detour("SSL_new", &*SSL_NEW_HOOK);
+        uninstall_one_ssl_detour("SSL_free", &*SSL_FREE_HOOK);
     }
 
     SslSocketMapping::clear();
-    *ORIGINAL_SSL_READ.lock().unwrap_or_else(handle_poison) = None;
-    *ORIGINAL_SSL_WRITE.lock().unwrap_or_else(handle_poison) = None;
-    *ORIGINAL_SSL_CONNECT.lock().unwrap_or_else(handle_poison) = None;
-    *ORIGINAL_SSL_NEW.lock().unwrap_or_else(handle_poison) = None;
-    *ORIGINAL_SSL_FREE.lock().unwrap_or_else(handle_poison) = None;
-    *SSL_HOOKS_INSTALLED.lock().unwrap_or_else(handle_poison) = false;
+
+    clear_ssl_slot("ORIGINAL_SSL_READ", &*ORIGINAL_SSL_READ, None);
+    clear_ssl_slot("ORIGINAL_SSL_WRITE", &*ORIGINAL_SSL_WRITE, None);
+    clear_ssl_slot("ORIGINAL_SSL_CONNECT", &*ORIGINAL_SSL_CONNECT, None);
+    clear_ssl_slot("ORIGINAL_SSL_NEW", &*ORIGINAL_SSL_NEW, None);
+    clear_ssl_slot("ORIGINAL_SSL_FREE", &*ORIGINAL_SSL_FREE, None);
+    clear_ssl_slot("SSL_HOOKS_INSTALLED", &*SSL_HOOKS_INSTALLED, false);
 }
 
 unsafe fn get_socket_from_ssl_context(ssl: *mut SSL) -> Option<u32> {
