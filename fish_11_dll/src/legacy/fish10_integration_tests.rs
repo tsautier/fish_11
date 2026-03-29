@@ -6,8 +6,7 @@
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use crate::crypto::blowfish;
-    use crate::crypto::dh1080;
+    use crate::crypto::{blowfish, dh1080};
     //use crate::legacy::config::LEGACY_CONFIG;
     use crate::legacy::fish10_config::get_encrypt_topic_setting;
     use crate::legacy::fish10_config::set_encrypt_topic_setting;
@@ -141,7 +140,8 @@ mod integration_tests {
         let init_message = "DH1080_INIT some_public_key_data";
         assert!(fish10_message_detection::is_dh1080_message(init_message));
 
-        let message_type = fish10_message_detection::parse_dh1080_message_type(init_message).unwrap();
+        let message_type =
+            fish10_message_detection::parse_dh1080_message_type(init_message).unwrap();
         assert_eq!(message_type, "INIT");
 
         let public_key = fish10_message_detection::extract_dh1080_public_key(init_message).unwrap();
@@ -150,10 +150,12 @@ mod integration_tests {
         let finish_message = "DH1080_FINISH another_public_key";
         assert!(fish10_message_detection::is_dh1080_message(finish_message));
 
-        let message_type = fish10_message_detection::parse_dh1080_message_type(finish_message).unwrap();
+        let message_type =
+            fish10_message_detection::parse_dh1080_message_type(finish_message).unwrap();
         assert_eq!(message_type, "FINISH");
 
-        let public_key = fish10_message_detection::extract_dh1080_public_key(finish_message).unwrap();
+        let public_key =
+            fish10_message_detection::extract_dh1080_public_key(finish_message).unwrap();
         assert_eq!(public_key, "another_public_key");
     }
 

@@ -21,12 +21,13 @@ scopeguard = "1.2.0"
 argon2 = "0.5"
 chacha20poly1305 = "0.10"
 hkdf = "0.12"
+# Must match hkdf 0.12 / digest 0.10 (see Hkdf::<Sha256>); sha2 0.11 pulls digest 0.11 and breaks HKDF.
 sha2 = "0.10"
 secrecy = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 zeroize = "1.8"
 configparser = "3.0"
-base64 = "0.21"
+base64 = "0.22"
 tempfile = "3.24.0"
 
 [build-dependencies]

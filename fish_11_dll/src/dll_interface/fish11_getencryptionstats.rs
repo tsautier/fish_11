@@ -1,11 +1,11 @@
 //! Provides statistics about encryption operations
 
-use crate::dll_function_identifier;
-use crate::platform_types::{BOOL, HWND};
-use crate::{config, log_debug, log_info};
-use crate::unified_error::DllError;
 use std::ffi::c_char;
 use std::os::raw::c_int;
+
+use crate::platform_types::{BOOL, HWND};
+use crate::unified_error::DllError;
+use crate::{config, dll_function_identifier, log_debug, log_info};
 
 // Returns encryption statistics including:
 // - Number of keys stored
@@ -16,14 +16,20 @@ use std::os::raw::c_int;
 dll_function_identifier!(FiSH11_GetEncryptionStats, data, {
     // Get statistics from config
     let key_count = config::count_keys().map_err(|e| DllError::ConfigError(e.to_string()))?;
-    let encryption_count = config::get_encryption_count().map_err(|e| DllError::ConfigError(e.to_string()))?;
-    let decryption_count = config::get_decryption_count().map_err(|e| DllError::ConfigError(e.to_string()))?;
-    let key_exchange_count = config::get_key_exchange_count().map_err(|e| DllError::ConfigError(e.to_string()))?;
+    let encryption_count =
+        config::get_encryption_count().map_err(|e| DllError::ConfigError(e.to_string()))?;
+    let decryption_count =
+        config::get_decryption_count().map_err(|e| DllError::ConfigError(e.to_string()))?;
+    let key_exchange_count =
+        config::get_key_exchange_count().map_err(|e| DllError::ConfigError(e.to_string()))?;
 
     #[cfg(debug_assertions)]
     log_debug!(
         "DLL_Interface: encryption stats - keys: {}, enc: {}, dec: {}, exchanges: {}",
-        key_count, encryption_count, decryption_count, key_exchange_count
+        key_count,
+        encryption_count,
+        decryption_count,
+        key_exchange_count
     );
 
     let result = format!(

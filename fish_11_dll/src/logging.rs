@@ -1,18 +1,18 @@
 //! Logging module for FiSH_11
-use crate::{log_debug, log_info};
-use base64::{Engine as _, engine::general_purpose};
-use chacha20poly1305::{
-    ChaCha20Poly1305,
-    aead::{Aead, KeyInit, OsRng},
-};
-use fish_11_core::globals::LOGGING_KEY;
-use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION};
-use log::{LevelFilter, SetLoggerError};
 use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, Once};
 use std::time::Duration;
+
+use base64::Engine as _;
+use base64::engine::general_purpose;
+use chacha20poly1305::ChaCha20Poly1305;
+use chacha20poly1305::aead::{Aead, KeyInit, OsRng};
+use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION, LOGGING_KEY};
+use log::{LevelFilter, SetLoggerError};
+
+use crate::{log_debug, log_info};
 
 // Ensure initialization happens only once
 static LOGGER_INIT: Once = Once::new();

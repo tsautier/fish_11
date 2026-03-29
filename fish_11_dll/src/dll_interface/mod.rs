@@ -1,13 +1,12 @@
-use crate::log_error;
+use std::ffi::CStr;
+use std::ptr;
 
 pub use crate::channel_encryption::init_key::FiSH11_InitChannelKey;
 pub use crate::channel_encryption::process_key::FiSH11_ProcessChannelKey;
 pub use crate::crypto::dh1080::{
     FiSH10_DH1080_ComputeSecret, FiSH10_DH1080_GenerateKeyPair, FiSH10_DH1080_SetKey,
 };
-
-use std::ffi::CStr;
-use std::ptr;
+use crate::log_error;
 
 mod fish11_coreversion;
 mod fish11_decryptmsg;
@@ -46,9 +45,7 @@ pub use fish_10::fish10_register_engine::{
     FiSH10_GetEngineVersion, FiSH10_IsEngineAvailable, FiSH10_RegisterEngine,
 };
 pub use fish_10::fish10_setkey::FiSH10_SetKey;
-
 pub use fish_10::fish10_settopic::{FiSH10_GetTopic, FiSH10_RemoveTopic, FiSH10_SetTopic};
-
 pub use fish11_getencryptionstats::FiSH11_GetEncryptionStats;
 pub use fish11_getkeyttl::FiSH11_GetKeyTTL;
 pub use fish11_getratchetstate::FiSH11_GetRatchetState;
@@ -65,10 +62,10 @@ pub use fish11_masterkey::{
 pub use fish11_removemanualchannelkey::FiSH11_RemoveManualChannelKey;
 pub use fish11_removeratchetchannelkey::FiSH11_RemoveRatchetChannelKey;
 pub use fish11_setencryptionprefix::FiSH11_SetEncryptionPrefix;
-pub use fish11_settopic::{FiSH11_GetTopic, FiSH11_RemoveTopic, FiSH11_SetTopic};
 pub use fish11_setfishprefix::FiSH11_SetFishPrefix;
 pub use fish11_setmanualchannelkey::FiSH11_SetManualChannelKey;
 pub use fish11_setmanualchannelkeyfrompassword::FiSH11_SetManualChannelKeyFromPassword;
+pub use fish11_settopic::{FiSH11_GetTopic, FiSH11_RemoveTopic, FiSH11_SetTopic};
 pub use ini_types::{INI_GetBool, INI_GetInt, INI_GetString, INI_SetInt, INI_SetString};
 pub use key_management::{FiSH11_ProcessPublicKey, FiSH11_TestCrypt};
 pub(crate) mod core;
@@ -84,7 +81,7 @@ pub mod key_management;
 pub use fish_11_core::globals::{
     CRATE_VERSION, CURRENT_YEAR, DEFAULT_MIRC_BUFFER_SIZE, FUNCTION_TIMEOUT_SECONDS,
     KEY_EXCHANGE_TIMEOUT_SECONDS, MAX_MIRC_BUFFER_SIZE, MIRC_BUFFER_SIZE, MIRC_COMMAND,
-    MIRC_CONTINUE, MIRC_ERROR, MIRC_HALT, MIRC_IDENTIFIER, MIRC_DLL_RESULT_PAYLOAD_CAP,
+    MIRC_CONTINUE, MIRC_DLL_RESULT_PAYLOAD_CAP, MIRC_ERROR, MIRC_HALT, MIRC_IDENTIFIER,
     MIRC_TYPICAL_BUFFER_SIZE, NICK_VALIDATOR,
 };
 /// Returns the maximum amount of data that can be written into the output buffer (excluding the

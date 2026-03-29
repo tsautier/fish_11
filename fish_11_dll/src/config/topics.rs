@@ -88,11 +88,11 @@ mod tests {
     #[test]
     fn test_set_and_get_topic() {
         let mut config = FishConfig::new();
-        
+
         // Set a topic
         let result = set_topic(&mut config, "#test", "This is a test topic");
         assert!(result.is_ok());
-        
+
         // Get the topic
         let topic = get_topic(&config, "#test").unwrap();
         assert_eq!(topic, Some("This is a test topic".to_string()));
@@ -101,17 +101,17 @@ mod tests {
     #[test]
     fn test_remove_topic() {
         let mut config = FishConfig::new();
-        
+
         // Set a topic
         set_topic(&mut config, "#test", "This is a test topic").unwrap();
-        
+
         // Verify it exists
         assert!(get_topic(&config, "#test").unwrap().is_some());
-        
+
         // Remove the topic
         let removed = remove_topic(&mut config, "#test").unwrap();
         assert!(removed);
-        
+
         // Verify it's gone
         assert!(get_topic(&config, "#test").unwrap().is_none());
     }
@@ -119,10 +119,10 @@ mod tests {
     #[test]
     fn test_case_insensitive_channels() {
         let mut config = FishConfig::new();
-        
+
         // Set a topic with lowercase channel
         set_topic(&mut config, "#Test", "This is a test topic").unwrap();
-        
+
         // Get the topic with different case
         let topic = get_topic(&config, "#TEST").unwrap();
         assert_eq!(topic, Some("This is a test topic".to_string()));
@@ -131,15 +131,15 @@ mod tests {
     #[test]
     fn test_empty_inputs() {
         let mut config = FishConfig::new();
-        
+
         // Test empty channel
         let result = set_topic(&mut config, "", "topic");
         assert!(result.is_err());
-        
+
         // Test empty topic
         let result = set_topic(&mut config, "#test", "");
         assert!(result.is_err());
-        
+
         // Test empty channel for get
         let result = get_topic(&config, "");
         assert!(result.is_err());

@@ -3,8 +3,9 @@
 //! This module handles loading and saving legacy blowfish.ini files
 //! and managing legacy key configuration.
 
-use crate::unified_error::DllError;
 use std::path::PathBuf;
+
+use crate::unified_error::DllError;
 
 /// Load legacy configuration from blowfish.ini
 pub fn load_legacy_config() -> Result<(), DllError> {
@@ -378,9 +379,11 @@ pub fn set_encrypt_topic_setting(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::io::Write;
+
     use tempfile::NamedTempFile;
+
+    use super::*;
 
     #[test]
     fn test_parse_ini_line() {

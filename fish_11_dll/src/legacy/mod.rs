@@ -3,19 +3,20 @@
 //! This module provides compatibility with the legacy FiSH 10 protocol
 //! using Blowfish encryption and blowfish.ini key management.
 
-
 pub mod fish10_config;
 pub mod fish10_encryption;
 pub mod fish10_engine;
+pub mod fish10_integration_tests;
 pub mod fish10_key_management;
 pub mod fish10_message_detection;
-pub mod fish10_integration_tests;
 pub mod fish10_topics;
 
-use crate::unified_error::DllError;
-use parking_lot::RwLock;
 use std::sync::Arc;
+
 use once_cell::sync::Lazy;
+use parking_lot::RwLock;
+
+use crate::unified_error::DllError;
 
 /// Legacy configuration structure
 #[derive(Debug, Clone)]
@@ -34,8 +35,6 @@ impl Default for LegacyConfig {
         }
     }
 }
-
-
 
 pub static LEGACY_CONFIG: Lazy<Arc<RwLock<LegacyConfig>>> =
     Lazy::new(|| Arc::new(RwLock::new(LegacyConfig::default())));
@@ -95,23 +94,20 @@ pub fn set_encrypt_topic_setting(
 
 /// Set a plaintext topic for a channel in the legacy fish10 section
 pub fn set_legacy_topic(channel: &str, topic: &str) -> Result<(), DllError> {
-    crate::config::with_config_mut(|config| {
-        fish10_topics::set_legacy_topic(config, channel, topic)
-    }).map_err(DllError::from)
+    crate::config::with_config_mut(|config| fish10_topics::set_legacy_topic(config, channel, topic))
+        .map_err(DllError::from)
 }
 
 /// Get a plaintext topic for a channel from the legacy fish10 section
 pub fn get_legacy_topic(channel: &str) -> Result<Option<String>, DllError> {
-    crate::config::with_config(|config| {
-        fish10_topics::get_legacy_topic(config, channel)
-    }).map_err(DllError::from)
+    crate::config::with_config(|config| fish10_topics::get_legacy_topic(config, channel))
+        .map_err(DllError::from)
 }
 
 /// Remove a plaintext topic for a channel from the legacy fish10 section
 pub fn remove_legacy_topic(channel: &str) -> Result<bool, DllError> {
-    crate::config::with_config_mut(|config| {
-        fish10_topics::remove_legacy_topic(config, channel)
-    }).map_err(DllError::from)
+    crate::config::with_config_mut(|config| fish10_topics::remove_legacy_topic(config, channel))
+        .map_err(DllError::from)
 }
 
 #[cfg(test)]
@@ -146,4 +142,3 @@ pub mod test_utils {
         keys.clear();
     }
 }
-

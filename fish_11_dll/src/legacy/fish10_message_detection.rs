@@ -26,7 +26,10 @@ pub fn extract_fish10_payload(message: &str) -> Result<String, DllError> {
     } else {
         return Err(DllError::LegacyError {
             context: "Message detection".to_string(),
-            cause: format!("Message does not start with a known legacy prefix ('{}' or '{}')", FISH10_PREFIX, MCPS_PREFIX),
+            cause: format!(
+                "Message does not start with a known legacy prefix ('{}' or '{}')",
+                FISH10_PREFIX, MCPS_PREFIX
+            ),
         });
     };
 

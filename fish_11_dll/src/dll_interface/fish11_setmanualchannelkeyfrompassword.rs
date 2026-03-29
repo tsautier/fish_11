@@ -1,8 +1,9 @@
+use std::ffi::c_char;
+use std::os::raw::c_int;
+
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::{DllError, DllResult};
 use crate::{buffer_utils, config, dll_function_identifier, log_debug};
-use std::ffi::c_char;
-use std::os::raw::c_int;
 
 // Sets a manual channel key from a password or short key.
 // This function accepts keys of any length and securely expands them to 32 bytes
@@ -53,10 +54,11 @@ fn derive_key_from_password(password: &str) -> DllResult<[u8; 32]> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::dll_interface::MIRC_COMMAND;
     use std::ffi::CStr;
     use std::ptr;
+
+    use super::*;
+    use crate::dll_interface::MIRC_COMMAND;
 
     fn call_set_manual_channel_key_from_password(
         input: &str,

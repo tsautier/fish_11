@@ -1,13 +1,13 @@
-use crate::dll_interface::dll_error::DllError;
-use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD;
-use chacha20poly1305::{
-    ChaCha20Poly1305, Nonce,
-    aead::{Aead, KeyInit},
-};
-use fish_11_core::globals::LOGGING_KEY;
 use std::ffi::CStr;
 use std::os::raw::c_char;
+
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD;
+use chacha20poly1305::aead::{Aead, KeyInit};
+use chacha20poly1305::{ChaCha20Poly1305, Nonce};
+use fish_11_core::globals::LOGGING_KEY;
+
+use crate::dll_interface::dll_error::DllError;
 
 fn decrypt_log_message(key: &[u8], base64_ciphertext: &str) -> Result<String, DllError> {
     let decoded =

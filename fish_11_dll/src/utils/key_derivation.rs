@@ -3,9 +3,10 @@
 //! This module provides common functions for deriving cryptographic keys from various inputs
 //! such as passwords or plain text strings.
 
-use crate::unified_error::{DllError, DllResult};
-use sha2::Sha256;
 use hkdf::Hkdf;
+use sha2::Sha256;
+
+use crate::unified_error::{DllError, DllResult};
 
 /// Derives a 32-byte cryptographic key from password/short key material using HKDF
 pub fn derive_key_from_password(password: &str) -> DllResult<[u8; 32]> {
@@ -30,7 +31,7 @@ pub fn derive_key_from_password(password: &str) -> DllResult<[u8; 32]> {
 /// Converts plain text to a key suitable for legacy systems (4-56 bytes)
 /// Uses SHA-256 hashing and truncates to a valid Blowfish key length
 pub fn text_to_legacy_key(text: &str) -> Vec<u8> {
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
 
     let mut hasher = Sha256::new();
     hasher.update(text.as_bytes());

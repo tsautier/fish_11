@@ -1,9 +1,10 @@
+use std::ffi::c_char;
+use std::os::raw::c_int;
+
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 use crate::{buffer_utils, config, crypto, dll_function_identifier, log_debug};
-use std::ffi::c_char;
-use std::os::raw::c_int;
 
 dll_function_identifier!(FiSH11_ProcessPublicKey, data, {
     // Parse input: accept either "<nickname> <received_key>" or "<received_key> <nickname>"

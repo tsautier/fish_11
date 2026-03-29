@@ -1,18 +1,19 @@
 //! engine_registration.rs
 //! Handles the registration of the fish_11_dll as an engine within fish_11_inject.
 
-use crate::config::settings::get_encryption_prefix;
-use crate::crypto::{decrypt_message, encrypt_message};
-use crate::legacy;
-use crate::legacy::fish10_message_detection;
-use crate::crypto::blowfish;
-use once_cell::sync::OnceCell;
 use std::borrow::Cow;
 use std::ffi::{CString, c_char};
 use std::ptr;
+
+use once_cell::sync::OnceCell;
 use windows::Win32::Foundation::HMODULE;
 use windows::Win32::System::LibraryLoader::{GetModuleHandleA, GetProcAddress};
 use windows::core::PCSTR;
+
+use crate::config::settings::get_encryption_prefix;
+use crate::crypto::{blowfish, decrypt_message, encrypt_message};
+use crate::legacy;
+use crate::legacy::fish10_message_detection;
 
 type GetNetworkNameFn = unsafe extern "C" fn(u32) -> *mut c_char;
 static GET_NETWORK_NAME_FN: OnceCell<GetNetworkNameFn> = OnceCell::new();
@@ -209,7 +210,9 @@ fn attempt_encryption(line: &str, network_name: Option<&str>) -> Option<String> 
     // Skip if already encrypted with FiSH 10 or FiSH 11
     // Get the encryption prefix from config (defaults to "+FiSH")
     let encryption_prefix = get_encryption_prefix().unwrap_or_else(|_| "+FiSH".to_string());
-    if fish10_message_detection::is_fish10_message(message) || message.starts_with(&encryption_prefix) {
+    if fish10_message_detection::is_fish10_message(message)
+        || message.starts_with(&encryption_prefix)
+    {
         return None;
     }
 

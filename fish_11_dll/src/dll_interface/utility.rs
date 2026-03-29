@@ -1,15 +1,17 @@
+use std::ffi::c_char;
+use std::os::raw::c_int;
+
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use sha2::{Digest, Sha256};
+use subtle::ConstantTimeEq;
+use x25519_dalek::PublicKey;
+
 use crate::config::key_management::check_key_expiry;
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 use crate::{buffer_utils, config, dll_function_identifier, log_debug};
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
-use sha2::{Digest, Sha256};
-use std::ffi::c_char;
-use std::os::raw::c_int;
-use subtle::ConstantTimeEq;
-use x25519_dalek::PublicKey;
 
 dll_function_identifier!(FiSH11_GetKeyFingerprint, data, {
     // Parse input to get the nickname

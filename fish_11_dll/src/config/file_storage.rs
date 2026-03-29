@@ -1,8 +1,9 @@
 //! File storage operations for configuration
-use ini::Ini;
-use secrecy::ExposeSecret;
 use std::fs;
 use std::path::PathBuf;
+
+use ini::Ini;
+use secrecy::ExposeSecret;
 
 use crate::config::models::{EntryData, FishConfig};
 use crate::error::{FishError, Result};
@@ -506,10 +507,11 @@ pub fn save_config(config: &FishConfig, path_override: Option<PathBuf>) -> Resul
 
 #[cfg(test)]
 mod tests {
+    use tempfile::NamedTempFile;
+
     use super::*;
     use crate::config::models::{EntryData, FishConfig};
     use crate::utils::generate_random_bytes;
-    use tempfile::NamedTempFile;
 
     // Helper to create a dummy config for testing
     fn create_dummy_config() -> FishConfig {

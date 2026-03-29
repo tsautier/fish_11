@@ -1,8 +1,9 @@
 // Master Key Management Functions for FiSH_11
 // These functions provide secure master key initialization, unlocking, and management
-use crate::platform_types::{BOOL, HWND};
-use crate::unified_error::DllError;
-use crate::{buffer_utils, dll_function_identifier};
+use std::ffi::c_char;
+use std::os::raw::c_int;
+use std::sync::Mutex;
+
 use fish_11_core::globals::LOGGING_KEY;
 use fish_11_core::master_key::core::{
     initialize_key_system, is_key_system_unlocked, lock_key_system,
@@ -13,9 +14,10 @@ use fish_11_core::master_key::password_change::change_master_password;
 use fish_11_core::master_key::password_validation::PasswordValidator;
 use once_cell::sync::Lazy;
 use sha2::{Digest, Sha256};
-use std::ffi::c_char;
-use std::os::raw::c_int;
-use std::sync::Mutex;
+
+use crate::platform_types::{BOOL, HWND};
+use crate::unified_error::DllError;
+use crate::{buffer_utils, dll_function_identifier};
 
 /// Synchronize the LOGGING_KEY with the MASTER_KEY
 /// This ensures both keys are always in sync

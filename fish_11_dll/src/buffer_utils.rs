@@ -7,11 +7,13 @@
 //! - [`write_cstring_to_buffer`] still limits each **copied** result to
 //!   [`MIRC_DLL_RESULT_PAYLOAD_CAP`](fish_11_core::globals::MIRC_DLL_RESULT_PAYLOAD_CAP) bytes
 //!   (including NUL), matching mIRC’s historical safe limit even when the client reports a larger buffer.
-use crate::dll_interface::{MIRC_IDENTIFIER, get_buffer_size};
-use fish_11_core::globals::MIRC_DLL_RESULT_PAYLOAD_CAP;
 use std::ffi::{CStr, CString, c_char};
 use std::os::raw::c_int;
 use std::ptr;
+
+use fish_11_core::globals::MIRC_DLL_RESULT_PAYLOAD_CAP;
+
+use crate::dll_interface::{MIRC_IDENTIFIER, get_buffer_size};
 
 /// Result type for buffer operations
 pub type BufferResult<T> = Result<T, BufferError>;

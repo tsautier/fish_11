@@ -3,13 +3,14 @@
 //! This function provides compatibility with the legacy FiSH 10 encryption
 //! using Blowfish encryption.
 
+use std::ffi::c_char;
+use std::os::raw::c_int;
+
+use crate::crypto::blowfish;
 use crate::dll_interface::utility;
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::{buffer_utils, dll_function_identifier, legacy, log_debug};
-use crate::crypto::blowfish;
-use std::ffi::c_char;
-use std::os::raw::c_int;
 
 fn fish10_encrypt_msg_impl(input: &str) -> Result<String, DllError> {
     // Parse input: <target> <plaintext_message>
@@ -38,10 +39,12 @@ fn fish10_encrypt_msg_impl(input: &str) -> Result<String, DllError> {
     log_debug!("FiSH10: Encrypting message for '{}' with legacy key", target);
 
     // Encrypt using legacy Blowfish algorithm
-    let encrypted = blowfish::encrypt_message(key, plaintext_message, target.as_bytes())
-        .map_err(|e| DllError::LegacyError {
-            context: format!("Blowfish encryption failed for '{}'", target),
-            cause: e.to_string(),
+    let encrypted =
+        blowfish::encrypt_message(key, plaintext_message, target.as_bytes()).map_err(|e| {
+            DllError::LegacyError {
+                context: format!("Blowfish encryption failed for '{}'", target),
+                cause: e.to_string(),
+            }
         })?;
 
     // Add the legacy +OK prefix

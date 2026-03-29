@@ -1,7 +1,8 @@
 //! Error handling for FiSH 11
-use base64;
 use std::error::Error;
 use std::{fmt, io};
+
+use base64;
 
 #[derive(Debug)]
 pub enum FishError {

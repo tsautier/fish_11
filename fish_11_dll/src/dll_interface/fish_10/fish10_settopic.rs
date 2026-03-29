@@ -6,15 +6,14 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 
-use crate::legacy;
 use crate::unified_error::{DllError, DllResult};
-use crate::buffer_utils;
+use crate::{buffer_utils, legacy};
 
 /// DLL function to set a plaintext topic for a channel in the legacy fish10 section
-/// 
+///
 /// Expected input format: "<channel> <topic>"
 /// Example: "#mychannel This is my channel topic"
-/// 
+///
 /// Returns: Success message or error message
 #[no_mangle]
 pub extern "stdcall" fn FiSH10_SetTopic(data: *mut c_char) -> i32 {
@@ -25,10 +24,7 @@ pub extern "stdcall" fn FiSH10_SetTopic(data: *mut c_char) -> i32 {
     if data.is_null() {
         log::error!("{}: null data pointer", func_name);
         return unsafe {
-            DllError::NullPointer {
-                context: func_name.to_string(),
-            }
-            .to_mirc_response(data)
+            DllError::NullPointer { context: func_name.to_string() }.to_mirc_response(data)
         };
     }
 
@@ -72,12 +68,10 @@ pub extern "stdcall" fn FiSH10_SetTopic(data: *mut c_char) -> i32 {
                 Ok(s) => s,
                 Err(e) => {
                     log::error!("{}: null byte in result: {}", func_name, e);
-                    return unsafe {
-                        DllError::from(e).to_mirc_response(data)
-                    };
+                    return unsafe { DllError::from(e).to_mirc_response(data) };
                 }
             };
-            
+
             unsafe {
                 buffer_utils::write_cstring_to_buffer(data, 900, &cstring).ok();
             }
@@ -91,10 +85,10 @@ pub extern "stdcall" fn FiSH10_SetTopic(data: *mut c_char) -> i32 {
 }
 
 /// DLL function to get a plaintext topic for a channel from the legacy fish10 section
-/// 
+///
 /// Expected input format: "<channel>"
 /// Example: "#mychannel"
-/// 
+///
 /// Returns: The topic string or error message
 #[no_mangle]
 pub extern "stdcall" fn FiSH10_GetTopic(data: *mut c_char) -> i32 {
@@ -105,10 +99,7 @@ pub extern "stdcall" fn FiSH10_GetTopic(data: *mut c_char) -> i32 {
     if data.is_null() {
         log::error!("{}: null data pointer", func_name);
         return unsafe {
-            DllError::NullPointer {
-                context: func_name.to_string(),
-            }
-            .to_mirc_response(data)
+            DllError::NullPointer { context: func_name.to_string() }.to_mirc_response(data)
         };
     }
 
@@ -145,12 +136,10 @@ pub extern "stdcall" fn FiSH10_GetTopic(data: *mut c_char) -> i32 {
                 Ok(s) => s,
                 Err(e) => {
                     log::error!("{}: null byte in result: {}", func_name, e);
-                    return unsafe {
-                        DllError::from(e).to_mirc_response(data)
-                    };
+                    return unsafe { DllError::from(e).to_mirc_response(data) };
                 }
             };
-            
+
             unsafe {
                 buffer_utils::write_cstring_to_buffer(data, 900, &cstring).ok();
             }
@@ -164,10 +153,10 @@ pub extern "stdcall" fn FiSH10_GetTopic(data: *mut c_char) -> i32 {
 }
 
 /// DLL function to remove a plaintext topic for a channel from the legacy fish10 section
-/// 
+///
 /// Expected input format: "<channel>"
 /// Example: "#mychannel"
-/// 
+///
 /// Returns: Success message or error message
 #[no_mangle]
 pub extern "stdcall" fn FiSH10_RemoveTopic(data: *mut c_char) -> i32 {
@@ -178,10 +167,7 @@ pub extern "stdcall" fn FiSH10_RemoveTopic(data: *mut c_char) -> i32 {
     if data.is_null() {
         log::error!("{}: null data pointer", func_name);
         return unsafe {
-            DllError::NullPointer {
-                context: func_name.to_string(),
-            }
-            .to_mirc_response(data)
+            DllError::NullPointer { context: func_name.to_string() }.to_mirc_response(data)
         };
     }
 
@@ -219,12 +205,10 @@ pub extern "stdcall" fn FiSH10_RemoveTopic(data: *mut c_char) -> i32 {
                 Ok(s) => s,
                 Err(e) => {
                     log::error!("{}: null byte in result: {}", func_name, e);
-                    return unsafe {
-                        DllError::from(e).to_mirc_response(data)
-                    };
+                    return unsafe { DllError::from(e).to_mirc_response(data) };
                 }
             };
-            
+
             unsafe {
                 buffer_utils::write_cstring_to_buffer(data, 900, &cstring).ok();
             }
@@ -239,9 +223,10 @@ pub extern "stdcall" fn FiSH10_RemoveTopic(data: *mut c_char) -> i32 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::ffi::CString;
     use std::os::raw::c_char;
+
+    use super::*;
 
     #[test]
     fn test_set_legacy_topic_dll_function() {

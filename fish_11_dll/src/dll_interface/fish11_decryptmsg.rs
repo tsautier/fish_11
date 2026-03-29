@@ -268,7 +268,6 @@ mod tests {
 
     #[test]
     fn test_decryptmsg_channel_valid() {
-
         let channel = "#testchan";
         let original_message = "Hello channel!";
 
@@ -378,7 +377,6 @@ mod tests {
 
     #[test]
     fn test_decryptmsg_replay_attack_detection() {
-
         // This tests the logic for nonce cache that would detect replay attacks
         let channel = "#replaytest";
         let dummy_nonce = [0u8; 12]; // A mock nonce

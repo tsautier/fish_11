@@ -2,11 +2,12 @@
 //!
 //! This function checks if a target has a legacy FiSH 10 key.
 
+use std::ffi::c_char;
+use std::os::raw::c_int;
+
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::{buffer_utils, dll_function_identifier, legacy, log_debug};
-use std::ffi::c_char;
-use std::os::raw::c_int;
 
 // Check if a target has a legacy FiSH 10 key
 // Input: <target>

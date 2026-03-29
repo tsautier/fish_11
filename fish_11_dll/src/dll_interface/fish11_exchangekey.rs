@@ -1,19 +1,20 @@
+use std::ffi::c_char;
+use std::os::raw::c_int;
+use std::time::Instant;
+
+use rand::RngCore;
+use rand::rngs::OsRng;
+use secrecy::ExposeSecret;
+use subtle::ConstantTimeEq;
+
 use crate::config::{CONFIG, get_key, get_keypair, save_config, set_key, store_keypair};
-use crate::crypto::x25519::{X25519KeyExchange, X25519KeyPair, format_public_key};
 use crate::crypto::KeyExchange;
+use crate::crypto::x25519::{X25519KeyExchange, X25519KeyPair, format_public_key};
 use crate::dll_interface::KEY_EXCHANGE_TIMEOUT_SECONDS;
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::{DllError, DllResult};
 use crate::utils::{is_socket_connected, normalize_nick};
 use crate::{buffer_utils, dll_function_identifier, log_debug, log_error, log_info, log_warn};
-
-use rand::RngCore;
-use rand::rngs::OsRng;
-use secrecy::ExposeSecret;
-use std::ffi::c_char;
-use std::os::raw::c_int;
-use std::time::Instant;
-use subtle::ConstantTimeEq;
 
 dll_function_identifier!(FiSH11_ExchangeKey, data, {
     let overall_start = Instant::now();
@@ -455,9 +456,10 @@ fn is_likely_connected() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::ffi::CString;
     use std::ptr;
+
+    use super::*;
 
     // Helper function to create a test buffer
     fn _create_test_buffer(initial_content: &str) -> (*mut c_char, usize) {

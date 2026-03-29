@@ -1,9 +1,10 @@
 //! Centralized error handling for DLL interface functions
 
-use crate::buffer_utils;
-use crate::dll_interface::{MIRC_COMMAND, MIRC_HALT};
 use std::ffi::c_char;
 use std::os::raw::c_int;
+
+use crate::buffer_utils;
+use crate::dll_interface::{MIRC_COMMAND, MIRC_HALT};
 
 /// Common DLL interface errors
 #[derive(Debug)]

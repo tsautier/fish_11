@@ -1,8 +1,9 @@
+use std::ffi::c_char;
+use std::os::raw::c_int;
+
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::{buffer_utils, config, dll_function_identifier};
-use std::ffi::c_char;
-use std::os::raw::c_int;
 
 // Checks if a manual channel key exists for a channel.
 //
@@ -29,10 +30,11 @@ dll_function_identifier!(FiSH11_HasManualChannelKey, data, {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::dll_interface::MIRC_COMMAND;
     use std::ffi::CStr;
     use std::ptr;
+
+    use super::*;
+    use crate::dll_interface::MIRC_COMMAND;
 
     fn call_has_manual_channel_key(input: &str, buffer_size: usize) -> (c_int, String) {
         let mut buffer = vec![0i8; buffer_size];

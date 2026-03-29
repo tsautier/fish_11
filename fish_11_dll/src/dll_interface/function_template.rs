@@ -1,11 +1,12 @@
 //! Template for DLL interface functions to reduce boilerplate
 
-use crate::buffer_utils;
-use crate::dll_function_utils::generate_trace_id;
-use crate::dll_interface::{MIRC_HALT, get_buffer_size};
 use std::ffi::c_char;
 use std::os::raw::c_int;
 use std::time::{Duration, Instant};
+
+use crate::buffer_utils;
+use crate::dll_function_utils::generate_trace_id;
+use crate::dll_interface::{MIRC_HALT, get_buffer_size};
 
 /// Configuration for DLL function execution
 pub struct FunctionConfig {

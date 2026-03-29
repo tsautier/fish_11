@@ -7,15 +7,17 @@
 //! for encoding public keys, NOT the FiSH-specific alphabet used for Blowfish messages.
 //! The '=' padding is stripped and replaced with 'A' at the end.
 
-use crate::platform_types::{BOOL, HWND, c_char, c_int};
-use crate::unified_error::DllError;
-use crate::{buffer_utils, dll_function_identifier, legacy, log_debug};
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use num_bigint::{BigUint, RandomBits};
 use num_traits::Num;
 use rand::Rng;
 use sha2::{Digest, Sha256};
 use zeroize::Zeroize;
+
+use crate::platform_types::{BOOL, HWND, c_char, c_int};
+use crate::unified_error::DllError;
+use crate::{buffer_utils, dll_function_identifier, legacy, log_debug};
 
 /// DH1080 prime (1080-bit Sophie Germain prime)
 const DH1080_PRIME_HEX: &str = "FBE1022E23D213E8ACFA9AE8B9DFADA3EA6B7AC7A7B7E95AB5EB2DF858921FEADE95E6AC7BE7DE6ADBAB8A783E7AF7A7

@@ -1,7 +1,8 @@
-use crate::dll_interface::dll_error::DllError;
-use crate::platform_types::PCSTR;
 use fish_11_core::globals::{LOGGING_KEY, MASTER_KEY};
 use fish_11_core::master_key::derivation::derive_logs_kek;
+
+use crate::dll_interface::dll_error::DllError;
+use crate::platform_types::PCSTR;
 
 #[no_mangle]
 pub extern "C" fn FiSH11_LogSetKey(_key: PCSTR) -> i32 {

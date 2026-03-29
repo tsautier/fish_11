@@ -3,9 +3,10 @@
 //! This module provides utilities for managing legacy Blowfish keys
 //! and converting between different key formats.
 
-use crate::unified_error::DllError;
-use crate::crypto::dh1080;
 use std::sync::Arc;
+
+use crate::crypto::dh1080;
+use crate::unified_error::DllError;
 
 /// Set a legacy key for a target
 ///
@@ -77,7 +78,7 @@ pub fn remove_legacy_key(target: &str) -> Result<(), DllError> {
         let config = super::LEGACY_CONFIG.read();
         (Arc::clone(&config.legacy_keys), config.blowfish_ini_path.clone())
     };
-    
+
     // First remove from memory
     let removed_from_memory = {
         let mut keys = keys_arc.write();
@@ -97,9 +98,12 @@ pub fn remove_legacy_key(target: &str) -> Result<(), DllError> {
     } else {
         // If not in legacy memory, check if it's in FiSH 11 store to provide a better message
         if crate::config::get_key(target, None).is_ok() || crate::config::has_channel_key(target) {
-             log::info!("FiSH10: Key for '{}' not found in legacy store, but it exists in FiSH 11 store.", target);
-             // We return Ok anyway because the "legacy" key is indeed "not there" (deleted or never existed)
-             Ok(())
+            log::info!(
+                "FiSH10: Key for '{}' not found in legacy store, but it exists in FiSH 11 store.",
+                target
+            );
+            // We return Ok anyway because the "legacy" key is indeed "not there" (deleted or never existed)
+            Ok(())
         } else {
             Err(DllError::LegacyError {
                 context: format!("Removing key for '{}'", target),
@@ -165,7 +169,6 @@ pub fn compute_dh1080_shared_secret(
 pub fn parse_dh1080_public_key(key_str: &str) -> Result<Vec<u8>, DllError> {
     dh1080::dh1080_base64_decode(key_str)
 }
-
 
 pub fn get_legacy_key(target: &str) -> Option<Vec<u8>> {
     let keys_arc = {

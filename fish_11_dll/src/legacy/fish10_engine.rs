@@ -3,6 +3,14 @@
 //! This module provides an engine that can be registered with fish_inject
 //! to automatically detect and process FiSH 10 messages.
 
+use std::ffi::{CStr, CString};
+use std::sync::OnceLock;
+
+use fish_11_core::globals::FISH_INJECT_ENGINE_VERSION;
+use log::{debug, error, info, trace};
+// Re-export for use in handle_dh1080_message
+use sha2::{Digest, Sha256};
+
 use crate::legacy::fish10_encryption::{is_legacy_message, legacy_decrypt, legacy_encrypt};
 use crate::legacy::fish10_key_management::{
     compute_dh1080_shared_secret, generate_dh1080_keypair, set_legacy_key,
@@ -11,13 +19,6 @@ use crate::legacy::fish10_message_detection::{
     extract_dh1080_public_key, is_dh1080_message, parse_dh1080_message_type,
 };
 use crate::unified_error::DllError;
-use fish_11_core::globals::FISH_INJECT_ENGINE_VERSION;
-use log::{debug, error, info, trace};
-use std::ffi::{CStr, CString};
-use std::sync::OnceLock;
-
-// Re-export for use in handle_dh1080_message
-use sha2::{Digest, Sha256};
 
 /// FiSH 10 Engine structure
 #[repr(C)]
@@ -540,9 +541,10 @@ unsafe extern "C" fn fish10_get_network_name(_socket: u32) -> *mut i8 {
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::CString;
+
     use super::*;
     use crate::legacy::test_utils;
-    use std::ffi::CString;
 
     #[test]
     fn test_engine_initialization() {

@@ -3,11 +3,12 @@
 //! This module provides the Blowfish encryption algorithm used by FiSH 10
 //! for legacy compatibility purposes, with the custom base64 alphabet.
 
-use crate::unified_error::DllError;
 use blowfish::Blowfish;
 use blowfish::cipher::generic_array::GenericArray;
 use blowfish::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
 use byteorder::BigEndian;
+
+use crate::unified_error::DllError;
 
 /// FiSH 10 specific Base64 alphabet for encrypted messages
 const FISH10_B64_ABC: &[u8] = b"./0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";

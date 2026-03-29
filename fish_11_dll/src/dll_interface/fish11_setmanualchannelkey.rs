@@ -1,10 +1,11 @@
+use std::ffi::{CStr, c_char};
+use std::os::raw::c_int;
+use std::ptr;
+
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::base64_decode;
 use crate::{buffer_utils, config, dll_function_identifier, log_debug};
-use std::ffi::{CStr, c_char};
-use std::os::raw::c_int;
-use std::ptr;
 
 // Sets a manual encryption key for a channel.
 //

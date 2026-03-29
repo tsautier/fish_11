@@ -3,8 +3,8 @@
 //! This module provides higher-level encryption utilities
 //! that wrap the raw Blowfish implementation.
 
-use crate::unified_error::DllError;
 use crate::crypto::blowfish;
+use crate::unified_error::DllError;
 
 /// Encryption mode for FiSH messages
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -223,7 +223,10 @@ mod tests {
 
         // Test that CBC mode is properly detected and decrypted
         let message = "CBC test message";
-        let encrypted = format!("mcps {}", blowfish::encrypt_message_cbc(b"testkey12345678", message, &[]).unwrap());
+        let encrypted = format!(
+            "mcps {}",
+            blowfish::encrypt_message_cbc(b"testkey12345678", message, &[]).unwrap()
+        );
         let result = legacy_decrypt("#test", &encrypted);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), message);

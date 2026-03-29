@@ -7,19 +7,21 @@
 //! - Public key validation against low-order points
 //! - Secure key pair generation and rotation
 
-use crate::crypto::{KeyExchange, KeyPair};
-use crate::error::{FishError, Result};
-use crate::utils::{base64_decode, base64_encode};
+use std::any::Any;
+
 use chrono::{DateTime, Duration, Utc};
 use hkdf::Hkdf;
 use log::warn;
 use rand::rngs::OsRng;
 use secrecy::{ExposeSecret, Secret};
 use sha2::Sha256;
-use std::any::Any;
 use subtle::ConstantTimeEq;
 use x25519_dalek::{PublicKey, StaticSecret};
 use zeroize::Zeroize;
+
+use crate::crypto::{KeyExchange, KeyPair};
+use crate::error::{FishError, Result};
+use crate::utils::{base64_decode, base64_encode};
 
 #[derive(Debug)]
 /// Represents a key pair for Curve25519 key exchange

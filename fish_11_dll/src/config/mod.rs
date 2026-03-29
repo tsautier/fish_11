@@ -23,10 +23,12 @@ pub use settings::{
 };
 pub use state_management::{add_nonce, check_nonce, init_ratchet_state, with_ratchet_state_mut};
 
-
 pub mod settings;
 pub mod state_management;
 pub mod topics;
+use std::thread;
+use std::time::{Duration, Instant};
+
 pub use channel_key_utils::{get_channel_key_type, get_channel_key_with_fallback, has_channel_key};
 pub use channel_keys::{get_channel_key, set_channel_key};
 pub use config_access::{read_config, with_config, with_config_mut, write_config};
@@ -37,8 +39,6 @@ pub use entries::{
 pub use file_storage::{get_config_path, init_config_file, load_config, save_config};
 pub use key_management::{
     delete_key, delete_key_default, get_all_keys_with_ttl, get_configured_key_ttl, get_key,
-};
-pub use key_management::{
     get_key_default, get_key_status, get_key_status_human_readable, get_key_ttl,
     get_key_ttl_human_readable, get_keypair, get_our_keypair, is_key_about_to_expire, list_keys,
     set_configured_key_ttl, set_key, set_key_default, store_keypair,
@@ -47,10 +47,8 @@ pub use manual_channel_keys::{
     get_manual_channel_key, list_manual_channel_keys, set_manual_channel_key,
 };
 pub use models::{EncryptionMetrics, EntryData, Fish11Section, FishConfig, StartupSection};
-pub use topics::{get_topic, list_topics, remove_topic, set_topic};
 use once_cell::sync::Lazy;
-use std::thread;
-use std::time::{Duration, Instant};
+pub use topics::{get_topic, list_topics, remove_topic, set_topic};
 
 /// Global configuration instance
 /// Using parking_lot::Mutex for better performance and no poisoning
@@ -260,7 +258,8 @@ pub fn increment_encryption_counter() {
     with_config_mut(|config| {
         config.metrics.encryption_count = config.metrics.encryption_count.saturating_add(1);
         Ok(())
-    }).ok();
+    })
+    .ok();
 }
 
 /// Increment decryption counter
@@ -268,7 +267,8 @@ pub fn increment_decryption_counter() {
     with_config_mut(|config| {
         config.metrics.decryption_count = config.metrics.decryption_count.saturating_add(1);
         Ok(())
-    }).ok();
+    })
+    .ok();
 }
 
 /// Increment key exchange counter
@@ -276,5 +276,6 @@ pub fn increment_key_exchange_counter() {
     with_config_mut(|config| {
         config.metrics.key_exchange_count = config.metrics.key_exchange_count.saturating_add(1);
         Ok(())
-    }).ok();
+    })
+    .ok();
 }

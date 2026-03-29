@@ -1,11 +1,12 @@
 //! Common utilities for DLL function implementations
 
-use crate::buffer_utils::{BufferError, write_error_to_buffer};
-use crate::dll_interface::{MIRC_COMMAND, MIRC_HALT, get_buffer_size};
-use crate::{log_debug, log_error, log_info, log_warn};
 use std::ffi::{CStr, c_char};
 use std::os::raw::c_int;
 use std::time::SystemTime;
+
+use crate::buffer_utils::{BufferError, write_error_to_buffer};
+use crate::dll_interface::{MIRC_COMMAND, MIRC_HALT, get_buffer_size};
+use crate::{log_debug, log_error, log_info, log_warn};
 
 /// Result type for DLL function operations
 pub type DllResult<T> = Result<T, DllError>;

@@ -2,11 +2,12 @@ use crate::dll_interface::NICK_VALIDATOR;
 use crate::error::FishError;
 use crate::{buffer_utils, log_debug, log_error, log_warn};
 pub mod key_derivation;
+use std::ffi::{CString, c_char};
+
 use base64;
 use base64::Engine;
 use rand::Rng;
 use rand::rngs::OsRng;
-use std::ffi::{CString, c_char};
 
 /// Checks if there is an established TCP connection owned by the current process.
 ///
@@ -15,7 +16,6 @@ use std::ffi::{CString, c_char};
 /// - On Windows, it uses the `GetTcpTable2` API from `iphlpapi.dll`.
 /// - On Unix-like systems, it reads `/proc/net/tcp` and `/proc/self/fd` to find matching sockets.
 /// Returns true if an established connection is found, false otherwise.
-///
 pub fn is_socket_connected() -> bool {
     #[cfg(windows)]
     {
@@ -37,10 +37,10 @@ pub fn is_socket_connected() -> bool {
 /// Returns true if an established connection is found, false otherwise.
 ///
 /// TODO: maybe consider caching results or optimizing for frequent calls if performance becomes an issue.
-///
 fn is_socket_connected_windows() -> bool {
     unsafe {
         use std::alloc::{Layout, alloc, dealloc};
+
         use windows::Win32::Foundation::ERROR_INSUFFICIENT_BUFFER;
         use windows::Win32::NetworkManagement::IpHelper::{
             GetTcpTable2, MIB_TCP_STATE_ESTAB, MIB_TCPROW2, MIB_TCPTABLE2,
@@ -130,7 +130,6 @@ fn is_socket_connected_windows() -> bool {
 /// For now, this function will only work on Linux systems with /proc filesystem.
 /// It checks /proc/net/tcp or /proc/net/tcp6 for established connections and matches them against the current process's
 /// file descriptors in /proc/self/fd.
-///
 
 fn is_socket_connected_unix() -> bool {
     use std::collections::HashSet;

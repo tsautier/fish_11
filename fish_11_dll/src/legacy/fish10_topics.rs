@@ -3,14 +3,17 @@
 //! This module handles the storage and retrieval of plaintext topics for legacy FiSH 10 in the configuration.
 //! It allows users to save topics in plaintext format and retrieve them later.
 
-
+use chrono;
 
 use crate::config::FishConfig;
 use crate::error::FishError;
-use chrono;
 
 /// Set a plaintext topic for a channel in the legacy fish10 section
-pub fn set_legacy_topic(config: &mut FishConfig, channel: &str, topic: &str) -> Result<(), FishError> {
+pub fn set_legacy_topic(
+    config: &mut FishConfig,
+    channel: &str,
+    topic: &str,
+) -> Result<(), FishError> {
     // Validate inputs
     if channel.is_empty() {
         return Err(FishError::InvalidInput("channel name cannot be empty".to_string()));
@@ -61,7 +64,7 @@ pub fn get_legacy_topic(config: &FishConfig, channel: &str) -> Result<Option<Str
             } else {
                 Ok(None)
             }
-        },
+        }
         None => Ok(None),
     }
 }
@@ -96,11 +99,11 @@ mod tests {
     #[test]
     fn test_set_and_get_legacy_topic() {
         let mut config = FishConfig::new();
-        
+
         // Set a topic
         let result = set_legacy_topic(&mut config, "#test", "This is a test topic");
         assert!(result.is_ok());
-        
+
         // Get the topic
         let topic = get_legacy_topic(&config, "#test").unwrap();
         assert_eq!(topic, Some("This is a test topic".to_string()));
@@ -109,17 +112,17 @@ mod tests {
     #[test]
     fn test_remove_legacy_topic() {
         let mut config = FishConfig::new();
-        
+
         // Set a topic
         set_legacy_topic(&mut config, "#test", "This is a test topic").unwrap();
-        
+
         // Verify it exists
         assert!(get_legacy_topic(&config, "#test").unwrap().is_some());
-        
+
         // Remove the topic
         let removed = remove_legacy_topic(&mut config, "#test").unwrap();
         assert!(removed);
-        
+
         // Verify it's gone
         assert!(get_legacy_topic(&config, "#test").unwrap().is_none());
     }
@@ -127,10 +130,10 @@ mod tests {
     #[test]
     fn test_case_insensitive_channels() {
         let mut config = FishConfig::new();
-        
+
         // Set a topic with lowercase channel
         set_legacy_topic(&mut config, "#Test", "This is a test topic").unwrap();
-        
+
         // Get the topic with different case
         let topic = get_legacy_topic(&config, "#TEST").unwrap();
         assert_eq!(topic, Some("This is a test topic".to_string()));
@@ -139,15 +142,15 @@ mod tests {
     #[test]
     fn test_empty_inputs() {
         let mut config = FishConfig::new();
-        
+
         // Test empty channel
         let result = set_legacy_topic(&mut config, "", "topic");
         assert!(result.is_err());
-        
+
         // Test empty topic
         let result = set_legacy_topic(&mut config, "#test", "");
         assert!(result.is_err());
-        
+
         // Test empty channel for get
         let result = get_legacy_topic(&config, "");
         assert!(result.is_err());

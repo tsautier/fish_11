@@ -1,11 +1,13 @@
+use std::sync::Mutex;
+
+use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION};
+use log;
+#[cfg(windows)]
+use windows::Win32::Foundation::HINSTANCE;
+
 use crate::dll_interface::{DEFAULT_MIRC_BUFFER_SIZE, MIRC_BUFFER_SIZE};
 use crate::platform_types::{BOOL, HWND, c_int};
 use crate::{log_debug, log_info};
-use fish_11_core::globals::{BUILD_DATE, BUILD_TIME, BUILD_VERSION};
-use log;
-use std::sync::Mutex;
-#[cfg(windows)]
-use windows::Win32::Foundation::HINSTANCE;
 
 const TRUE: c_int = 1;
 
@@ -62,10 +64,7 @@ static _INIT_ONCE: std::sync::Once = std::sync::Once::new();
 /// (no `m_keep`). We still store a synthetic [`LOADINFO`] using the same byte count as the
 /// [`MIRC_BUFFER_SIZE`] fallback so [`crate::dll_interface::get_buffer_size`] stays consistent with that path.
 fn install_synthetic_loadinfo_for_null_pointer() -> Result<(usize, bool), ()> {
-    let bytes_usize = MIRC_BUFFER_SIZE
-        .lock()
-        .map(|g| *g)
-        .unwrap_or(DEFAULT_MIRC_BUFFER_SIZE);
+    let bytes_usize = MIRC_BUFFER_SIZE.lock().map(|g| *g).unwrap_or(DEFAULT_MIRC_BUFFER_SIZE);
     let synthetic = LOADINFO {
         m_version: 0,
         m_hwnd: std::ptr::null_mut(),

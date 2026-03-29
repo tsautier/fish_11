@@ -3,9 +3,10 @@
 //! This module provides DLL functions for registering the FiSH 10 engine
 //! with the fish_inject system.
 
-use crate::legacy::get_fish10_engine_ptr;
 use fish_11_core::globals::FISH_INJECT_ENGINE_VERSION;
 use log::{error, info};
+
+use crate::legacy::get_fish10_engine_ptr;
 
 /// Register the FiSH 10 engine with fish_inject
 ///
@@ -59,7 +60,7 @@ mod tests {
 
     #[test]
     fn test_engine_version() {
-        let version = FiSH10_GetEngineVersion() ;
+        let version = FiSH10_GetEngineVersion();
         assert_eq!(version, FISH_INJECT_ENGINE_VERSION);
     }
 

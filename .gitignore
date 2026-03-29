@@ -36,3 +36,6 @@ QWEN.md
 fish_11_dll/fish_11.ini
 
 .vs
+
+#Ignore vscode AI rules
+.github\instructions\codacy.instructions.md

@@ -1,9 +1,10 @@
+use std::ffi::c_char;
+use std::os::raw::c_int;
+
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::{base64_encode, normalize_nick};
 use crate::{buffer_utils, config, dll_function_identifier, log_debug};
-use std::ffi::c_char;
-use std::os::raw::c_int;
 
 dll_function_identifier!(FiSH11_FileGetKey, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
@@ -51,10 +52,11 @@ dll_function_identifier!(FiSH11_FileGetKey, data, {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::dll_interface::MIRC_COMMAND;
     use std::ffi::CStr;
     use std::ptr;
+
+    use super::*;
+    use crate::dll_interface::MIRC_COMMAND;
 
     fn call_getkey(input: &str, buffer_size: usize) -> (c_int, String) {
         let mut buffer = vec![0i8; buffer_size];
@@ -94,7 +96,8 @@ mod tests {
 
     #[test]
     fn test_getkey_normal() {
-        use base64::{Engine as _, engine::general_purpose};
+        use base64::Engine as _;
+        use base64::engine::general_purpose;
         // Create a test key for "alice"
         let test_key = [1u8; 32];
         config::set_key_default("alice", &test_key, true).unwrap();

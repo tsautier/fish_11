@@ -6,15 +6,14 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 
-use crate::config;
 use crate::unified_error::{DllError, DllResult};
-use crate::buffer_utils;
+use crate::{buffer_utils, config};
 
 /// DLL function to set a plaintext topic for a channel
-/// 
+///
 /// Expected input format: "<channel> <topic>"
 /// Example: "#mychannel This is my channel topic"
-/// 
+///
 /// Returns: Success message or error message
 #[no_mangle]
 pub extern "stdcall" fn FiSH11_SetTopic(data: *mut c_char) -> i32 {
@@ -25,10 +24,7 @@ pub extern "stdcall" fn FiSH11_SetTopic(data: *mut c_char) -> i32 {
     if data.is_null() {
         log::error!("{}: null data pointer", func_name);
         return unsafe {
-            DllError::NullPointer {
-                context: func_name.to_string(),
-            }
-            .to_mirc_response(data)
+            DllError::NullPointer { context: func_name.to_string() }.to_mirc_response(data)
         };
     }
 
@@ -59,9 +55,8 @@ pub extern "stdcall" fn FiSH11_SetTopic(data: *mut c_char) -> i32 {
         }
 
         // Set the topic in the configuration
-        config::with_config_mut(|config| {
-            config::topics::set_topic(config, channel, topic)
-        }).map_err(DllError::from)?;
+        config::with_config_mut(|config| config::topics::set_topic(config, channel, topic))
+            .map_err(DllError::from)?;
 
         Ok(format!("Plaintext topic set for channel: {}", channel))
     }
@@ -74,12 +69,10 @@ pub extern "stdcall" fn FiSH11_SetTopic(data: *mut c_char) -> i32 {
                 Ok(s) => s,
                 Err(e) => {
                     log::error!("{}: null byte in result: {}", func_name, e);
-                    return unsafe {
-                        DllError::from(e).to_mirc_response(data)
-                    };
+                    return unsafe { DllError::from(e).to_mirc_response(data) };
                 }
             };
-            
+
             unsafe {
                 buffer_utils::write_cstring_to_buffer(data, 900, &cstring).ok();
             }
@@ -93,10 +86,10 @@ pub extern "stdcall" fn FiSH11_SetTopic(data: *mut c_char) -> i32 {
 }
 
 /// DLL function to get a plaintext topic for a channel
-/// 
+///
 /// Expected input format: "<channel>"
 /// Example: "#mychannel"
-/// 
+///
 /// Returns: The topic string or error message
 #[no_mangle]
 pub extern "stdcall" fn FiSH11_GetTopic(data: *mut c_char) -> i32 {
@@ -107,10 +100,7 @@ pub extern "stdcall" fn FiSH11_GetTopic(data: *mut c_char) -> i32 {
     if data.is_null() {
         log::error!("{}: null data pointer", func_name);
         return unsafe {
-            DllError::NullPointer {
-                context: func_name.to_string(),
-            }
-            .to_mirc_response(data)
+            DllError::NullPointer { context: func_name.to_string() }.to_mirc_response(data)
         };
     }
 
@@ -131,9 +121,8 @@ pub extern "stdcall" fn FiSH11_GetTopic(data: *mut c_char) -> i32 {
         }
 
         // Get the topic from the configuration
-        let topic_option = config::with_config(|config| {
-            config::topics::get_topic(config, channel)
-        }).map_err(DllError::from)?;
+        let topic_option = config::with_config(|config| config::topics::get_topic(config, channel))
+            .map_err(DllError::from)?;
 
         match topic_option {
             Some(topic) => Ok(topic),
@@ -149,12 +138,10 @@ pub extern "stdcall" fn FiSH11_GetTopic(data: *mut c_char) -> i32 {
                 Ok(s) => s,
                 Err(e) => {
                     log::error!("{}: null byte in result: {}", func_name, e);
-                    return unsafe {
-                        DllError::from(e).to_mirc_response(data)
-                    };
+                    return unsafe { DllError::from(e).to_mirc_response(data) };
                 }
             };
-            
+
             unsafe {
                 buffer_utils::write_cstring_to_buffer(data, 900, &cstring).ok();
             }
@@ -168,10 +155,10 @@ pub extern "stdcall" fn FiSH11_GetTopic(data: *mut c_char) -> i32 {
 }
 
 /// DLL function to remove a plaintext topic for a channel
-/// 
+///
 /// Expected input format: "<channel>"
 /// Example: "#mychannel"
-/// 
+///
 /// Returns: Success message or error message
 #[no_mangle]
 pub extern "stdcall" fn FiSH11_RemoveTopic(data: *mut c_char) -> i32 {
@@ -182,10 +169,7 @@ pub extern "stdcall" fn FiSH11_RemoveTopic(data: *mut c_char) -> i32 {
     if data.is_null() {
         log::error!("{}: null data pointer", func_name);
         return unsafe {
-            DllError::NullPointer {
-                context: func_name.to_string(),
-            }
-            .to_mirc_response(data)
+            DllError::NullPointer { context: func_name.to_string() }.to_mirc_response(data)
         };
     }
 
@@ -206,9 +190,9 @@ pub extern "stdcall" fn FiSH11_RemoveTopic(data: *mut c_char) -> i32 {
         }
 
         // Remove the topic from the configuration
-        let removed = config::with_config_mut(|config| {
-            config::topics::remove_topic(config, channel)
-        }).map_err(DllError::from)?;
+        let removed =
+            config::with_config_mut(|config| config::topics::remove_topic(config, channel))
+                .map_err(DllError::from)?;
 
         if removed {
             Ok(format!("Topic removed for channel: {}", channel))
@@ -225,12 +209,10 @@ pub extern "stdcall" fn FiSH11_RemoveTopic(data: *mut c_char) -> i32 {
                 Ok(s) => s,
                 Err(e) => {
                     log::error!("{}: null byte in result: {}", func_name, e);
-                    return unsafe {
-                        DllError::from(e).to_mirc_response(data)
-                    };
+                    return unsafe { DllError::from(e).to_mirc_response(data) };
                 }
             };
-            
+
             unsafe {
                 buffer_utils::write_cstring_to_buffer(data, 900, &cstring).ok();
             }
@@ -245,9 +227,10 @@ pub extern "stdcall" fn FiSH11_RemoveTopic(data: *mut c_char) -> i32 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::ffi::CString;
     use std::os::raw::c_char;
+
+    use super::*;
 
     #[test]
     fn test_set_topic_dll_function() {

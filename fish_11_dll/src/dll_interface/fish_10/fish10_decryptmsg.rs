@@ -3,13 +3,14 @@
 //! This function provides compatibility with the legacy FiSH 10 decryption
 //! using Blowfish encryption.
 
+use std::ffi::c_char;
+use std::os::raw::c_int;
+
+use crate::crypto::blowfish;
 use crate::dll_interface::utility;
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::{buffer_utils, dll_function_identifier, legacy, log_debug};
-use crate::crypto::blowfish;
-use std::ffi::c_char;
-use std::os::raw::c_int;
 
 /* Legacy FiSH 10 message formats:
    :nick!ident@host PRIVMSG #chan :+OK 2T5zD0mPgMn
@@ -56,10 +57,12 @@ fn fish10_decrypt_msg_impl(input_str: &str) -> Result<String, DllError> {
     log_debug!("FiSH10: decrypting message for '{}' with legacy key", target);
 
     // Decrypt using legacy Blowfish algorithm
-    let decrypted = blowfish::decrypt_message(key, encrypted_message, target.as_bytes())
-        .map_err(|e| DllError::LegacyError {
-            context: format!("Blowfish decryption failed for '{}'", target),
-            cause: e.to_string(),
+    let decrypted =
+        blowfish::decrypt_message(key, encrypted_message, target.as_bytes()).map_err(|e| {
+            DllError::LegacyError {
+                context: format!("Blowfish decryption failed for '{}'", target),
+                cause: e.to_string(),
+            }
         })?;
 
     #[cfg(debug_assertions)]

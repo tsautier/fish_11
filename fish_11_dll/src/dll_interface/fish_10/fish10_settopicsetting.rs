@@ -3,10 +3,9 @@
 //! This module provides the DLL interface for setting the topic encryption setting
 //! for a specific network and channel.
 
-use crate::buffer_utils;
-use crate::dll_function_identifier;
 use crate::platform_types::{BOOL, HWND, c_char, c_int};
 use crate::unified_error::DllError;
+use crate::{buffer_utils, dll_function_identifier};
 
 // Set the topic encryption setting for a network/channel
 // Input format: <network> <channel> <enabled>
