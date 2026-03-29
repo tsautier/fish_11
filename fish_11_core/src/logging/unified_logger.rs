@@ -14,8 +14,6 @@ pub struct UnifiedLogger {
     file_writer: Option<Arc<FileWriter>>,
     console_writer: Option<ConsoleWriter>,
     config: LogConfig,
-    context_enabled: bool,
-    mask_sensitive: bool,
 }
 
 impl UnifiedLogger {
@@ -36,19 +34,14 @@ impl UnifiedLogger {
             None
         };
 
-        let context_enabled = config.enable_context;
-        let mask_sensitive = config.mask_sensitive;
-
-        Ok(Self { file_writer, console_writer, config, context_enabled, mask_sensitive })
+        Ok(Self { file_writer, console_writer, config })
     }
 
     /// Attempt to log with context, returns Result for error handling
     fn try_log_with_context(&self, record: &Record, context: &LogContext) -> Result<(), LogError> {
         // Write to file with error handling
         if let Some(ref file_writer) = self.file_writer {
-            if let Err(e) =
-                file_writer.write_record(record, context, self.mask_sensitive, self.context_enabled)
-            {
+            if let Err(e) = file_writer.write_record(record, context, &self.config) {
                 eprintln!("[LOGGER ERROR] Failed to write to file: {}", e);
                 return Err(e);
             }
@@ -57,12 +50,7 @@ impl UnifiedLogger {
         // Write to console if enabled
         if let Some(ref console_writer) = self.console_writer {
             if record.level() <= self.config.console_level {
-                if let Err(e) = console_writer.write_record(
-                    record,
-                    context,
-                    self.mask_sensitive,
-                    self.context_enabled,
-                ) {
+                if let Err(e) = console_writer.write_record(record, context, &self.config) {
                     eprintln!("[LOGGER ERROR] Failed to write to console: {}", e);
                     // Don't return error for console failures
                 }

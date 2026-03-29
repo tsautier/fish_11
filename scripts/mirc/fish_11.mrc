@@ -1482,12 +1482,6 @@ menu channel {
       echo $color(Mode text) -at *** FiSH_11: Topic for $chan is: %result
     }
   }
-  .-
-  .Encrypted logging
-  ..Set key for encrypted logging:/fish11_setlogkey
-  ..Encrypt a log line:/fish11_logencrypt
-  ..Decrypt a log line:/fish11_logdecrypt
-  ..View encrypted log file:/fish11_logdecryptfile
   -
   FiSH_10 legacy (Blowfish)
   .Show legacy key :fish10_showkey $chan
@@ -1531,12 +1525,6 @@ menu query {
       echo $color(Mode text) -at *** FiSH: decrypted message: %decrypted
     }
   }
-  .-
-  .Encrypted logging
-  ..Set key for encrypted logging:/fish11_setlogkey
-  ..Encrypt a log line:/fish11_logencrypt
-  ..Decrypt a log line:/fish11_logdecrypt
-  ..View encrypted log file:/fish11_logdecryptfile
   -
   FiSH_10 legacy (DH1080)
   .DH1080 keyXchange: fish10_keyx $1
@@ -1575,12 +1563,6 @@ menu nicklist {
       echo $color(Mode text) -at *** FiSH: decrypted message: %decrypted
     }
   }
-  .-
-  .Encrypted logging
-  ..Set key for encrypted logging:/fish11_setlogkey
-  ..Encrypt a log line:/fish11_logencrypt
-  ..Decrypt a log line:/fish11_logdecrypt
-  ..View encrypted log file:/fish11_logdecryptfile
   -
   FiSH_10 legacy (DH1080)
   .DH1080 keyXchange: fish10_keyx $1
@@ -1711,11 +1693,6 @@ menu status,channel,nicklist,query {
   ..View INI file :fish11_ViewIniFile
   ..Show encryption stats :fish11_stats
 
-  .Encrypted logging
-  ..Set key for encrypted logging:/fish11_setlogkey
-  ..Encrypt a log line:/fish11_logencrypt
-  ..Decrypt a log line:/fish11_logdecrypt
-  ..View encrypted log file:/fish11_logdecryptfile
   -
   FiSH_10 legacy compatibility
   .DH1080 key exchange :fish10_keyx $active
@@ -1926,12 +1903,6 @@ alias fish_initchannel11 { fish11_initchannel $1- }
 
 ; Short alias for statistics
 alias fish_stats11 { fish11_stats }
-
-; Short aliases for encrypted logging commands
-alias fish_setlogkey11 { fish11_setlogkey $1- }
-alias fish_logencrypt11 { fish11_logencrypt $1- }
-alias fish_logdecrypt11 { fish11_logdecrypt $1- }
-alias fish_logdecryptfile11 { fish11_logdecryptfile $1- }
 
 ; Legacy FiSH 10 aliases
 alias fish10_setkey {
@@ -2302,105 +2273,6 @@ alias fish11_remove_channel_key {
   echo $color(Mode text) -at *** FiSH_11: All encryption keys removed for %channel
 }
 
-; Function to encrypt log lines if logging key is set
-alias fish11_encrypt_log_line {
-  ; Check if logging key is set
-  var %temp_result = $dll(%Fish11DllFile, FiSH11_LogEncrypt, $1-, $chr(0), 8192)
-  if (%temp_result != $null) {
-    return %temp_result
-  }
-  else {
-    ; If encryption fails, return original text but warn user
-    echo 4 -a *** FiSH_11: warning - could not encrypt log line, logging in plaintext
-    return $1-
-  }
-}
-
-; Function to decrypt log lines for viewing
-alias fish11_decrypt_log_line {
-  ; Check if logging key is set
-  var %temp_result = $dll(%Fish11DllFile, FiSH11_LogDecrypt, $1-, $chr(0), 8192)
-  if (%temp_result != $null) {
-    return %temp_result
-  }
-  else {
-    ; If decryption fails, return original text but warn user
-    echo 4 -a *** FiSH_11: warning - could not decrypt log line
-    return $1-
-  }
-}
-
-; === ENCRYPTED LOGGING COMMANDS ===
-
-; Set the logging key
-alias fish11_setlogkey {
-  ; Derive logging key from master key using HKDF
-  var %result = $dll(%Fish11DllFile, FiSH11_LogSetKey, $null)
-  if (%result == 0) {
-    echo 4 -a *** FiSH_11: logging encryption key has been derived from master key and set
-  } else {
-    echo 4 -a *** FiSH_11: failed to set logging encryption key (error code: %result)
-  }
-}
-
-; Encrypt a log line
-alias fish11_logencrypt {
-  if (!$1) {
-    echo 4 -a *** FiSH_11: usage: /fish11_logencrypt <text>
-    echo 4 -a *** FiSH_11: encrypts a line of text for logging
-    return
-  }
-
-  var %result = $dll(%Fish11DllFile, FiSH11_LogEncrypt, $1, $chr(0), 8192)
-  if (%result != $null) {
-    echo 4 -a *** FiSH_11: encrypted log: %result
-  } else {
-    echo 4 -a *** FiSH_11: failed to encrypt log line
-  }
-}
-
-; Decrypt a log line
-alias fish11_logdecrypt {
-  if (!$1) {
-    echo 4 -a *** FiSH_11: usage: /fish11_logdecrypt <encrypted_text>
-    echo 4 -a *** FiSH_11: decrypts a line of text from encrypted log
-    return
-  }
-
-  var %result = $dll(%Fish11DllFile, FiSH11_LogDecrypt, $1, $chr(0), 8192)
-  if (%result != $null) {
-    echo 4 -a *** FiSH_11: decrypted log: %result
-  } else {
-    echo 4 -a *** FiSH_11: failed to decrypt log line
-  }
-}
-
-; Decrypt an entire log file
-alias fish11_logdecryptfile {
-  if (!$1) {
-    echo 4 -a *** FiSH_11: usage: /fish11_logdecryptfile <filepath>
-    echo 4 -a *** FiSH_11: decrypts an entire encrypted log file and displays the content
-    return
-  }
-
-  var %result = $dll(%Fish11DllFile, FiSH11_LogDecryptFile, $1, $chr(0), 8192)
-  if (%result != $null) {
-    ; Display the decrypted content
-    echo 4 -a *** FiSH_11: decrypted content from $1:
-    ; The Rust function returns all decrypted lines joined with actual newline characters
-    ; We need to split and display each line
-    var %i = 1
-    while ($gettok(%result, %i, 10) != $null) {
-      var %line = $gettok(%result, %i, 10)
-      if (%line != $null) {
-        echo -a %line
-      }
-      inc %i
-    }
-  } else {
-    echo 4 -a *** FiSH_11: failed to decrypt log file
-  }
-}
 
 alias fcep11 { fish11_initchannel $1- }
 

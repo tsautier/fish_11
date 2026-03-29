@@ -623,7 +623,6 @@ name = "fish_11_inject"
 version = "11.25.0"
 dependencies = [
  "bytes",
- "chrono",
  "dashmap",
  "fish_11_core",
  "log",

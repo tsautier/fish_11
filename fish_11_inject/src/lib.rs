@@ -51,7 +51,6 @@ pub(crate) static MAX_MIRC_RETURN_BYTES: Lazy<Mutex<usize>> = Lazy::new(|| Mutex
 /// Global flags
 pub(crate) static LOADED: AtomicBool = AtomicBool::new(false);
 static VERSION_SHOWN: AtomicBool = AtomicBool::new(false);
-pub(crate) static LOGGER_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 /// Version constants
 pub const FISH_INJECT_VERSION: u32 = 11;

@@ -1,3 +1,4 @@
+use crate::logging::config::LogConfig;
 use crate::logging::context::LogContext;
 use crate::logging::errors::LogError;
 use crate::logging::formatter;
@@ -40,8 +41,7 @@ impl FileWriter {
         &self,
         record: &Record,
         context: &LogContext,
-        mask_sensitive: bool,
-        context_enabled: bool,
+        config: &LogConfig,
     ) -> Result<(), LogError> {
         // Create a timeout mechanism for write operations
         let start_time = std::time::Instant::now();
@@ -56,8 +56,7 @@ impl FileWriter {
             match self.file.try_lock() {
                 Ok(mut guard) => {
                     // Format the log record using the centralized formatter
-                    let formatted =
-                        formatter::format_record(record, context, mask_sensitive, context_enabled);
+                    let formatted = formatter::format_record(record, context, config);
 
                     // Check size before writing
                     let current_size = self.current_size.load(std::sync::atomic::Ordering::Relaxed);
@@ -180,7 +179,7 @@ impl FileWriter {
                                 // 5 minutes
                                 // Stale lock, remove it and proceed
                                 let _ = fs::remove_file(&rotation_lock_path);
-                                rotation_lock = OpenOptions::new()
+                                let _new_lock = OpenOptions::new()
                                     .create_new(true)
                                     .write(true)
                                     .open(&rotation_lock_path)?;

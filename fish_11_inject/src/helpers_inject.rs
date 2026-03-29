@@ -7,79 +7,25 @@ use crate::hook_ssl::{
     uninstall_ssl_hooks,
 };
 use crate::pointer_validation::validate_function_pointer;
-use log::{LevelFilter, error, info, warn};
+use fish_11_core::logging;
+use log::{error, info, warn};
 use retour::GenericDetour;
-use std::fs::OpenOptions;
 use std::io;
-use std::sync::atomic::Ordering;
 use std::sync::PoisonError;
 use windows::Win32::Foundation::FARPROC;
 use windows::Win32::System::LibraryLoader::{GetModuleHandleA, GetProcAddress};
 use windows::core::PCSTR;
 
-use crate::LOGGER_INITIALIZED;
-
-/// Custom logger that writes with timestamps
-struct TimestampLogger {
-    file: std::sync::Mutex<std::fs::File>,
-    level: LevelFilter,
-}
-
-impl TimestampLogger {
-    fn new(file: std::fs::File, level: LevelFilter) -> Self {
-        Self { file: std::sync::Mutex::new(file), level }
-    }
-}
-
-impl log::Log for TimestampLogger {
-    fn enabled(&self, metadata: &log::Metadata) -> bool {
-        metadata.level() <= self.level
-    }
-
-    fn log(&self, record: &log::Record) {
-        if self.enabled(record.metadata()) {
-            let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
-            let log_message = format!(
-                "[{}] {} [{}:{}] {}\n",
-                timestamp,
-                record.level(),
-                record.file().unwrap_or("<unknown>"),
-                record.line().unwrap_or(0),
-                record.args()
-            );
-
-            if let Ok(mut file) = self.file.lock() {
-                use std::io::Write;
-                let _ = file.write_all(log_message.as_bytes());
-                let _ = file.flush();
-            }
-        }
-    }
-
-    fn flush(&self) {
-        if let Ok(mut file) = self.file.lock() {
-            use std::io::Write;
-            let _ = file.flush();
-        }
-    }
-}
-
 /// Initialize the logger
 pub fn init_logger() {
-    if LOGGER_INITIALIZED.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok()
-    {
-        // Try to open log file, panic if fails (standard for this DLL)
-        let log_file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open("fish11_inject.log")
-            .expect("Failed to open log file");
-
-        let logger = TimestampLogger::new(log_file, LevelFilter::Trace);
-
-        if log::set_boxed_logger(Box::new(logger)).is_ok() {
-            log::set_max_level(LevelFilter::Trace);
-            info!("Ground zero : logger initialized !");
+    match logging::init_inject_logging() {
+        Ok(()) => {
+            if logging::is_initialized() {
+                info!("Ground zero : logger initialized via fish_11_core !");
+            }
+        }
+        Err(e) => {
+            eprintln!("[FiSH_11 Inject] failed to initialize logger: {}", e);
         }
     }
 }

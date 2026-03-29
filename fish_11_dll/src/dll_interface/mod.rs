@@ -1,6 +1,3 @@
-use std::ffi::CStr;
-use std::ptr;
-
 pub use crate::channel_encryption::init_key::FiSH11_InitChannelKey;
 pub use crate::channel_encryption::process_key::FiSH11_ProcessChannelKey;
 pub use crate::crypto::dh1080::{
@@ -23,10 +20,6 @@ mod fish11_getratchetstate;
 mod fish11_hasmanualchannelkey;
 mod fish11_hasratchetchannelkey;
 mod fish11_help;
-mod fish11_logdecrypt;
-mod fish11_logdecryptfile;
-mod fish11_logencrypt;
-mod fish11_logsetkey;
 mod fish11_removemanualchannelkey;
 mod fish11_removeratchetchannelkey;
 mod fish11_setencryptionprefix;
@@ -51,10 +44,6 @@ pub use fish11_getkeyttl::FiSH11_GetKeyTTL;
 pub use fish11_getratchetstate::FiSH11_GetRatchetState;
 pub use fish11_hasmanualchannelkey::FiSH11_HasManualChannelKey;
 pub use fish11_hasratchetchannelkey::FiSH11_HasRatchetChannelKey;
-pub use fish11_logdecrypt::FiSH11_LogDecrypt;
-pub use fish11_logdecryptfile::FiSH11_LogDecryptFile;
-pub use fish11_logencrypt::FiSH11_LogEncrypt;
-pub use fish11_logsetkey::FiSH11_LogSetKey;
 pub use fish11_masterkey::{
     FiSH11_MasterKeyChangePassword, FiSH11_MasterKeyInit, FiSH11_MasterKeyIsUnlocked,
     FiSH11_MasterKeyLock, FiSH11_MasterKeyStatus, FiSH11_MasterKeyUnlock,

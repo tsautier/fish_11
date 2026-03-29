@@ -1,3 +1,4 @@
+use crate::logging::config::LogConfig;
 use crate::logging::context::LogContext;
 use crate::logging::errors::LogError;
 use crate::logging::formatter;
@@ -17,12 +18,10 @@ impl ConsoleWriter {
         &self,
         record: &Record,
         context: &LogContext,
-        mask_sensitive: bool,
-        context_enabled: bool,
+        config: &LogConfig,
     ) -> Result<(), LogError> {
         if record.level() <= self.level {
-            let formatted =
-                formatter::format_record(record, context, mask_sensitive, context_enabled);
+            let formatted = formatter::format_record(record, context, config);
             let mut stdout = io::stdout();
             stdout.write_all(formatted.as_bytes()).map_err(|e| LogError::WriteError(e))?;
             stdout.flush().map_err(|e| LogError::WriteError(e))?;

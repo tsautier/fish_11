@@ -4,7 +4,6 @@ use std::ffi::c_char;
 use std::os::raw::c_int;
 use std::sync::Mutex;
 
-use fish_11_core::globals::LOGGING_KEY;
 use fish_11_core::master_key::core::{
     initialize_key_system, is_key_system_unlocked, lock_key_system,
 };
@@ -18,23 +17,6 @@ use sha2::{Digest, Sha256};
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::{buffer_utils, dll_function_identifier};
-
-/// Synchronize the LOGGING_KEY with the MASTER_KEY
-/// This ensures both keys are always in sync
-fn synchronize_logging_key() {
-    if let Ok(master_key_guard) = MASTER_KEY.lock() {
-        if let Some(key) = master_key_guard.as_ref() {
-            if let Ok(mut logging_key_guard) = LOGGING_KEY.lock() {
-                *logging_key_guard = Some(*key);
-            }
-        } else {
-            // If master key is None, clear logging key too
-            if let Ok(mut logging_key_guard) = LOGGING_KEY.lock() {
-                *logging_key_guard = None;
-            }
-        }
-    }
-}
 
 static MASTER_KEY: Lazy<Mutex<Option<[u8; 32]>>> = Lazy::new(|| Mutex::new(None));
 
@@ -129,11 +111,6 @@ dll_function_identifier!(FiSH11_MasterKeyUnlock, data, {
                         *key_guard = Some(key);
                     }
 
-                    // Also update the LOGGING_KEY for encrypted logging
-                    if let Ok(mut logging_key_guard) = LOGGING_KEY.lock() {
-                        *logging_key_guard = Some(key);
-                    }
-
                     // Save the salt to keystore for future use
                     let mut keystore = Keystore::new();
                     keystore.set_master_salt(&salt);
@@ -194,9 +171,6 @@ dll_function_identifier!(FiSH11_MasterKeyUnlock, data, {
                 };
                 *key_guard = Some(key);
             }
-
-            // Synchronize the logging key
-            synchronize_logging_key();
 
             Ok("1".to_string())
         }
@@ -287,9 +261,6 @@ dll_function_identifier!(FiSH11_MasterKeyChangePassword, data, {
                         };
                         *key_guard = Some(new_key);
                     }
-
-                    // Synchronize the logging key
-                    synchronize_logging_key();
 
                     // Save the new salt and password verifier to keystore
                     let mut new_keystore = Keystore::new();
