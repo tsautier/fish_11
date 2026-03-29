@@ -21,6 +21,7 @@ pub mod crypto;
 pub mod dll_function_utils;
 pub mod dll_interface;
 pub mod error;
+pub mod legacy;
 pub mod logging;
 pub mod platform_types;
 pub mod utils;
@@ -58,4 +59,9 @@ pub fn set_current_network(network: impl Into<String>) {
 /// Get the current IRC network name
 pub fn get_current_network() -> Option<String> {
     CURRENT_NETWORK.read().clone()
+}
+
+/// Initialize the legacy FiSH 10 compatibility system
+pub fn init_legacy_system() {
+    legacy::init_legacy_system();
 }

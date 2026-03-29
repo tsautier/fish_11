@@ -45,9 +45,14 @@ alias fish11_startup {
     halt
   }
 
-  ; Initialize hash table for tracking key exchanges
+  ; Initialize hash table for tracking key exchanges (X25519)
   if (!$hget(fish11.dh).size) {
     hmake fish11.dh 10
+  }
+
+  ; Initialize hash table for tracking legacy DH1080 key exchanges
+  if (!$hget(fish10.dh).size) {
+    hmake fish10.dh 10
   }
 
   echo 4 -a DEBUG : calling fish_11.dll FiSH11_SetMircDir to set configuration path...
@@ -115,13 +120,29 @@ on *:ACTIVE:*: {
 
 ; === AUTO KEY EXCHANGE ===
 on *:OPEN:?:{
-  if (%autokeyx == [On]) {
-    var %tmp1 = $dll(%Fish11DllFile, FiSH11_FileGetKey, $nick)
-    if ($len(%tmp1) == 0) {
+  ; Don't auto-exchange if autokeyx is not enabled
+  if (%autokeyx != [On]) return
+  
+  ; Don't auto-exchange if a legacy DH1080 exchange is in progress
+  if ($hget(fish10.dh, $nick)) return
+  
+  ; Don't auto-exchange if a FiSH 11 exchange is in progress
+  if ($hget(fish11.dh, $nick)) return
+  
+  var %tmp1 = $dll(%Fish11DllFile, FiSH11_FileGetKey, $nick)
+  
+  ; Check for error messages or empty result
+  ; Only initiate exchange if truly no key exists
+  if (%tmp1 == $null || $left(%tmp1, 2) == no || $left(%tmp1, 5) == Error) {
+    ; No FiSH 11 key found - check for legacy key
+    var %has_legacy = $dll(%Fish11DllFile, FiSH10_HasKey, $nick)
+    if (%has_legacy != 1) {
+      ; No key at all (neither FiSH 11 nor legacy), initiate FiSH 11 exchange
       fish11_X25519_INIT $nick
     }
-    unset %tmp1
+    unset %has_legacy
   }
+  unset %tmp1
 }
 
 ; === OUTGOING MESSAGE HANDLING ===
@@ -169,11 +190,21 @@ on *:INPUT:*: {
     %message = $2-
   }
   
-  ; Try to encrypt
-  %encrypted = $dll(%Fish11DllFile, FiSH11_EncryptMsg, %target %message)
+  ; Determine which encryption system to use: FiSH 10 (legacy) or FiSH 11
+  var %has_legacy_key = $dll(%Fish11DllFile, FiSH10_HasKey, %target)
+  
+  if (%has_legacy_key == 1) {
+    ; Use FiSH 10 legacy encryption (Blowfish)
+    %encrypted = $dll(%Fish11DllFile, FiSH10_EncryptMsg, %target %message)
+  }
+  else {
+    ; Use FiSH 11 encryption (ChaCha20-Poly1305)
+    %encrypted = $dll(%Fish11DllFile, FiSH11_EncryptMsg, %target %message)
+  }
   
   ; Only process if encryption was successful
-  if (%encrypted != $null && $left(%encrypted, 5) != Error) {
+  ; Check for various error indicators: "Error", "no encryption", empty result, or legacy errors
+  if (%encrypted != $null && $left(%encrypted, 5) != Error && $left(%encrypted, 13) != no encryption && $left(%encrypted, 6) != Legacy) {
     ; Add encryption mark if configured
     if (%mark_outgoing == [On]) {
       if (%mark_style == 1) {
@@ -211,6 +242,17 @@ on *:INPUT:*: {
       .msg %target %encrypted
       haltdef
     }
+  }
+  else {
+    ; Encryption failed - display error and prevent sending to server
+    if (%encrypted != $null) {
+      echo $color(Error) -at *** FiSH ERROR: %encrypted
+    }
+    else {
+      echo $color(Error) -at *** FiSH ERROR: Encryption failed (no key available)
+    }
+    haltdef
+    halt
   }
 }
 
@@ -1131,7 +1173,7 @@ alias fish11_help {
   else {
     echo $color(Mode text) -at *** FiSH: help information unavailable
   }
-  
+
   ; Add Master Key help
   echo $color(Mode text) -at $chr(160)
   echo $color(Mode text) -at *** FiSH_11 Master Key commands:
@@ -1140,7 +1182,7 @@ alias fish11_help {
   echo $color(Mode text) -at *** /fish11_masterkey_status - Show master key status
   echo $color(Mode text) -at ***   When unlocked: configuration and logs are encrypted with Argon2id + ChaCha20-Poly1305
   echo $color(Mode text) -at ***   When locked: configuration and logs are stored in plaintext
-  
+
   ; Add FCEP-1 help
   echo $color(Mode text) -at $chr(160)
   echo $color(Mode text) -at *** FiSH_11 FCEP-1 (Channel Encryption v1) commands:
@@ -1151,6 +1193,25 @@ alias fish11_help {
   echo $color(Mode text) -at $chr(160)
   echo $color(Mode text) -at *** FCEP-1 automatically decrypts incoming channel messages
   echo $color(Mode text) -at *** Channel names are case-insensitive (#Secret = #secret)
+
+  ; Add plaintext topic commands
+  echo $color(Mode text) -at $chr(160)
+  echo $color(Mode text) -at *** FiSH_11 Plaintext Topic commands:
+  echo $color(Mode text) -at *** /settopic <#channel> <topic> - Set a plaintext topic for a channel
+  echo $color(Mode text) -at *** /gettopic <#channel> - Get the plaintext topic for a channel
+  echo $color(Mode text) -at *** /removetopic <#channel> - Remove the plaintext topic for a channel
+  echo $color(Mode text) -at *** /etopic <topic> - Encrypt and set a topic for the current channel
+  echo $color(Mode text) -at $chr(160)
+  echo $color(Mode text) -at *** Plaintext topics are stored in the configuration file and can be retrieved later
+
+  ; Add legacy fish10 topic commands
+  echo $color(Mode text) -at $chr(160)
+  echo $color(Mode text) -at *** FiSH_10 Legacy Topic commands:
+  echo $color(Mode text) -at *** /fish10_settopic <#channel> <topic> - Set a plaintext topic in legacy format
+  echo $color(Mode text) -at *** /fish10_gettopic <#channel> - Get a plaintext topic from legacy format
+  echo $color(Mode text) -at *** /fish10_removetopic <#channel> - Remove a plaintext topic from legacy format
+  echo $color(Mode text) -at $chr(160)
+  echo $color(Mode text) -at *** Legacy topics are stored in the configuration file with fish10 compatibility
 }
 
 
@@ -1382,7 +1443,7 @@ menu channel {
   .Show channel key info : fish11_show_channel_key_info $chan
   .Remove channel key : fish11_remove_channel_key $chan
   .-
-  .Show keychan :fish11_showkey $chan
+  .Show key :fish11_showkey $chan
   .Show fingerprint :fish11_showfingerprint $chan
   .Copy fingerprint to clipboard :{
     fish11_showfingerprint $chan
@@ -1392,7 +1453,7 @@ menu channel {
       echo $color(Mode text) -at *** FiSH_11: fingerprint for $chan copied to clipboard
     }
   }
-
+  .-
   .Encrypt message :{
     var %msg = $?="Enter message to encrypt:"
     if (%msg) {
@@ -1400,7 +1461,6 @@ menu channel {
       echo $color(Mode text) -at *** FiSH: encrypted message: %encrypted
     }
   }
-
   .Decrypt message :{
     var %msg = $?="Enter message to decrypt:"
     if (%msg) {
@@ -1408,17 +1468,31 @@ menu channel {
       echo $color(Mode text) -at *** FiSH: decrypted message: %decrypted
     }
   }
-
   .Set topic (encrypted) :{
     var %topic = $?="Enter encrypted topic for " $+ $chan $+ ":"
     if (%topic != $null) etopic %topic
   }
-
+  .Set topic (plaintext) :{
+    var %topic = $?="Enter plaintext topic for " $+ $chan $+ ":"
+    if (%topic != $null) settopic $chan %topic
+  }
+  .Get topic (plaintext) :{
+    var %result = $gettopic($chan)
+    if (%result != $null) {
+      echo $color(Mode text) -at *** FiSH_11: Topic for $chan is: %result
+    }
+  }
+  .-
   .Encrypted logging
   ..Set key for encrypted logging:/fish11_setlogkey
   ..Encrypt a log line:/fish11_logencrypt
   ..Decrypt a log line:/fish11_logdecrypt
   ..View encrypted log file:/fish11_logdecryptfile
+  -
+  FiSH_10 legacy (Blowfish)
+  .Show legacy key :fish10_showkey $chan
+  .Set legacy key... :{ var %key = $?="Enter hex Blowfish key (4-56 bytes):" | if (%key != $null) fish10_setkey $chan %key }
+  .Remove legacy key :fish10_delkey $chan
 }
 
 ; Menu for query windows
@@ -1437,10 +1511,12 @@ menu query {
       echo $color(Mode text) -at *** FiSH_11: fingerprint for $1 copied to clipboard
     }
   }
+  .-
   .Set manual key... :{ var %key = $?="Enter manual key for " $+ $1 $+ ":" | if (%key != $null) fish11_setkey_manual $1 %key }
   .Set new key :{ var %key = $?="Enter new key for " $+ $1 $+ ":" | if (%key != $null) fish11_setkey $1 %key }
   .Set new key (UTF-8) :{ var %key = $?="Enter new key for " $+ $1 $+ " (UTF-8):" | if (%key != $null) fish11_setkey_utf8 $1 %key }
   .Remove key :fish11_removekey $1
+  .-
   .Encrypt message :{
     var %msg = $?="Enter message to encrypt:"
     if (%msg) {
@@ -1455,12 +1531,19 @@ menu query {
       echo $color(Mode text) -at *** FiSH: decrypted message: %decrypted
     }
   }
-
+  .-
   .Encrypted logging
   ..Set key for encrypted logging:/fish11_setlogkey
   ..Encrypt a log line:/fish11_logencrypt
   ..Decrypt a log line:/fish11_logdecrypt
   ..View encrypted log file:/fish11_logdecryptfile
+  -
+  FiSH_10 legacy (DH1080)
+  .DH1080 keyXchange: fish10_keyx $1
+  .-
+  .Show legacy key :fish10_showkey $1
+  .Set legacy key... :{ var %key = $?="Enter hex Blowfish key (4-56 bytes) for " $+ $1 $+ ":" | if (%key != $null) fish10_setkey $1 %key }
+  .Remove legacy key :fish10_delkey $1
 }
 
 ; Menu for nicklist
@@ -1471,11 +1554,13 @@ menu nicklist {
   .-
   .Show key :fish11_showkey $1
   .Show fingerprint :fish11_showfingerprint $1
+  .-
   .Set manual key... :{ var %key = $?="Enter manual key for " $+ $1 $+ ":" | if (%key != $null) fish11_setkey_manual $1 %key }
   .Set new key :{ var %key = $?="Enter new key for " $+ $1 $+ ":" | if (%key != $null) fish11_setkey $1 %key }
   .Set new key (UTF-8) :{ var %key = $?="Enter new key for " $+ $1 $+ " (UTF-8):" | if (%key != $null) fish11_setkey_utf8 $1 %key }
   .Remove key :fish11_removekey $1
   .Use same key as $chan :fish11_usechankey $1 $chan
+  .-
   .Encrypt message :{
     var %msg = $?="Enter message to encrypt:"
     if (%msg) {
@@ -1490,17 +1575,25 @@ menu nicklist {
       echo $color(Mode text) -at *** FiSH: decrypted message: %decrypted
     }
   }
-
+  .-
   .Encrypted logging
   ..Set key for encrypted logging:/fish11_setlogkey
   ..Encrypt a log line:/fish11_logencrypt
   ..Decrypt a log line:/fish11_logdecrypt
   ..View encrypted log file:/fish11_logdecryptfile
+  -
+  FiSH_10 legacy (DH1080)
+  .DH1080 keyXchange: fish10_keyx $1
+  .-
+  .Show legacy key :fish10_showkey $1
+  .Set legacy key... :{ var %key = $?="Enter hex Blowfish key (4-56 bytes) for " $+ $1 $+ ":" | if (%key != $null) fish10_setkey $1 %key }
+  .Remove legacy key :fish10_delkey $1
+  .Use same legacy key as $chan :fish10_usechankey $1 $chan
 }
 
 ; Common menu available in all windows
 menu status,channel,nicklist,query {
-  FISH_11
+  FiSH_11
   .Core version :fish11_version
   .Injection version : fish11_injection_version
   .Help :fish11_help
@@ -1512,7 +1605,7 @@ menu status,channel,nicklist,query {
   .-
   .Set topic (encrypted) :{
     ; Only allow in channel windows
-    if ($chantype($active) != # && $chantype($active) != &) {
+    if ($window($active).type != channel) {
       echo $color(Mode text) -at *** FiSH_11: etopic can only be used in channel windows
       return
     }
@@ -1616,12 +1709,36 @@ menu status,channel,nicklist,query {
   .Debug
   ..Show debug info :fish11_debug
   ..View INI file :fish11_ViewIniFile
+  ..Show encryption stats :fish11_stats
 
   .Encrypted logging
   ..Set key for encrypted logging:/fish11_setlogkey
   ..Encrypt a log line:/fish11_logencrypt
   ..Decrypt a log line:/fish11_logdecrypt
   ..View encrypted log file:/fish11_logdecryptfile
+  -
+  FiSH_10 legacy compatibility
+  .DH1080 key exchange :fish10_keyx $active
+  .Show legacy key :fish10_showkey $active
+  .Set legacy key... :{ var %key = $?="Enter hex Blowfish key (4-56 bytes):" | if (%key != $null) fish10_setkey $active %key }
+  .Remove legacy key :fish10_delkey $active
+  .-
+  .Set topic (encrypted) :{
+    ; Only allow in channel windows
+    if ($window($active).type != channel) {
+      echo $color(Mode text) -at *** FiSH_10: etopic can only be used in channel windows
+      return
+    }
+    var %topic = $?="Enter encrypted topic for " $+ $active $+ ":"
+    if (%topic != $null) etopic %topic
+  }
+  .-
+  .About FiSH_10 compatibility :{
+    echo $color(Mode text) -at *** FiSH_10 Legacy Compatibility
+    echo $color(Mode text) -at *** Supports DH1080 key exchange and Blowfish ECB encryption
+    echo $color(Mode text) -at *** Compatible with mIRC FiSH 10.x and other FiSH implementations
+    echo $color(Mode text) -at *** Use DH1080 for automatic key exchange or set keys manually
+  }
 }
 
 
@@ -1686,19 +1803,24 @@ menu @iniviewer {
 ; Encrypted topic alias - transparently encrypts the topic via the injection hook
 alias etopic {
   ; Check if we're in a channel window
-  if ($chantype($active) != # && $chantype($active) != &) {
+  if ($window($active).type != channel) {
     echo $color(Mode text) -at *** FiSH_11: etopic can only be used in channel windows
     return
   }
 
   ; Check if there's a key for this channel (both traditional and FCEP-1)
   var %channelKey = $dll(%Fish11DllFile, FiSH11_FileGetKey, $active)
-  if (%channelKey == $null) {
+  ; Robust error check: if it doesn't look like a valid key or starts with error indicators
+  if ($left(%channelKey, 6) == Error: || $left(%channelKey, 3) == no ) { set %channelKey $null }
+
+  var %hasLegacyKey = $dll(%Fish11DllFile, FiSH10_HasKey, $active)
+
+  if (%channelKey == $null && %hasLegacyKey != 1) {
     ; No key exists, but the engine may still try to encrypt if a channel key exists
     ; This will be handled by the engine registration code
     echo $color(Mode text) -at *** FiSH_11: no encryption key found for $active, topic will be sent in plain text
   } else {
-    echo $color(Mode text) -at *** FiSH_11: topic will be encrypted for $active
+    echo $color(Mode text) -at *** FiSH_11: topic will be encrypted for $active $iif(%hasLegacyKey == 1, (FiSH 10 legacy))
   }
 
   ; Execute the topic command - encryption will be handled by the engine
@@ -1706,6 +1828,85 @@ alias etopic {
 
   ; Clean up variables
   unset %channelKey
+}
+
+; Set a plaintext topic for a channel
+alias settopic {
+  if ($1 == $null || $2- == $null) {
+    echo 4 -a Syntax: /settopic <#channel> <topic>
+    return
+  }
+
+  var %channel = $1
+  var %topic = $2-
+
+  ; Validate channel name
+  if (!$regex(%channel, /^[#&]/)) {
+    echo $color(Error) -at *** FiSH_11 ERROR: Invalid channel name %channel (must start with # or &)
+    return
+  }
+
+  var %result = $dll(%Fish11DllFile, FiSH11_SetTopic, $+(%channel, $chr(32), %topic))
+
+  if (%result && $left(%result, 6) != Error:) {
+    echo $color(Mode text) -at *** FiSH_11: %result
+  }
+  else {
+    var %error_msg = $iif(%result, %result, "Unknown error - could not set topic for %channel")
+    echo $color(Error) -at *** FiSH_11: error setting topic for %channel - %error_msg
+  }
+}
+
+; Get a plaintext topic for a channel
+alias gettopic {
+  if ($1 == $null) {
+    echo 4 -a Syntax: /gettopic <#channel>
+    return
+  }
+
+  var %channel = $1
+
+  ; Validate channel name
+  if (!$regex(%channel, /^[#&]/)) {
+    echo $color(Error) -at *** FiSH_11 ERROR: Invalid channel name %channel (must start with # or &)
+    return
+  }
+
+  var %result = $dll(%Fish11DllFile, FiSH11_GetTopic, %channel)
+
+  if (%result && $left(%result, 6) != Error:) {
+    echo $color(Mode text) -at *** FiSH_11: Topic for %channel is: %result
+  }
+  else {
+    var %error_msg = $iif(%result, %result, "Unknown error - could not get topic for %channel")
+    echo $color(Error) -at *** FiSH_11: error getting topic for %channel - %error_msg
+  }
+}
+
+; Remove a plaintext topic for a channel
+alias removetopic {
+  if ($1 == $null) {
+    echo 4 -a Syntax: /removetopic <#channel>
+    return
+  }
+
+  var %channel = $1
+
+  ; Validate channel name
+  if (!$regex(%channel, /^[#&]/)) {
+    echo $color(Error) -at *** FiSH_11 ERROR: Invalid channel name %channel (must start with # or &)
+    return
+  }
+
+  var %result = $dll(%Fish11DllFile, FiSH11_RemoveTopic, %channel)
+
+  if (%result && $left(%result, 6) != Error:) {
+    echo $color(Mode text) -at *** FiSH_11: %result
+  }
+  else {
+    var %error_msg = $iif(%result, %result, "Unknown error - could not remove topic for %channel")
+    echo $color(Error) -at *** FiSH_11: error removing topic for %channel - %error_msg
+  }
 }
 
 alias fish_genkey11 { fish11_setkey_safe $1 $2- }
@@ -1723,11 +1924,273 @@ alias fish_help11 { fish11_help }
 alias fish_version11 { fish11_version }
 alias fish_initchannel11 { fish11_initchannel $1- }
 
+; Short alias for statistics
+alias fish_stats11 { fish11_stats }
+
 ; Short aliases for encrypted logging commands
 alias fish_setlogkey11 { fish11_setlogkey $1- }
 alias fish_logencrypt11 { fish11_logencrypt $1- }
 alias fish_logdecrypt11 { fish11_logdecrypt $1- }
 alias fish_logdecryptfile11 { fish11_logdecryptfile $1- }
+
+; Legacy FiSH 10 aliases
+alias fish10_setkey {
+  if ($1 == $null || $2 == $null) {
+    echo 4 -a Syntax: /fish10_setkey <target> <hex_key>
+    return
+  }
+  var %msg = $dll(%Fish11DllFile, FiSH10_SetKey, $1 $2-)
+  if (%msg && $left(%msg, 6) != Error:) {
+    echo -a *** FiSH_10: %msg
+  }
+  else {
+    echo -a *** FiSH_10: error setting key - %msg
+  }
+}
+
+; Set a plaintext topic for a channel in the legacy fish10 section
+alias fish10_settopic {
+  if ($1 == $null || $2- == $null) {
+    echo 4 -a Syntax: /fish10_settopic <#channel> <topic>
+    return
+  }
+
+  var %channel = $1
+  var %topic = $2-
+
+  ; Validate channel name
+  if (!$regex(%channel, /^[#&]/)) {
+    echo $color(Error) -at *** FiSH_10 ERROR: Invalid channel name %channel (must start with # or &)
+    return
+  }
+
+  var %result = $dll(%Fish11DllFile, FiSH10_SetTopic, $+(%channel, $chr(32), %topic))
+
+  if (%result && $left(%result, 6) != Error:) {
+    echo $color(Mode text) -at *** FiSH_10: %result
+  }
+  else {
+    var %error_msg = $iif(%result, %result, "Unknown error - could not set topic for %channel")
+    echo $color(Error) -at *** FiSH_10: error setting topic for %channel - %error_msg
+  }
+}
+
+; Get a plaintext topic for a channel from the legacy fish10 section
+alias fish10_gettopic {
+  if ($1 == $null) {
+    echo 4 -a Syntax: /fish10_gettopic <#channel>
+    return
+  }
+
+  var %channel = $1
+
+  ; Validate channel name
+  if (!$regex(%channel, /^[#&]/)) {
+    echo $color(Error) -at *** FiSH_10 ERROR: Invalid channel name %channel (must start with # or &)
+    return
+  }
+
+  var %result = $dll(%Fish11DllFile, FiSH10_GetTopic, %channel)
+
+  if (%result && $left(%result, 6) != Error:) {
+    echo $color(Mode text) -at *** FiSH_10: Topic for %channel is: %result
+  }
+  else {
+    var %error_msg = $iif(%result, %result, "Unknown error - could not get topic for %channel")
+    echo $color(Error) -at *** FiSH_10: error getting topic for %channel - %error_msg
+  }
+}
+
+; Remove a plaintext topic for a channel from the legacy fish10 section
+alias fish10_removetopic {
+  if ($1 == $null) {
+    echo 4 -a Syntax: /fish10_removetopic <#channel>
+    return
+  }
+
+  var %channel = $1
+
+  ; Validate channel name
+  if (!$regex(%channel, /^[#&]/)) {
+    echo $color(Error) -at *** FiSH_10 ERROR: Invalid channel name %channel (must start with # or &)
+    return
+  }
+
+  var %result = $dll(%Fish11DllFile, FiSH10_RemoveTopic, %channel)
+
+  if (%result && $left(%result, 6) != Error:) {
+    echo $color(Mode text) -at *** FiSH_10: %result
+  }
+  else {
+    var %error_msg = $iif(%result, %result, "Unknown error - could not remove topic for %channel")
+    echo $color(Error) -at *** FiSH_10: error removing topic for %channel - %error_msg
+  }
+}
+
+alias fish10_delkey {
+  if ($1 == $null) var %target = $active
+  else var %target = $1
+  var %msg = $dll(%Fish11DllFile, FiSH10_DelKey, %target)
+  if (%msg && $left(%msg, 6) != Error:) {
+    echo -a *** FiSH_10: %msg
+  }
+  else {
+    echo -a *** FiSH_10: error removing key - %msg
+  }
+}
+
+alias fish10_showkey {
+  if ($1 == $null) var %target = $active
+  else var %target = $1
+  var %key = $dll(%Fish11DllFile, FiSH10_GetKey, %target)
+  if ($left(%key, 6) == Error:) {
+    echo -a *** FiSH_10: error retrieving key for %target : %key
+  }
+  elseif (%key == $null) {
+    echo -a *** FiSH_10: no key found for %target
+  } else {
+    echo -a *** FiSH_10: key for %target : %key
+  }
+}
+
+alias fish10_usechankey {
+  if ($1 == $null || $2 == $null) {
+    echo 4 -a Syntax: /fish10_usechankey <target> <source_channel>
+    return
+  }
+  
+  var %target = $1
+  var %source = $2
+  
+  ; Get the key from the source
+  var %key = $dll(%Fish11DllFile, FiSH11_FileGetKey, %source)
+  
+  if (%key == $null || $len(%key) < 4) {
+    echo $color(Error) -at *** FiSH_10: no valid key found for %source
+    return
+  }
+  
+  ; Set the same key for the target
+  fish10_setkey %target %key
+  echo $color(Mode text) -at *** FiSH_10: using same key as %source for %target
+}
+
+alias fish10_keyx {
+  if ($1 == $null) var %target = $active
+  else var %target = $1
+  
+  ; Use hash table to track in-progress exchanges
+  hadd -m fish10.dh %target 1
+  
+  var %pub = $dll(%Fish11DllFile, FiSH10_DH1080_GenerateKeyPair, %target)
+  
+  ; Check if key generation was successful (should be a base64 string ending with 'A')
+  ; DH1080 public keys are ~181 chars long and end with 'A'
+  if ($len(%pub) > 100 && $right(%pub, 1) == A) {
+    .notice %target DH1080_INIT %pub
+    echo $color(Mode text) -tm %target *** FiSH_10: sent DH1080_INIT to %target $+ , waiting for reply...
+    
+    ; Set timeout timer
+    if (%KEY_EXCHANGE_TIMEOUT_SECONDS == $null) { var %timeout = 10 }
+    else { var %timeout = %KEY_EXCHANGE_TIMEOUT_SECONDS }
+    .timer 1 %timeout fish10_timeout_keyexchange %target
+  }
+  else {
+    hdel fish10.dh %target
+    echo $color(Error) -at *** FiSH_10: DH1080 init failed - %pub
+  }
+}
+
+; Handle key exchange timeout for FiSH 10/DH1080
+alias fish10_timeout_keyexchange {
+  if ($1 == $null) return
+  var %contact = $1
+  
+  ; Check if key exchange is still in progress
+  if ($hget(fish10.dh, %contact).item == 1) {
+    hdel fish10.dh %contact
+    echo $color(Mode text) -at *** FiSH_10: key exchange with %contact timed out
+  }
+}
+
+; Legacy DH1080 Notice Handlers
+on ^*:NOTICE:DH1080_INIT*:?:{
+  ; In mIRC NOTICE events:
+  ; $1 = "DH1080_INIT"
+  ; $2 = public key (base64)
+  ; $3 = "CBC" (optional)
+  var %their_pub = $2
+
+  ; Validate format: DH1080 public keys should be base64
+  if (!$regex(%their_pub, /^[A-Za-z0-9+\/=]+$/)) {
+    echo $color(Error) -tm $nick *** FiSH_10: received invalid DH1080_INIT format from $nick
+    halt
+  }
+
+  echo $color(Mode text) -tm $nick *** FiSH_10: received DH1080_INIT from $nick, responding...
+
+  var %our_pub = $dll(%Fish11DllFile, FiSH10_DH1080_GenerateKeyPair, $nick)
+  
+  ; Check if key generation failed
+  if ($left(%our_pub, 6) == Error:) {
+    echo $color(Error) -tm $nick *** FiSH_10: key generation failed - %our_pub
+    halt
+  }
+
+  var %secret = $dll(%Fish11DllFile, FiSH10_DH1080_ComputeSecret, $nick %their_pub)
+
+  ; Check if secret computation failed
+  if ($left(%secret, 6) == Error:) {
+    echo $color(Error) -tm $nick *** FiSH_10: key exchange failed - %secret
+    halt
+  }
+
+  ; The DLL automatically stores the shared secret as a Blowfish key for this nick
+
+  ; Send DH1080_FINISH response with our public key
+  .notice $nick DH1080_FINISH %our_pub
+
+  echo $color(Mode text) -tm $nick *** FiSH_10: key exchange complete with $nick
+  echo $color(Error) -tm $nick *** FiSH_10 WARNING: key exchange complete, but the identity of $nick is NOT VERIFIED.
+  halt
+}
+
+on ^*:NOTICE:DH1080_FINISH*:?:{
+  ; Verify an exchange is in progress
+  if ($hget(fish10.dh, $nick).item != 1) {
+    echo -at *** FiSH_10: received DH1080_FINISH but no key exchange was in progress with $nick
+    halt
+  }
+
+  ; In mIRC NOTICE events:
+  ; $1 = "DH1080_FINISH"
+  ; $2 = public key (base64)
+  var %their_pub = $2
+
+  ; Validate format
+  if (!$regex(%their_pub, /^[A-Za-z0-9+\/=]+$/)) {
+    echo $color(Error) -tm $nick *** FiSH_10: received invalid DH1080_FINISH format from $nick
+    hdel fish10.dh $nick
+    halt
+  }
+  
+  var %secret = $dll(%Fish11DllFile, FiSH10_DH1080_ComputeSecret, $nick %their_pub)
+  
+  ; Clean up tracking
+  hdel fish10.dh $nick
+  
+  ; Check if secret computation failed
+  if ($left(%secret, 6) == Error:) {
+    echo $color(Error) -tm $nick *** FiSH_10: key exchange failed - %secret
+    halt
+  }
+
+  ; The DLL automatically stores the shared secret as a Blowfish key for this nick
+
+  echo $color(Mode text) -tm $nick *** FiSH_10: key exchange complete with $nick
+  echo $color(Error) -tm $nick *** FiSH_10 WARNING: key exchange complete, but the identity of $nick is NOT VERIFIED.
+  halt
+}
 
 ; Direct command for channel encryption settings
 alias fish11_channel_settings {
@@ -1940,4 +2403,19 @@ alias fish11_logdecryptfile {
 }
 
 alias fcep11 { fish11_initchannel $1- }
+
+; Show encryption statistics
+alias fish11_stats {
+  var %stats = $dll(%Fish11DllFile, FiSH11_GetEncryptionStats, $null)
+  if (%stats) {
+    echo $color(Mode text) -at *** FiSH_11 Encryption Statistics:
+    echo $color(Mode text) -at %stats
+  }
+  else {
+    echo $color(Error) -at *** FiSH_11: failed to retrieve encryption statistics
+  }
+}
+
+; Short alias for statistics
+alias fish_stats { fish11_stats }
 

@@ -1,6 +1,7 @@
 use crate::dll_interface::NICK_VALIDATOR;
 use crate::error::FishError;
 use crate::{buffer_utils, log_debug, log_error, log_warn};
+pub mod key_derivation;
 use base64;
 use base64::Engine;
 use rand::Rng;
@@ -289,6 +290,11 @@ pub fn normalize_target(target: &str) -> &str {
     trimmed
 }
 
+/// Normalize a target (channel or nickname) by stripping status prefixes and converting to lowercase.
+pub fn normalize_target_lowercase(target: &str) -> String {
+    normalize_nick(normalize_target(target))
+}
+
 /// Basic nickname validation (no null bytes or non-ASCII chars)
 fn validate_nick_basic(nick: &str) -> Result<(), crate::error::FishError> {
     // Check for null bytes
@@ -444,6 +450,13 @@ mod tests {
         // Test empty and whitespace-only
         assert_eq!(normalize_target(""), "");
         assert_eq!(normalize_target("   "), "");
+    }
+
+    #[test]
+    fn test_normalize_target_lowercase() {
+        assert_eq!(normalize_target_lowercase("@#Fish_11"), "#fish_11");
+        assert_eq!(normalize_target_lowercase("  +@#ChAnNeL  "), "#channel");
+        assert_eq!(normalize_target_lowercase("Bob"), "bob");
     }
 
     #[test]

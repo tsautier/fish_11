@@ -1,6 +1,14 @@
 use crate::log_error;
+
+pub use crate::channel_encryption::init_key::FiSH11_InitChannelKey;
+pub use crate::channel_encryption::process_key::FiSH11_ProcessChannelKey;
+pub use crate::crypto::dh1080::{
+    FiSH10_DH1080_ComputeSecret, FiSH10_DH1080_GenerateKeyPair, FiSH10_DH1080_SetKey,
+};
+
 use std::ffi::CStr;
 use std::ptr;
+
 mod fish11_coreversion;
 mod fish11_decryptmsg;
 mod fish11_encryptmsg;
@@ -10,6 +18,7 @@ mod fish11_filelistkeys;
 mod fish11_filelistkeysitem;
 mod fish11_genkey;
 mod fish11_getconfigpath;
+mod fish11_getencryptionstats;
 mod fish11_getkeyttl;
 mod fish11_getratchetstate;
 mod fish11_hasmanualchannelkey;
@@ -26,9 +35,21 @@ mod fish11_setfishprefix;
 mod fish11_setmanualchannelkey;
 mod fish11_setmanualchannelkeyfrompassword;
 mod fish11_setnetwork;
+mod fish11_settopic;
+mod fish_10;
 mod utility;
-pub use crate::channel_encryption::init_key::FiSH11_InitChannelKey;
-pub use crate::channel_encryption::process_key::FiSH11_ProcessChannelKey;
+
+pub use fish_10::fish10_decryptmsg::FiSH10_DecryptMsg;
+pub use fish_10::fish10_encryptmsg::FiSH10_EncryptMsg;
+pub use fish_10::fish10_haskey::{FiSH10_GetKey, FiSH10_GetKeyInfo, FiSH10_HasKey};
+pub use fish_10::fish10_register_engine::{
+    FiSH10_GetEngineVersion, FiSH10_IsEngineAvailable, FiSH10_RegisterEngine,
+};
+pub use fish_10::fish10_setkey::FiSH10_SetKey;
+
+pub use fish_10::fish10_settopic::{FiSH10_GetTopic, FiSH10_RemoveTopic, FiSH10_SetTopic};
+
+pub use fish11_getencryptionstats::FiSH11_GetEncryptionStats;
 pub use fish11_getkeyttl::FiSH11_GetKeyTTL;
 pub use fish11_getratchetstate::FiSH11_GetRatchetState;
 pub use fish11_hasmanualchannelkey::FiSH11_HasManualChannelKey;
@@ -44,6 +65,7 @@ pub use fish11_masterkey::{
 pub use fish11_removemanualchannelkey::FiSH11_RemoveManualChannelKey;
 pub use fish11_removeratchetchannelkey::FiSH11_RemoveRatchetChannelKey;
 pub use fish11_setencryptionprefix::FiSH11_SetEncryptionPrefix;
+pub use fish11_settopic::{FiSH11_GetTopic, FiSH11_RemoveTopic, FiSH11_SetTopic};
 pub use fish11_setfishprefix::FiSH11_SetFishPrefix;
 pub use fish11_setmanualchannelkey::FiSH11_SetManualChannelKey;
 pub use fish11_setmanualchannelkeyfrompassword::FiSH11_SetManualChannelKeyFromPassword;
@@ -76,7 +98,7 @@ pub(crate) fn get_buffer_size() -> usize {
 
         if guard_result.is_err() {
             log_error!(
-                "FATAL: Failed to acquire LOAD_INFO mutex lock in get_buffer_size. DLL may be in corrupted state. Returning default size."
+                "FATAL: failed to acquire LOAD_INFO mutex lock in get_buffer_size. DLL may be in corrupted state. Returning default size."
             );
             return DEFAULT_MIRC_BUFFER_SIZE as usize; // Return a default if mutex fails
         }

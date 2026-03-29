@@ -30,7 +30,7 @@ fn encrypt_log_message(key: &[u8], plaintext: &str) -> Result<String, DllError> 
 pub extern "C" fn FiSH11_LogEncrypt(
     plaintext: *const c_char,
     ret_buffer: *mut c_char,
-    ret_buffer_size: i32,
+    _ret_buffer_size: i32,
 ) -> i32 {
     if plaintext.is_null() {
         return DllError::new("plaintext pointer is null").log_and_return_error_code();

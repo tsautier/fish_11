@@ -4,9 +4,7 @@ use crate::dll_interface::fish11_masterkey::is_master_key_unlocked;
 use crate::error::{FishError, Result};
 use crate::log_debug;
 use base64::{Engine as _, engine::general_purpose};
-use fish_11_core::master_key::{
-    EncryptedBlob, decrypt_data, derive_config_kek, encrypt_data,
-};
+use fish_11_core::master_key::{EncryptedBlob, decrypt_data, derive_config_kek, encrypt_data};
 use ini::Ini;
 use std::fs;
 use std::io::Cursor;
@@ -134,7 +132,6 @@ fn load_encrypted_config_from_file(config_path: &PathBuf) -> Result<FishConfig> 
     })?;
 
     // Parse the decrypted content as INI
-    let mut ini = Ini::new();
     let ini = Ini::load_from_str(&decrypted_content).map_err(|e| {
         FishError::ConfigError(format!("Failed to parse decrypted INI content: {}", e))
     })?;

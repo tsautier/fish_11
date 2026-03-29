@@ -13,6 +13,7 @@ use std::ffi::{NulError, c_char};
 use std::os::raw::c_int;
 use thiserror::Error;
 
+
 /// Unified error type for all DLL operations
 ///
 /// This enum consolidates all possible error conditions across the DLL,
@@ -21,6 +22,11 @@ use thiserror::Error;
 /// Uses `thiserror` for automatic Display and Error trait implementations.
 #[derive(Error, Debug)]
 pub enum DllError {
+    // ===== Legacy Compatibility Errors =====
+    /// Legacy FiSH 10 compatibility error
+    #[error("legacy FiSH 10 error: {context} - {cause}")]
+    LegacyError { context: String, cause: String },
+
     // ===== Configuration Errors =====
     /// Configuration file not found or inaccessible
     #[error("configuration file not found: {0}")]
@@ -401,6 +407,12 @@ impl From<&str> for DllError {
     }
 }
 
+impl From<String> for DllError {
+    fn from(err: String) -> Self {
+        DllError::InvalidInput { param: "data".to_string(), reason: err }
+    }
+}
+
 /// Result type for DLL operations
 pub type DllResult<T> = Result<T, DllError>;
 
@@ -464,6 +476,7 @@ macro_rules! dll_function {
                 };
 
                 // Bind the identifier expected by existing function bodies
+                #[allow(unused_variables)]
                 let $data = input_ptr;
                 $body
             }
@@ -547,6 +560,7 @@ macro_rules! dll_function_identifier {
                     }
                 };
 
+                #[allow(unused_variables)]
                 let $data = input_ptr;
                 $body
             }

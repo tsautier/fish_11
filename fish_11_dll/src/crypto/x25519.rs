@@ -17,8 +17,6 @@ use rand::rngs::OsRng;
 use secrecy::{ExposeSecret, Secret};
 use sha2::Sha256;
 use std::any::Any;
-use std::fs::OpenOptions;
-use std::io::Write;
 use subtle::ConstantTimeEq;
 use x25519_dalek::{PublicKey, StaticSecret};
 use zeroize::Zeroize;
@@ -381,11 +379,6 @@ fn log_audit(event: &str) {
     // Use the standard debug logging
     #[cfg(debug_assertions)]
     log::debug!("[AUDIT] {}", event);
-
-    // Also log to the specialized audit log file
-    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("fish11.audit.log") {
-        let _ = writeln!(file, "[{}] {}", Utc::now(), event);
-    }
 }
 
 /// Constant-time comparison of authentication tags or other sensitive values

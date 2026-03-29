@@ -35,7 +35,7 @@ fn decrypt_log_message(key: &[u8], base64_ciphertext: &str) -> Result<String, Dl
 pub extern "C" fn FiSH11_LogDecrypt(
     ciphertext: *const c_char,
     ret_buffer: *mut c_char,
-    ret_buffer_size: i32,
+    _ret_buffer_size: i32,
 ) -> i32 {
     if ciphertext.is_null() {
         return DllError::new("ciphertext pointer is null").log_and_return_error_code();

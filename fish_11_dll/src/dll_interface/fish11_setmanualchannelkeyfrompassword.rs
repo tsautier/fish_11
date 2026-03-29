@@ -48,26 +48,7 @@ dll_function_identifier!(FiSH11_SetManualChannelKeyFromPassword, data, {
 
 /// Derives a 32-byte cryptographic key from password/short key material using HKDF
 fn derive_key_from_password(password: &str) -> DllResult<[u8; 32]> {
-    use hkdf::Hkdf;
-    use sha2::Sha256;
-
-    // Use channel name as salt to prevent rainbow table attacks
-    // In a real implementation, we'd use a random salt stored with the key
-    let salt = b"FiSH11-ChannelKey";
-
-    // Use the password as IKM (input key material)
-    let ikm = password.as_bytes();
-
-    // Derive a 32-byte key using HKDF-SHA256
-    let hkdf = Hkdf::<Sha256>::new(Some(salt), ikm);
-    let mut output = [0u8; 32];
-
-    hkdf.expand(b"channel-key-expansion", &mut output).map_err(|e| DllError::InvalidInput {
-        param: "password".to_string(),
-        reason: format!("HKDF key derivation failed: {}", e),
-    })?;
-
-    Ok(output)
+    crate::utils::key_derivation::derive_key_from_password(password)
 }
 
 #[cfg(test)]
