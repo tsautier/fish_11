@@ -40,7 +40,7 @@ alias fish11_startup {
   }
 
   ; Check mIRC's DLL lock
-  if ($dllock) {
+  if ($lock(dll)) {
     echo 4 -a *** FiSH_11 ERROR: mIRC DLLs are locked. Enable DLLs in mIRC settings.
     halt
   }
@@ -427,7 +427,7 @@ alias fish11_timeout_keyexchange {
   var %contact = $1
   
   ; Check if key exchange is still in progress.
-  if ($hget(fish11.dh, %contact).item == 1) {
+  if ($hget(fish11.dh, %contact) == 1) {
     ; Clean up variables.
     hdel fish11.dh %contact
     
@@ -588,7 +588,7 @@ alias fish11_X25519_INIT {
   else var %cur_contact = $1
 
   ; If there's an existing exchange in progress, cancel it first
-  if (%fish11.dh_ $+ [ %cur_contact ] == 1) {
+  if ($hget(fish11.dh, %cur_contact) == 1) {
     echo $color(Mode text) -at *** FiSH_11: restarting key exchange with %cur_contact
   }
 
@@ -791,7 +791,8 @@ alias fish11_test_crypt {
 ; Encrypt message
 alias fish11_encrypt {
   if (!$1 || !$2) return
-  var %encrypted = $dll(%Fish11DllFile, FiSH11_EncryptMsg, $1, $2-)
+  ; FiSH11_EncryptMsg expects one data string: "<target> <message>"
+  var %encrypted = $dll(%Fish11DllFile, FiSH11_EncryptMsg, $1 $2-)
   return %encrypted
 }
 
@@ -803,14 +804,13 @@ alias fish11_decrypt {
   else var %cur_contact = $1
   if ($2- == $null) return
   
-  var %decrypted
-  if ($dll(%Fish11DllFile, FiSH11_DecryptMsg, %cur_contact, $2-, &%decrypted)) {
+  ; FiSH11_DecryptMsg expects one data string: "<target> <message>"
+  var %decrypted = $dll(%Fish11DllFile, FiSH11_DecryptMsg, $+(%cur_contact,$chr(32),$2-))
+  if (%decrypted != $null && $left(%decrypted, 6) != Error:) {
     return %decrypted
   }
-  else {
-    echo $color(Mode text) -at *** FiSH: decryption failed for %cur_contact
-    return $null
-  }
+  echo $color(Mode text) -at *** FiSH: decryption failed for %cur_contact
+  return $null
 }
 
 
@@ -2107,7 +2107,7 @@ alias fish10_timeout_keyexchange {
   var %contact = $1
   
   ; Check if key exchange is still in progress
-  if ($hget(fish10.dh, %contact).item == 1) {
+  if ($hget(fish10.dh, %contact) == 1) {
     hdel fish10.dh %contact
     echo $color(Mode text) -at *** FiSH_10: key exchange with %contact timed out
   }
@@ -2157,7 +2157,7 @@ on ^*:NOTICE:DH1080_INIT*:?:{
 
 on ^*:NOTICE:DH1080_FINISH*:?:{
   ; Verify an exchange is in progress
-  if ($hget(fish10.dh, $nick).item != 1) {
+  if ($hget(fish10.dh, $nick) != 1) {
     echo -at *** FiSH_10: received DH1080_FINISH but no key exchange was in progress with $nick
     halt
   }
