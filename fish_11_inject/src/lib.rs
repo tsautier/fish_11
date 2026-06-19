@@ -6,16 +6,14 @@
 
   Author: GuY
   License: GNU GPL-v3
-  Date: 2025
+  Date: 2025-2026
 
 1. Windows calls DllMain() when the DLL is loaded
 2. mIRC calls LoadDll() in dll_interface.rs
 ===============================================================================
 */
-
-// This DLL is only for Windows
 #![cfg(windows)]
-// Here we define all the necessary imports and modules (files)
+mod buffer_pool;
 mod dll_interface;
 mod engines;
 mod helpers_inject;
@@ -26,41 +24,33 @@ mod pointer_validation;
 pub mod socket;
 mod ssl_detection;
 pub mod ssl_mapping;
-use crate::helpers_inject::{cleanup_hooks, init_logger};
+use buffer_pool::BufferPool;
 use dashmap::DashMap;
 use engines::InjectEngines;
-use fish_11_core::globals::{MIRC_COMMAND, MIRC_HALT, MIRC_IDENTIFIER};
-use lazy_static::lazy_static;
-use log::{error, info, warn};
+use fish_11_core::globals::{MIRC_HALT, MIRC_IDENTIFIER};
 use once_cell::sync::Lazy;
 use socket::info::SocketInfo;
 use std::ffi::c_void;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::ptr::null_mut;
+use std::sync::atomic::{AtomicBool, AtomicPtr};
 use std::sync::{Arc, Mutex};
 use windows::Win32::Foundation::HMODULE;
-use windows::Win32::System::Threading::GetCurrentThreadId;
 
-// Wrapper to make HMODULE Send + Sync
-#[derive(Clone, Copy)]
-struct SendHMODULE(HMODULE);
-
-unsafe impl Send for SendHMODULE {}
-unsafe impl Sync for SendHMODULE {}
+/// Global buffer pool for efficient memory management
+pub static BUFFER_POOL: Lazy<Arc<BufferPool>> = Lazy::new(|| BufferPool::new());
 
 /// Thread-safe socket tracking using DashMap for better concurrency
 pub static ACTIVE_SOCKETS: Lazy<DashMap<u32, Arc<SocketInfo>>> = Lazy::new(DashMap::new);
 
-lazy_static! {
-    static ref DISCARDED_SOCKETS: Mutex<Vec<u32>> = Mutex::new(Vec::new());
-    static ref ENGINES: Mutex<Option<Arc<InjectEngines>>> = Mutex::new(None);
-    static ref DLL_HANDLE_PTR: Mutex<Option<SendHMODULE>> = Mutex::new(None);
-    static ref MAX_MIRC_RETURN_BYTES: Mutex<usize> = Mutex::new(4096);
-}
+pub(crate) static DISCARDED_SOCKETS: Lazy<Mutex<Vec<u32>>> = Lazy::new(|| Mutex::new(Vec::new()));
+pub(crate) static ENGINES: Lazy<Mutex<Option<Arc<InjectEngines>>>> =
+    Lazy::new(|| Mutex::new(None));
+pub(crate) static DLL_HANDLE: AtomicPtr<c_void> = AtomicPtr::new(null_mut());
+pub(crate) static MAX_MIRC_RETURN_BYTES: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::new(4096));
 
 /// Global flags
-static LOADED: AtomicBool = AtomicBool::new(false);
+pub(crate) static LOADED: AtomicBool = AtomicBool::new(false);
 static VERSION_SHOWN: AtomicBool = AtomicBool::new(false);
-static LOGGER_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 /// Version constants
 pub const FISH_INJECT_VERSION: u32 = 11;
@@ -100,170 +90,14 @@ pub unsafe extern "system" fn DllMain(
 ) -> i32 {
     match ul_reason_for_call {
         1 => {
-            // DLL_PROCESS_ATTACH
-            #[cfg(debug_assertions)]
-            {
-                // Initialize logger first so we can log everything
-                if !LOGGER_INITIALIZED.load(Ordering::SeqCst) {
-                    init_logger();
-                }
-                info!("=== DllMain : DLL_PROCESS_ATTACH ===");
-                info!("DllMain() : h_module = {:?}", h_module);
-            }
-
-            // Initialize the engine container so other DLLs can register themselves.
-            let engines_initialized = match ENGINES.lock() {
-                Ok(mut engines) => {
-                    if engines.is_none() {
-                        match std::panic::catch_unwind(|| Arc::new(InjectEngines::new())) {
-                            Ok(new_engines) => {
-                                *engines = Some(new_engines);
-                                info!(
-                                    "DllMain() : InjectEngines container initialized successfully."
-                                );
-                                true
-                            }
-                            Err(panic_err) => {
-                                error!(
-                                    "DllMain() : panic during InjectEngines creation: {:?}",
-                                    panic_err
-                                );
-                                false
-                            }
-                        }
-                    } else {
-                        info!("DllMain() : InjectEngines already initialized.");
-                        true
-                    }
-                }
-                Err(e) => {
-                    error!("DllMain() : failed to lock ENGINES to initialize: {}", e);
-                    // Attempt to recover from poisoned lock
-                    let mut engines = e.into_inner();
-                    if engines.is_none() {
-                        *engines = Some(Arc::new(InjectEngines::new()));
-                        warn!("DllMain() : InjectEngines initialized after lock recovery.");
-                    }
-                    true
-                }
-            };
-
-            // If ENGINES initialization failed, this is a critical error
-            if !engines_initialized {
-                error!(
-                    "DllMain() : critical error - ENGINES initialization failed, DLL may not function properly"
-                );
-                // Continue loading but log the critical error
-                // TODO : in production, we might want to return 0 here ?
-            }
-
-            // Store module handle
-            #[cfg(debug_assertions)]
-            info!("DllMain() : acquiring DLL_HANDLE_PTR lock...");
-
-            match DLL_HANDLE_PTR.lock() {
-                Ok(mut handle) => {
-                    *handle = Some(SendHMODULE(h_module));
-                    #[cfg(debug_assertions)]
-                    info!("DllMain() : module handle stored successfully");
-                }
-                Err(e) => {
-                    #[cfg(debug_assertions)]
-                    error!("DllMain() : failed to lock DLL_HANDLE_PTR: {}", e);
-                    return 0; // Return FALSE
-                }
-            }
-
-            #[cfg(debug_assertions)]
-            info!("DllMain() : initializing logger (if not already done)...");
-
-            init_logger();
-
-            info!("***");
-            info!(
-                "FiSH_11 inject v{} (build date : {}, build time : {} Z)",
-                fish_11_core::globals::CRATE_VERSION,
-                fish_11_core::globals::BUILD_DATE.as_str(),
-                fish_11_core::globals::BUILD_TIME.as_str()
-            );
-            info!("***");
-            info!("The DLL is loaded successfully. Now it's time to h00k some calls bayby !");
-
-            #[cfg(debug_assertions)]
-            info!("DllMain() : and how about to install SSL patches ?");
-
-            // NOTE: experimental SSL inline patching was previously called here.
-            // It has been disabled due to instability and the code has been moved to /experimental/ssl_inline_patch.rs for reference.
-            // The stable hooking mechanism in hook_ssl.rs is used instead.
-
-            #[cfg(debug_assertions)]
-            info!("DllMain() : setting LOADED flag to true...");
-
-            // Mark as loaded
-            LOADED.store(true, Ordering::SeqCst);
-
-            #[cfg(debug_assertions)]
-            info!("=== DllMain() : DLL_PROCESS_ATTACH completed successfully ===");
-
+            DLL_HANDLE.store(h_module.0, std::sync::atomic::Ordering::Release);
             1
         }
         0 => {
-            // DLL_PROCESS_DETACH
-            #[cfg(debug_assertions)]
-            info!("=== DllMain() : DLL_PROCESS_DETACH ===");
-
-            // Cleanup
-            if LOADED.swap(false, Ordering::SeqCst) {
-                info!("DllMain() : process is detaching. Cleaning up...");
-
-                #[cfg(debug_assertions)]
-                info!("DllMain() : uninstalling SSL patches...");
-
-                #[cfg(debug_assertions)]
-                info!("DllMain : cleaning up hooks...");
-
-                cleanup_hooks();
-
-                #[cfg(debug_assertions)]
-                info!("DllMain() : cleanup complete");
-            } else {
-                #[cfg(debug_assertions)]
-                info!("DllMain() : DLL was not loaded, skipping cleanup");
-            }
-
-            #[cfg(debug_assertions)]
-            info!("=== DllMain() : DLL_PROCESS_DETACH completed ===");
-
+            DLL_HANDLE.store(null_mut(), std::sync::atomic::Ordering::Release);
+            LOADED.store(false, std::sync::atomic::Ordering::Release);
             1
         }
-        2 => {
-            // DLL_THREAD_ATTACH
-            #[cfg(debug_assertions)]
-            {
-                let thread_id = GetCurrentThreadId();
-                info!(
-                    "DllMain() : DLL_THREAD_ATTACH - a new thread is being created (Thread ID: {}).",
-                    thread_id
-                );
-            }
-            1
-        }
-        3 => {
-            // DLL_THREAD_DETACH
-            #[cfg(debug_assertions)]
-            {
-                let thread_id = GetCurrentThreadId();
-                info!(
-                    "DllMain() : DLL_THREAD_DETACH - a thread is exiting cleanly (Thread ID: {}).",
-                    thread_id
-                );
-            }
-            1
-        }
-        _ => {
-            #[cfg(debug_assertions)]
-            info!("DllMain() : unknown reason code: {}", ul_reason_for_call);
-            1
-        }
+        2 | 3 | _ => 1,
     }
 }

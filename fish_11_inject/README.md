@@ -76,7 +76,7 @@ pub struct SocketInfo {
 - `Connected` - Fully established connection
 - `Closed` - Socket closed and cleaned up
 
-### 3. SSL Detection & Context Mapping (`ssl_detection.rs`)
+### 3. SSL detection & context mapping (`ssl_detection.rs`, `ssl_mapping.rs`)
 
 Automatically detects OpenSSL libraries in the mIRC process:
 
@@ -90,13 +90,24 @@ pub struct OpenSslInfo {
 }
 ```
 
-**Supported OpenSSL Versions:**
+**SSL-socket mapping with consistency checking:**
+
+```rust
+// Thread-safe bidirectional mapping
+static SSL_TO_SOCKET: Lazy<DashMap<usize, u32>> = Lazy::new(DashMap::new);
+static SOCKET_TO_SSL: Lazy<DashMap<u32, SSLWrapper>> = Lazy::new(DashMap::new);
+
+// Automatic consistency repair
+let repaired = SslSocketMapping::check_and_repair_consistency();
+```
+
+**Supported OpenSSL versions:**
 
 - OpenSSL 3.x (`libssl-3.dll`, `libssl-3-x64.dll`)
 - OpenSSL 1.1.x (`libssl-1_1.dll`, `libssl-1_1-x64.dll`)
 - Legacy versions (`ssleay32.dll`, `libeay32.dll`)
 
-### 4. Engine System (`engines.rs`)
+### 4. Engine system (`engines.rs`)
 
 Extensible message processing pipeline:
 
@@ -112,7 +123,7 @@ flowchart LR
     F --> I[Unchanged Message]
 ```
 
-### 5. Inline Patching (`ssl_inline_patch.rs`)
+### 5. Inline patching (`ssl_inline_patch.rs`)
 
 **Note: This feature is currently disabled in the code (`DllMain`) but the underlying implementation exists.**
 
@@ -123,9 +134,19 @@ Advanced SSL function patching for enhanced interception:
 - Thread-safe patch installation/removal
 - Version-specific OpenSSL support
 
-## Message Flow Diagrams
+### 6. Buffer pool system (`buffer_pool.rs`)
 
-### 1. DLL Initialization Sequence
+**Memory management system:**
+
+- **Buffer Pooling** : reuses frequently allocated buffers (up to 64 buffers of 16KB)
+- **SmartBuffer** : automatic buffer management with RAII principles
+- **Chunked Processing** : handling of large data (>4KB) in 4KB chunks
+- **Adaptive Allocation** : capacity estimation based on data size
+- **Memory Compaction**: automatic `shrink_to_fit()` after processing
+
+## Message flow diagrams
+
+### 1. DLL initialization sequence
 
 ```mermaid
 sequenceDiagram
@@ -133,11 +154,13 @@ sequenceDiagram
     participant D as fish_11_inject.dll
     participant M as mIRC
     participant S as Sockets
+    participant B as BufferPool
     
     W->>D: DllMain(DLL_PROCESS_ATTACH)
     activate D
     D->>D: Initialize logging system
     D->>D: Store DLL handle
+    D->>B: Initialize BufferPool (NEW)
     Note over D: SSL inline patching is currently disabled
     
     M->>D: LoadDll()
@@ -145,12 +168,13 @@ sequenceDiagram
     D->>S: Hook recv(), send(), connect(), closesocket()
     D->>D: Install SSL hooks (SSL_read, SSL_write, etc.)
     D->>D: Initialize engine system
+    D->>D: Initialize consistency checking (NEW)
     D->>M: Return success
     
     Note over D: System ready for message interception
 ```
 
-### 2. Socket Connection & SSL Detection
+### 2. Socket connection & SSL detection
 
 ```mermaid
 sequenceDiagram
@@ -178,7 +202,7 @@ sequenceDiagram
     H->>S: Update state: Connected
 ```
 
-### 3. Message Interception & Processing
+### 3. Message interception & processing
 
 ```mermaid
 flowchart TD
@@ -212,9 +236,9 @@ flowchart TD
     Q --> R
 ```
 
-## API Reference
+## API reference
 
-### DLL Interface Functions
+### DLL interface functions
 
 **`LoadDll(loadinfo: *mut LOADINFO) -> c_int`**
 
@@ -240,7 +264,7 @@ flowchart TD
 - Socket statistics and engine status
 - Active connections and SSL mappings
 
-### Hook Installation Functions
+### Hook installation functions
 
 ```rust
 // Install all WinSock hooks
@@ -274,24 +298,24 @@ impl SocketInfo {
 }
 ```
 
-## Configuration & Debugging
+## Configuration and debugging
 
-### Build Configurations
+### Build configurations
 
-**Debug Build:**
+**Debug build :**
 
 - Comprehensive logging to `fish11_inject.log`
 - Detailed hook tracing
 - SSL handshake monitoring
 - Message content logging (first 32 bytes)
 
-**Release Build:**
+**Release build :**
 
 - Minimal logging
 - Performance optimized
 - Production-ready
 
-### Log Output Examples
+### Log output examples
 
 ```bash
 [INFO] FiSH_11 inject v11 (build date: 2025-01-01, build time: 12:00:00)
@@ -313,7 +337,7 @@ impl SocketInfo {
 | **Messages Not Intercepted** | Encryption not working | Check `fish11_inject.log` for hook status |
 | **SSL Context Mapping** | TLS decryption fails | Verify SSL_set_fd hook is active |
 
-### Debug Commands
+### Debug commands
 
 ```mirc
 ; Check injection DLL status
@@ -326,28 +350,17 @@ impl SocketInfo {
 /dll -u fish_11_inject.dll
 ```
 
-## Technical Implementation Details
+## Technical implementation details
 
-### Memory Safety
+### Memory safety and optimization
 
 - **Thread-safe operations** using `Mutex` and `Arc`
-- **Poison handling** for mutex corruption
-- **Automatic cleanup** on DLL unload
+- **Poison handling** for mutex corruption with automatic recovery
+- **Automatic cleanup** on DLL unload with proper resource management
 - **Bounds checking** for all buffer operations
-
-### Performance Optimizations
-
-- **Lazy initialization** of hook systems
-- **Efficient pattern matching** for message types
-- **Minimal overhead** on non-encrypted messages
-- **Socket state caching** to avoid repeated lookups
-
-### Security Features
-
-- **Input validation** on all hook parameters
-- **Safe buffer handling** with bounds checking  
-- **Secure SSL context mapping** with proper cleanup
-- **Error isolation** preventing crashes
+- **Buffer pooling** system for frequent allocations
+- **Chunked processing** for large data handling
+- **Memory compaction** to reduce fragmentation
 
 ### Compatibility
 
@@ -381,9 +394,10 @@ fish_11_cli.exe fish_11_inject.dll FiSH11_InjectVersion
 /load -rs fish_11.mrc
 ```
 
-### Code Structure
+### Code structure
 
-```
+``` bash
+
 fish_11_inject/
 ├── src/
 │   ├── lib.rs                 # Main entry point and DllMain
@@ -402,15 +416,5 @@ fish_11_inject/
 ## License
 
 GNU General Public License v3.0
-
-## Contributing
-
-This component requires deep Windows system programming knowledge:
-
-- **Win32 API expertise** for socket hooking
-- **OpenSSL internals** for SSL/TLS interception
-- **Assembly/binary patching** for inline patches
-- **Thread safety** and concurrency handling
-- **Windows DLL development** experience
 
 Contact: `guillaume@lavache.com` for development questions.

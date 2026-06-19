@@ -1,11 +1,13 @@
 use crate::dll_interface::NICK_VALIDATOR;
 use crate::error::FishError;
 use crate::{buffer_utils, log_debug, log_error, log_warn};
+pub mod key_derivation;
+use std::ffi::{CString, c_char};
+
 use base64;
 use base64::Engine;
 use rand::Rng;
 use rand::rngs::OsRng;
-use std::ffi::{CString, c_char};
 
 /// Checks if there is an established TCP connection owned by the current process.
 ///
@@ -14,7 +16,6 @@ use std::ffi::{CString, c_char};
 /// - On Windows, it uses the `GetTcpTable2` API from `iphlpapi.dll`.
 /// - On Unix-like systems, it reads `/proc/net/tcp` and `/proc/self/fd` to find matching sockets.
 /// Returns true if an established connection is found, false otherwise.
-///
 pub fn is_socket_connected() -> bool {
     #[cfg(windows)]
     {
@@ -36,10 +37,10 @@ pub fn is_socket_connected() -> bool {
 /// Returns true if an established connection is found, false otherwise.
 ///
 /// TODO: maybe consider caching results or optimizing for frequent calls if performance becomes an issue.
-///
 fn is_socket_connected_windows() -> bool {
     unsafe {
         use std::alloc::{Layout, alloc, dealloc};
+
         use windows::Win32::Foundation::ERROR_INSUFFICIENT_BUFFER;
         use windows::Win32::NetworkManagement::IpHelper::{
             GetTcpTable2, MIB_TCP_STATE_ESTAB, MIB_TCPROW2, MIB_TCPTABLE2,
@@ -129,7 +130,6 @@ fn is_socket_connected_windows() -> bool {
 /// For now, this function will only work on Linux systems with /proc filesystem.
 /// It checks /proc/net/tcp or /proc/net/tcp6 for established connections and matches them against the current process's
 /// file descriptors in /proc/self/fd.
-///
 
 fn is_socket_connected_unix() -> bool {
     use std::collections::HashSet;
@@ -289,6 +289,11 @@ pub fn normalize_target(target: &str) -> &str {
     trimmed
 }
 
+/// Normalize a target (channel or nickname) by stripping status prefixes and converting to lowercase.
+pub fn normalize_target_lowercase(target: &str) -> String {
+    normalize_nick(normalize_target(target))
+}
+
 /// Basic nickname validation (no null bytes or non-ASCII chars)
 fn validate_nick_basic(nick: &str) -> Result<(), crate::error::FishError> {
     // Check for null bytes
@@ -316,6 +321,7 @@ pub fn validate_nickname(
 
     if nickname.is_empty() {
         log_warn!("FiSH11_ExchangeKey[{}]: empty nickname provided", trace_id);
+
         match CString::new("Usage: /dll fish_11.dll FiSH11_ExchangeKey <nickname>") {
             Ok(error_msg) => unsafe {
                 let _ = buffer_utils::write_cstring_to_buffer(data, buffer_size, &error_msg);
@@ -330,11 +336,14 @@ pub fn validate_nickname(
 
     // Basic validation first
     if let Err(_) = validate_nick_basic(nickname) {
-        log_error!(
+        /*log_error!(
             "FiSH11_ExchangeKey[{}]: nickname contains invalid characters: {}",
             trace_id,
             nickname
-        );
+        );*/
+
+        log_error!("FiSH11_ExchangeKey[{}]: nickname contains invalid characters", trace_id);
+
         match CString::new("Error: nickname contains invalid characters") {
             Ok(error_msg) => unsafe {
                 let _ = buffer_utils::write_cstring_to_buffer(data, buffer_size, &error_msg);
@@ -352,10 +361,14 @@ pub fn validate_nickname(
 
     // RFC 1459 compliant validation
     if !NICK_VALIDATOR.is_match(nickname) {
-        log_error!(
+        /*  log_error!(
             "FiSH11_ExchangeKey[{}]: invalid nickname format: {} (must be 1-16 chars, start with letter/special, contain only valid IRC chars)",
             trace_id,
             nickname
+        );*/
+        log_error!(
+            "FiSH11_ExchangeKey[{}]: invalid nickname format. It must be 1-16 chars, start with letter/special, contain only valid IRC chars.",
+            trace_id,
         );
 
         // Safe CString creation with fallback
@@ -439,6 +452,13 @@ mod tests {
     }
 
     #[test]
+    fn test_normalize_target_lowercase() {
+        assert_eq!(normalize_target_lowercase("@#Fish_11"), "#fish_11");
+        assert_eq!(normalize_target_lowercase("  +@#ChAnNeL  "), "#channel");
+        assert_eq!(normalize_target_lowercase("Bob"), "bob");
+    }
+
+    #[test]
     fn test_base64_roundtrip() {
         // Tests if base64 encoding and decoding preserves the original data.
         let original_data = b"some secret message with &*@# symbols";
@@ -475,4 +495,19 @@ mod tests {
         let result = validate_nick_basic("nické");
         assert!(matches!(result, Err(FishError::NonAsciiCharacter('é'))));
     }
+}
+/// Securely clears a String by converting it to bytes and zeroizing them.
+/// This is used to ensure sensitive data (like plaintext messages) is removed from memory.
+pub fn secure_clear_string(s: &mut String) {
+    if s.is_empty() {
+        return;
+    }
+    // We iterate over the capacity to clear everything, not just the length
+    // But we can only safely access up to len via as_bytes_mut check (if we use that).
+    // The standard replacement trick is:
+    let old_string = std::mem::take(s);
+    let mut bytes = old_string.into_bytes();
+
+    use zeroize::Zeroize;
+    bytes.zeroize();
 }

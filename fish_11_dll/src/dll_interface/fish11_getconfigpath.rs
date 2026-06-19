@@ -1,9 +1,9 @@
-use crate::dll_interface::{CStr, ptr};
+use std::ffi::c_char;
+use std::os::raw::c_int;
+
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::{config, dll_function_identifier};
-use std::ffi::c_char;
-use std::os::raw::c_int;
 
 dll_function_identifier!(FiSH11_GetConfigPath, _data, {
     let config_path = config::get_config_path()?;
@@ -13,6 +13,7 @@ dll_function_identifier!(FiSH11_GetConfigPath, _data, {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dll_interface::{CStr, ptr};
 
     #[test]
     fn test_fish11_getconfigpath_normal() {

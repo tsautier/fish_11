@@ -1,8 +1,9 @@
+use std::ffi::c_char;
+use std::os::raw::c_int;
+
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use sha2::{Digest, Sha256};
-use std::ffi::c_char;
-use std::os::raw::c_int;
 use subtle::ConstantTimeEq;
 use x25519_dalek::PublicKey;
 
@@ -21,11 +22,13 @@ dll_function_identifier!(FiSH11_GetKeyFingerprint, data, {
         return Err(DllError::MissingParameter("nickname".to_string()));
     }
 
-    log::info!("Generating key fingerprint for: {}", nickname);
+    #[cfg(debug_assertions)]
+    log_debug!("Generating key fingerprint for: {}", nickname);
 
     // Get the key for the nickname
     let key = config::get_key_default(&nickname)?;
 
+    #[cfg(debug_assertions)]
     log_debug!("Retrieved key, generating SHA-256 hash");
 
     // Generate fingerprint using SHA-256
@@ -45,7 +48,8 @@ dll_function_identifier!(FiSH11_GetKeyFingerprint, data, {
         formatted_fp.push(c);
     }
 
-    log::info!("Generated fingerprint for {}: {}", nickname, formatted_fp);
+    #[cfg(debug_assertions)]
+    log_debug!("Generated fingerprint for {}: {}", nickname, formatted_fp);
 
     // Return the fingerprint string as data (no /echo)
     Ok(format!("Key fingerprint for {}: {}", nickname, formatted_fp))

@@ -1,10 +1,12 @@
+use std::ffi::c_char;
+use std::os::raw::c_int;
+
+use base64::Engine;
+
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 use crate::{buffer_utils, config, dll_function_identifier, log_debug};
-use base64::Engine;
-use std::ffi::c_char;
-use std::os::raw::c_int;
 
 dll_function_identifier!(FiSH11_SetKey, data, {
     // 1. Parse input: <network> <target> <base64_key> where target is nickname or channel
@@ -38,6 +40,7 @@ dll_function_identifier!(FiSH11_SetKey, data, {
         return Err(DllError::MissingParameter("base64_key".to_string()));
     }
 
+    #[cfg(debug_assertions)]
     log_debug!(
         "Setting key for nickname/channel: {} on network: {} (original: {})",
         nickname,
@@ -61,12 +64,11 @@ dll_function_identifier!(FiSH11_SetKey, data, {
     let mut key = [0u8; 32];
     key.copy_from_slice(&key_bytes);
 
-    log_debug!("Key decoded successfully, storing...");
-
     // 4. Store the key, allowing overwrite.
     config::set_key(&nickname, &key, Some(network), true, false)?;
 
-    log::info!("Successfully set key for {} on network {}", nickname, network);
+    #[cfg(debug_assertions)]
+    log_debug!("Successfully set key for {} on network {}", nickname, network);
 
     // Return a truthy identifier value so mIRC treats this as success (no /echo)
     Ok("1".to_string())
@@ -74,7 +76,6 @@ dll_function_identifier!(FiSH11_SetKey, data, {
 
 #[cfg(test)]
 mod tests {
-
     use base64::Engine;
     use base64::engine::general_purpose::STANDARD;
 
@@ -103,6 +104,7 @@ mod tests {
     fn test_setkey_invalid_base64() {
         let base64_key = "invalid_base64!";
         let result = STANDARD.decode(base64_key);
+
         assert!(result.is_err());
     }
 
@@ -111,14 +113,15 @@ mod tests {
         let key = [1u8; 16]; // Wrong size
         let base64_key = STANDARD.encode(&key);
         let decoded = STANDARD.decode(&base64_key).unwrap();
+
         assert_eq!(decoded.len(), 16);
     }
 
     #[test]
     fn test_setkey_empty_nickname() {
         let nickname = "";
-
         let result = normalize_nick(nickname);
+
         assert_eq!(result, "");
     }
 }

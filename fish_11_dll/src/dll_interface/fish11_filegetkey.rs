@@ -1,9 +1,10 @@
+use std::ffi::c_char;
+use std::os::raw::c_int;
+
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::{base64_encode, normalize_nick};
 use crate::{buffer_utils, config, dll_function_identifier, log_debug};
-use std::ffi::c_char;
-use std::os::raw::c_int;
 
 dll_function_identifier!(FiSH11_FileGetKey, data, {
     let input = unsafe { buffer_utils::parse_buffer_input(data)? };
@@ -34,13 +35,16 @@ dll_function_identifier!(FiSH11_FileGetKey, data, {
 
         #[cfg(debug_assertions)]
         log_debug!("Channel key found, encoding as base64");
+
         let base64_key = base64_encode(&key);
         Ok(base64_key)
     } else {
         // For users, use the existing key retrieval function
         let key = config::get_key_default(&target)?;
+
         #[cfg(debug_assertions)]
         log_debug!("User key found, encoding as base64");
+
         let base64_key = base64_encode(&key);
         Ok(base64_key)
     }
@@ -61,6 +65,7 @@ mod tests {
         if !input.is_empty() {
             let bytes = input.as_bytes();
             let copy_len = std::cmp::min(bytes.len(), buffer.len());
+
             unsafe {
                 std::ptr::copy_nonoverlapping(
                     bytes.as_ptr(),
@@ -91,15 +96,19 @@ mod tests {
 
     #[test]
     fn test_getkey_normal() {
-        use base64::{Engine as _, engine::general_purpose};
+        use base64::Engine as _;
+        use base64::engine::general_purpose;
         // Create a test key for "alice"
         let test_key = [1u8; 32];
         config::set_key_default("alice", &test_key, true).unwrap();
 
         let (code, msg) = call_getkey("alice", 256);
+
         assert_eq!(code, crate::dll_interface::MIRC_IDENTIFIER);
+
         // Structured check: message should be a base64 encoded key
         assert!(msg.len() > 0);
+
         // Should be valid base64
         assert!(general_purpose::STANDARD.decode(&msg).is_ok());
     }
@@ -107,7 +116,9 @@ mod tests {
     #[test]
     fn test_getkey_nickname_empty() {
         let (code, msg) = call_getkey("   ", 256);
+
         assert_eq!(code, MIRC_COMMAND);
+
         // Structured check: message should mention empty input or missing parameter
         assert!(msg.to_lowercase().contains("empty") || msg.to_lowercase().contains("missing"));
     }
@@ -115,7 +126,9 @@ mod tests {
     #[test]
     fn test_getkey_key_not_found() {
         let (code, msg) = call_getkey("unknown_nick", 256);
+
         assert_eq!(code, MIRC_COMMAND);
+
         // Structured check: message should mention no encryption key
         assert!(msg.to_lowercase().contains("no encryption key"));
     }
@@ -127,8 +140,10 @@ mod tests {
         config::set_key_default("alice", &test_key, true).unwrap();
 
         let (code, msg) = call_getkey("alice", 8);
+
         // Should still return MIRC_IDENTIFIER, but message will be truncated
         assert_eq!(code, crate::dll_interface::MIRC_IDENTIFIER);
+
         // Structured check: message is truncated
         assert!(msg.len() < 20);
     }
@@ -137,6 +152,7 @@ mod tests {
     fn test_getkey_malformed_input() {
         // Test with a buffer containing null byte in the middle
         let mut buffer = vec![0i8; 256];
+
         // Write "a\0b" to the buffer
         buffer[0] = b'a' as i8;
         buffer[1] = 0;
@@ -158,7 +174,9 @@ mod tests {
         crate::dll_interface::restore_buffer_size_for_test(prev_size);
 
         let c_str = unsafe { CStr::from_ptr(buffer.as_ptr()) };
+
         assert_eq!(result, MIRC_COMMAND);
+
         // The function will read "a" and try to get the key for "a"
         // It should return an error message (key not found or similar)
         assert!(c_str.to_string_lossy().len() > 0);

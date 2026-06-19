@@ -41,6 +41,7 @@ where
 
     // Validate buffer and data pointer
     let buffer_size = get_buffer_size() as usize;
+
     if buffer_size <= 1 || data.is_null() {
         if config.log_entry_exit {
             crate::logging::log_function_exit::<i32>(config.name, Some(MIRC_HALT));

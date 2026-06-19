@@ -1,8 +1,9 @@
+use std::ffi::c_char;
+use std::os::raw::c_int;
+
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::{buffer_utils, config, dll_function_identifier, log_debug};
-use std::ffi::c_char;
-use std::os::raw::c_int;
 
 // Removes a manual channel key for a channel.
 //
@@ -24,6 +25,7 @@ dll_function_identifier!(FiSH11_RemoveManualChannelKey, data, {
     // Remove the manual channel key
     config::remove_manual_channel_key(&channel_name)?;
 
+    #[cfg(debug_assertions)]
     log_debug!("Successfully removed manual channel key for {}", channel_name);
 
     Ok(format!("Manual channel key removed for {}", channel_name))
@@ -31,10 +33,11 @@ dll_function_identifier!(FiSH11_RemoveManualChannelKey, data, {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::dll_interface::MIRC_COMMAND;
     use std::ffi::CStr;
     use std::ptr;
+
+    use super::*;
+    use crate::dll_interface::MIRC_COMMAND;
 
     fn call_remove_manual_channel_key(input: &str, buffer_size: usize) -> (c_int, String) {
         let mut buffer = vec![0i8; buffer_size];
@@ -74,6 +77,7 @@ mod tests {
     #[test]
     fn test_remove_manual_channel_key_invalid_channel() {
         let (code, msg) = call_remove_manual_channel_key("invalid", 256);
+
         assert_eq!(code, MIRC_COMMAND);
         assert!(msg.to_lowercase().contains("channel name must start with"));
     }

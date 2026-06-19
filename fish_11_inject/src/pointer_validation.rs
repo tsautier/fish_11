@@ -30,6 +30,7 @@ pub unsafe fn validate_function_pointer(
 
         let base_addr = mod_info.lpBaseOfDll as usize;
         let end_addr = base_addr + mod_info.SizeOfImage as usize;
+
         // Transmute FARPROC (Option<fn>) to address
         let func_addr: usize = std::mem::transmute_copy(&ptr);
 

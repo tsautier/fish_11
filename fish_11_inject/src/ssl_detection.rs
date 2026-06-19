@@ -92,10 +92,9 @@ unsafe fn find_ssl_functions(module: HMODULE) -> Option<(*const u8, *const u8)> 
     let ssl_write = GetProcAddress(module, PCSTR::from_raw(ssl_write_name.as_ptr() as *const u8));
 
     if ssl_read.is_none() || ssl_write.is_none() {
-        // debug!("SSL functions not found...");
-        // It's wrapper tuple strut (isize). windows 0.62: HMODULE(pub *mut c_void).
-        // Debug impl exists.
+        #[cfg(debug_assertions)]
         debug!("SSL functions not found in module {:?}", module);
+
         return None;
     }
 
@@ -115,6 +114,7 @@ unsafe fn get_module_filename(module: HMODULE) -> Option<String> {
 
     if len > 0 {
         filename.truncate(len as usize);
+
         if let Ok(name) = String::from_utf8(filename) {
             // Extract just the filename
             if let Some(filename_only) = name.split('\\').last() {

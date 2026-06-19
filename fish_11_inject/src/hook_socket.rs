@@ -9,13 +9,20 @@ use fish_11_core::globals::{
     CMD_JOIN, CMD_NOTICE, CMD_PRIVMSG, KEY_EXCHANGE_INIT, KEY_EXCHANGE_PUBKEY,
 };
 use log::{debug, error, info, trace, warn};
-use retour::GenericDetour;
+use retour::{Function, GenericDetour};
 use sha2::{Digest, Sha256};
 use std::ffi::c_int;
 use std::sync::{Arc, Mutex as StdMutex};
 use windows::Win32::Networking::WinSock::{
-    SOCKADDR, SOCKET, SOCKET_ERROR, WSAEINTR, WSAGetLastError,
+    SOCKADDR, SOCKET, SOCKET_ERROR, WSAEINTR, WSAEINVAL, WSAGetLastError, WSASetLastError,
 };
+
+/// Return [`SOCKET_ERROR`] and set a Winsock error for callers (`WSAGetLastError`).
+#[inline]
+unsafe fn wsa_fail(code: i32) -> c_int {
+    WSASetLastError(code);
+    SOCKET_ERROR
+}
 
 // Type definitions for Winsock functions and ensure "system" ABI (stdcall) for function types
 pub type RecvFn = unsafe extern "system" fn(SOCKET, *mut u8, c_int, c_int) -> c_int;
@@ -33,6 +40,27 @@ pub static CLOSESOCKET_HOOK: StdMutex<Option<GenericDetour<ClosesocketFn>>> = St
 const MAXIMUM_PREVIEW_SIZE: usize = 64;
 //const TRACE_PREVIEW_SIZE: usize = 16;
 
+/// Copy the trampoline (original API) out of a detour. Callers must **drop the hook mutex**
+/// before invoking the returned pointer, or same-thread re-entry into the hook deadlocks on a
+/// non-reentrant `std::sync::Mutex`. (`GenericDetour::trampoline` is `&()`; transmute needs a
+/// concrete function type — see `retour` tests.)
+#[inline]
+unsafe fn recv_detour_original(hook: &GenericDetour<RecvFn>) -> RecvFn {
+    std::mem::transmute(hook.trampoline())
+}
+#[inline]
+unsafe fn send_detour_original(hook: &GenericDetour<SendFn>) -> SendFn {
+    std::mem::transmute(hook.trampoline())
+}
+#[inline]
+unsafe fn connect_detour_original(hook: &GenericDetour<ConnectFn>) -> ConnectFn {
+    std::mem::transmute(hook.trampoline())
+}
+#[inline]
+unsafe fn closesocket_detour_original(hook: &GenericDetour<ClosesocketFn>) -> ClosesocketFn {
+    std::mem::transmute(hook.trampoline())
+}
+
 /// Hook implementation for recv
 pub unsafe extern "system" fn hooked_recv(
     s: SOCKET,
@@ -40,6 +68,7 @@ pub unsafe extern "system" fn hooked_recv(
     len: c_int,
     flags: c_int,
 ) -> c_int {
+    #[cfg(debug_assertions)]
     info!("* hooked_recv() called for socket {}", s.0);
 
     let socket_info = get_or_create_socket(s.0 as u32, true);
@@ -52,23 +81,24 @@ pub unsafe extern "system" fn hooked_recv(
         Ok(guard) => guard,
         Err(e) => {
             error!("Failed to acquire RECV_HOOK lock: {}", e);
-            return -1;
+            return wsa_fail(WSAEINTR.0);
         }
     };
-    let original = match hook_guard.as_ref() {
-        Some(hook) => hook,
+    let original_fn: RecvFn = match hook_guard.as_ref() {
+        Some(hook) => unsafe { recv_detour_original(hook) },
         None => {
             error!("Original recv() function not available!");
-            return -1;
+            return wsa_fail(WSAEINVAL.0);
         }
     };
+    drop(hook_guard);
 
     if socket_info.is_ssl() {
         // For SSL sockets, skip processing here; SSL_read will handle it.
-        return original.call(s, buf, len, flags);
+        return original_fn(s, buf, len, flags);
     }
 
-    let bytes_received = original.call(s, buf, len, flags);
+    let bytes_received = original_fn(s, buf, len, flags);
 
     if bytes_received > 0 {
         let data_slice = std::slice::from_raw_parts(buf, bytes_received as usize); // Write raw data to buffer and process through engines
@@ -76,6 +106,7 @@ pub unsafe extern "system" fn hooked_recv(
         #[cfg(debug_assertions)]
         {
             // Detailed debug logging for received socket data
+            #[cfg(debug_assertions)]
             debug!("[RECV DEBUG] socket {}: received {} bytes from recv()", s.0, bytes_received);
 
             // Log hex preview of first 64 bytes
@@ -108,6 +139,8 @@ pub unsafe extern "system" fn hooked_recv(
                         if c.is_control() && c != '\r' && c != '\n' && c != '\t' { '.' } else { c }
                     })
                     .collect();
+
+                #[cfg(debug_assertions)]
                 debug!("[RECV DEBUG] socket {}: UTF-8 content (sanitized): {:?}", s.0, sanitized);
 
                 // Check for IRC protocol markers
@@ -115,14 +148,17 @@ pub unsafe extern "system" fn hooked_recv(
                     || text.contains(CMD_NOTICE)
                     || text.contains(CMD_JOIN)
                 {
+                    #[cfg(debug_assertions)]
                     debug!("[RECV DEBUG] socket {}: detected IRC protocol command", s.0);
                 }
 
                 // Check for FiSH key exchange markers
                 if text.contains(KEY_EXCHANGE_INIT) || text.contains(KEY_EXCHANGE_PUBKEY) {
+                    #[cfg(debug_assertions)]
                     debug!("[RECV DEBUG] socket {}: detected FiSH key exchange data", s.0);
                 }
             } else {
+                #[cfg(debug_assertions)]
                 debug!("[RECV DEBUG] socket {}: non-UTF8 binary data", s.0);
             }
         }
@@ -182,6 +218,7 @@ pub unsafe extern "system" fn hooked_send(
     len: c_int,
     flags: c_int,
 ) -> c_int {
+    #[cfg(debug_assertions)]
     info!("* hooked_send() called for socket {}", s.0);
 
     let socket_info = get_or_create_socket(s.0 as u32, false);
@@ -194,17 +231,18 @@ pub unsafe extern "system" fn hooked_send(
             Ok(guard) => guard,
             Err(e) => {
                 error!("Failed to acquire SEND_HOOK lock: {}", e);
-                return -1;
+                return wsa_fail(WSAEINTR.0);
             }
         };
-        let original = match hook_guard.as_ref() {
-            Some(hook) => hook,
+        let original_fn: SendFn = match hook_guard.as_ref() {
+            Some(hook) => unsafe { send_detour_original(hook) },
             None => {
                 error!("Original send function not available!");
-                return -1;
+                return wsa_fail(WSAEINVAL.0);
             }
         };
-        return original.call(s, buf, len, flags);
+        drop(hook_guard);
+        return original_fn(s, buf, len, flags);
     }
 
     if len < 0 || buf.is_null() {
@@ -215,17 +253,18 @@ pub unsafe extern "system" fn hooked_send(
             Ok(guard) => guard,
             Err(e) => {
                 error!("Failed to acquire SEND_HOOK lock: {}", e);
-                return -1;
+                return wsa_fail(WSAEINTR.0);
             }
         };
-        let original = match hook_guard.as_ref() {
-            Some(hook) => hook,
+        let original_fn: SendFn = match hook_guard.as_ref() {
+            Some(hook) => unsafe { send_detour_original(hook) },
             None => {
                 error!("Original send function not available!");
-                return -1;
+                return wsa_fail(WSAEINVAL.0);
             }
         };
-        return original.call(s, buf, len, flags);
+        drop(hook_guard);
+        return original_fn(s, buf, len, flags);
     }
 
     // Safety: checked len > 0 above
@@ -244,15 +283,15 @@ pub unsafe extern "system" fn hooked_send(
             &data_slice[..preview_len]
         );
 
-        if let Ok(text) = std::str::from_utf8(data_slice) {
-            // ... (Sanitized logging omitted for brevity, logic preserved)
-        }
+        if let Ok(text) = std::str::from_utf8(data_slice) {}
     }
 
     if data_slice.len() > 128 {
         let mut hasher = Sha256::new();
         hasher.update(data_slice);
         let hash = hasher.finalize();
+
+        #[cfg(debug_assertions)]
         trace!(
             "Socket {}: [SEND HOOK] large buffer: len={} SHA256={:x}",
             s.0,
@@ -263,6 +302,7 @@ pub unsafe extern "system" fn hooked_send(
 
     // Check first packet for protocol detection
     let stats = socket_info.stats.lock();
+
     if stats.bytes_sent == 0 && socket_info.get_state() == SocketState::Initializing {
         drop(stats);
 
@@ -271,11 +311,15 @@ pub unsafe extern "system" fn hooked_send(
             if current_state == SocketState::Initializing || current_state == SocketState::Connected
             {
                 socket_info.set_state(SocketState::IrcIdentified);
+
+                #[cfg(debug_assertions)]
                 debug!("Socket {}: identified as IRC connection", s.0);
             }
         } else if protocol_detection::is_tls_handshake_packet(data_slice) {
             socket_info.set_ssl(true);
             socket_info.set_state(SocketState::TlsHandshake);
+
+            #[cfg(debug_assertions)]
             debug!("Socket {}: identified as TLS handshake", s.0);
         }
     } else {
@@ -286,28 +330,26 @@ pub unsafe extern "system" fn hooked_send(
         error!("Error processing outgoing data: {:?}", e);
     }
 
-    let result = {
-        let hook_guard = match crate::lock_utils::try_lock_timeout(
-            &SEND_HOOK,
-            crate::lock_utils::DEFAULT_LOCK_TIMEOUT,
-        ) {
-            Ok(guard) => guard,
-            Err(e) => {
-                error!("Failed to acquire SEND_HOOK lock: {}", e);
-                return -1;
-            }
-        };
-        let original = match hook_guard.as_ref() {
-            Some(hook) => hook,
-            None => {
-                error!("Original send function not available !");
-                return -1;
-            }
-        };
-        original.call(s, buf, len, flags)
+    let hook_guard = match crate::lock_utils::try_lock_timeout(
+        &SEND_HOOK,
+        crate::lock_utils::DEFAULT_LOCK_TIMEOUT,
+    ) {
+        Ok(guard) => guard,
+        Err(e) => {
+            error!("Failed to acquire SEND_HOOK lock: {}", e);
+            return wsa_fail(WSAEINTR.0);
+        }
     };
+    let original_fn: SendFn = match hook_guard.as_ref() {
+        Some(hook) => unsafe { send_detour_original(hook) },
+        None => {
+            error!("Original send function not available !");
+            return wsa_fail(WSAEINVAL.0);
+        }
+    };
+    drop(hook_guard);
 
-    result
+    original_fn(s, buf, len, flags)
 }
 
 /// Hook implementation for connect
@@ -316,7 +358,9 @@ pub unsafe extern "system" fn hooked_connect(
     name: *const SOCKADDR,
     namelen: c_int,
 ) -> c_int {
+    #[cfg(debug_assertions)]
     info!("* hooked_connect() called for socket {}", s.0);
+
     // Get or create socket info
     let _socket_info = get_or_create_socket(s.0 as u32, true);
 
@@ -327,30 +371,36 @@ pub unsafe extern "system" fn hooked_connect(
         Ok(guard) => guard,
         Err(e) => {
             error!("Failed to acquire CONNECT_HOOK lock: {}", e);
-            return -1;
+            return wsa_fail(WSAEINTR.0);
         }
     };
-    let original = match hook_guard.as_ref() {
-        Some(hook) => hook,
+    let original_fn: ConnectFn = match hook_guard.as_ref() {
+        Some(hook) => unsafe { connect_detour_original(hook) },
         None => {
             error!("Original connect() function not available!");
-            return -1;
+            return wsa_fail(WSAEINVAL.0);
         }
     };
+    drop(hook_guard);
 
-    let result = original.call(s, name, namelen);
+    let result = original_fn(s, name, namelen);
 
     let socket_info = get_or_create_socket(s.0 as u32, false);
 
     if result == 0 {
+        #[cfg(debug_assertions)]
         debug!("Socket {}: connection established", s.0);
+
         let current_state = socket_info.get_state();
+
         if current_state == SocketState::Initializing {
             socket_info.set_state(SocketState::Connected);
         }
     } else if result == SOCKET_ERROR {
         let error = WSAGetLastError();
+
         if error != WSAEINTR {
+            #[cfg(debug_assertions)]
             debug!("Socket {}: connection failed with error {:?}", s.0, error);
             socket_info.set_state(SocketState::Closed);
         }
@@ -361,6 +411,7 @@ pub unsafe extern "system" fn hooked_connect(
 
 /// Hook implementation for closesocket
 pub unsafe extern "system" fn hooked_closesocket(s: SOCKET) -> c_int {
+    #[cfg(debug_assertions)]
     info!("* hooked_closesocket() called for socket {}", s.0);
     let socket_id = s.0 as u32;
 
@@ -370,116 +421,128 @@ pub unsafe extern "system" fn hooked_closesocket(s: SOCKET) -> c_int {
     }
 
     if ACTIVE_SOCKETS.remove(&socket_id).is_some() {
+        #[cfg(debug_assertions)]
         debug!("Socket {} removed from tracking", socket_id);
     }
 
-    let result = {
-        let hook_guard = match crate::lock_utils::try_lock_timeout(
-            &CLOSESOCKET_HOOK,
-            crate::lock_utils::DEFAULT_LOCK_TIMEOUT,
-        ) {
-            Ok(guard) => guard,
-            Err(e) => {
-                error!("Failed to acquire CLOSESOCKET_HOOK lock: {}", e);
-                return -1;
-            }
-        };
-        let original = match hook_guard.as_ref() {
-            Some(hook) => hook,
-            None => {
-                error!("Original closesocket() function not available !");
-                return -1;
-            }
-        };
-        original.call(s)
+    let hook_guard = match crate::lock_utils::try_lock_timeout(
+        &CLOSESOCKET_HOOK,
+        crate::lock_utils::DEFAULT_LOCK_TIMEOUT,
+    ) {
+        Ok(guard) => guard,
+        Err(e) => {
+            error!("Failed to acquire CLOSESOCKET_HOOK lock: {}", e);
+            return wsa_fail(WSAEINTR.0);
+        }
     };
+    let original_fn: ClosesocketFn = match hook_guard.as_ref() {
+        Some(hook) => unsafe { closesocket_detour_original(hook) },
+        None => {
+            error!("Original closesocket() function not available !");
+            return wsa_fail(WSAEINVAL.0);
+        }
+    };
+    drop(hook_guard);
 
-    result
+    original_fn(s)
 }
 
 /// Get the socket info (thread-safe with DashMap)
+///
+/// Lock ordering: **`ENGINES` before `ACTIVE_SOCKETS` insertion** (never hold a DashMap shard
+/// lock while waiting on `ENGINES`). This matches `FiSH11_InjectDebugInfo` and avoids deadlock
+/// with code that locks `ENGINES` then walks `ACTIVE_SOCKETS`.
 pub fn get_or_create_socket(socket_id: u32, _is_ssl: bool) -> Arc<SocketInfo> {
+    if let Some(socket_info) = ACTIVE_SOCKETS.get(&socket_id) {
+        return socket_info.clone();
+    }
+
+    let engines = {
+        let mut engines_guard = match ENGINES.lock() {
+            Ok(guard) => guard,
+            Err(e) => {
+                error!("get_or_create_socket() : failed to lock ENGINES: {}", e);
+                e.into_inner()
+            }
+        };
+
+        if engines_guard.is_none() {
+            *engines_guard = Some(Arc::new(InjectEngines::new()));
+        }
+
+        if let Some(engines_ref) = engines_guard.as_ref() {
+            Arc::clone(engines_ref)
+        } else {
+            error!("get_or_create_socket() : ENGINES is None after initialization attempt");
+            Arc::new(InjectEngines::new())
+        }
+    };
+
+    // Another thread may have inserted while we held ENGINES.
     if let Some(socket_info) = ACTIVE_SOCKETS.get(&socket_id) {
         return socket_info.clone();
     }
 
     ACTIVE_SOCKETS
         .entry(socket_id)
-        .or_insert_with(|| {
-            let engines = {
-                let mut engines_guard = match ENGINES.lock() {
-                    Ok(guard) => guard,
-                    Err(e) => {
-                        error!("get_or_create_socket() : failed to lock ENGINES: {}", e);
-                        // Attempt to recover from poisoned lock
-                        e.into_inner()
-                    }
-                };
-
-                if engines_guard.is_none() {
-                    *engines_guard = Some(Arc::new(InjectEngines::new()));
-                }
-
-                if let Some(engines_ref) = engines_guard.as_ref() {
-                    Arc::clone(engines_ref)
-                } else {
-                    error!("get_or_create_socket() : ENGINES is None after initialization attempt");
-                    Arc::new(InjectEngines::new())
-                }
-            };
-
-            Arc::new(SocketInfo::new(socket_id, engines))
-        })
+        .or_insert_with(|| Arc::new(SocketInfo::new(socket_id, engines)))
         .clone()
 }
 
 pub(crate) fn _remove_socket(socket_id: u32) {
     ACTIVE_SOCKETS.remove(&socket_id);
+
     let mut discarded = DISCARDED_SOCKETS.lock().unwrap();
+
     discarded.push(socket_id);
+}
+
+/// Disable one Winsock detour; uses [`crate::lock_utils::UNINSTALL_HOOK_LOCK_TIMEOUT`] instead of
+/// blocking `Mutex::lock` so unload does not hang indefinitely if a hook mutex is contended.
+unsafe fn uninstall_one_winsock_hook<T: Copy + Function>(
+    hook_label: &'static str,
+    mutex: &StdMutex<Option<GenericDetour<T>>>,
+) {
+    let mut guard = match crate::lock_utils::try_lock_timeout(
+        mutex,
+        crate::lock_utils::UNINSTALL_HOOK_LOCK_TIMEOUT,
+    ) {
+        Ok(g) => g,
+        Err(e) => {
+            error!(
+                "uninstall_socket_hooks: timed out acquiring {} mutex: {}",
+                hook_label, e
+            );
+            return;
+        }
+    };
+
+    if let Some(hook) = guard.take() {
+        match hook.disable() {
+            Ok(_) => info!("  - {}() hook disabled", hook_label),
+            Err(e) => warn!("  - failed to disable {}() hook: {:?}", hook_label, e),
+        }
+    }
 }
 
 pub fn uninstall_socket_hooks() {
     unsafe {
-        if let Some(hook) = CLOSESOCKET_HOOK.lock().unwrap().take() {
-            match hook.disable() {
-                Ok(_) => info!("  - closesocket() hook disabled"),
-                Err(e) => warn!("  - failed to disable closesocket() hook: {:?}", e),
-            }
-        }
-
-        if let Some(hook) = CONNECT_HOOK.lock().unwrap().take() {
-            match hook.disable() {
-                Ok(_) => info!("  - connect() hook disabled"),
-                Err(e) => warn!("  - failed to disable connect() hook: {:?}", e),
-            }
-        }
-
-        if let Some(hook) = SEND_HOOK.lock().unwrap().take() {
-            match hook.disable() {
-                Ok(_) => info!("  - send() hook disabled"),
-                Err(e) => warn!("  - failed to disable send() hook: {:?}", e),
-            }
-        }
-
-        if let Some(hook) = RECV_HOOK.lock().unwrap().take() {
-            match hook.disable() {
-                Ok(_) => info!("  - recv() hook disabled"),
-                Err(e) => warn!("  - failed to disable recv() hook: {:?}", e),
-            }
-        }
+        uninstall_one_winsock_hook("closesocket", &CLOSESOCKET_HOOK);
+        uninstall_one_winsock_hook("connect", &CONNECT_HOOK);
+        uninstall_one_winsock_hook("send", &SEND_HOOK);
+        uninstall_one_winsock_hook("recv", &RECV_HOOK);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::engines::InjectEngines;
-    use std::sync::Arc;
+    //use super::*;
+    //use crate::engines::InjectEngines;
+    //use std::sync::Arc;
 
     #[test]
     fn test_valid_exports() {
-        // Ensure that types compile, simple syntax check
+        // Ensure that types compile, simple syntax check :D
         assert!(true);
     }
 }

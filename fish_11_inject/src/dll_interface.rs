@@ -1,19 +1,47 @@
-use std::ffi::{CString, c_char, c_int};
-use std::sync::atomic::Ordering;
-
-// use fish_11_core::buffer_utils::write_cstring_to_buffer; // Removed as mIRC LoadDll doesn't support returned data
+use crate::helpers_inject::{cleanup_hooks, init_logger, install_hooks};
+use crate::{
+    ACTIVE_SOCKETS, DISCARDED_SOCKETS, DLL_HANDLE, ENGINES, LOADED, MAX_MIRC_RETURN_BYTES,
+    MIRC_HALT, MIRC_IDENTIFIER, VERSION_SHOWN,
+};
+use crate::engines::InjectEngines;
 use fish_11_core::globals::{
     BUILD_DATE, BUILD_NUMBER, BUILD_TIME, BUILD_VERSION, MIRC_RETURN_DATA_COMMAND,
 };
 use log::{debug, error, info, warn};
+use std::ffi::{CString, c_char, c_int};
+use std::sync::atomic::Ordering;
 use windows::Win32::Foundation::{HMODULE, HWND};
 use windows::Win32::UI::WindowsAndMessaging::{MB_ICONEXCLAMATION, MB_OK, MessageBoxW};
 
-use crate::helpers_inject::install_hooks;
-use crate::{
-    ACTIVE_SOCKETS, DISCARDED_SOCKETS, DLL_HANDLE_PTR, ENGINES, LOADED, MAX_MIRC_RETURN_BYTES,
-    MIRC_COMMAND, MIRC_HALT, MIRC_IDENTIFIER, VERSION_SHOWN, cleanup_hooks,
-};
+fn write_mirc_output_buffer(
+    context: &str,
+    data: *mut c_char,
+    max_bytes: usize,
+    src: *const c_char,
+    src_len: usize,
+) -> Result<usize, ()> {
+    if data.is_null() {
+        error!("{} : data buffer pointer is null.", context);
+        return Err(());
+    }
+
+    if max_bytes == 0 {
+        error!(
+            "{} : mIRC reported a zero-sized output buffer (m_bytes == 0), refusing to write.",
+            context
+        );
+        return Err(());
+    }
+
+    let copy_len = std::cmp::min(src_len, max_bytes.saturating_sub(1));
+
+    unsafe {
+        std::ptr::copy_nonoverlapping(src, data, copy_len);
+        *data.add(copy_len) = 0;
+    }
+
+    Ok(copy_len)
+}
 
 #[repr(C)]
 pub struct LOADINFO {
@@ -32,6 +60,8 @@ pub struct LOADINFO {
 ///
 /// So this is the second entry point after DllMain().
 pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
+    init_logger();
+
     #[cfg(debug_assertions)]
     info!("=== LoadDll: function called ===");
 
@@ -80,10 +110,34 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
     #[cfg(debug_assertions)]
     info!("LoadDll() : MAX_MIRC_RETURN_BYTES set to {}", max_len);
 
+    if max_len == 0 {
+        error!(
+            "LoadDll() : mIRC reported m_bytes == 0. Output-returning exports will refuse to write to avoid memory corruption."
+        );
+    }
+
     info!(
         "=== LoadDll() called. mIRC version: {}, Unicode: {}, MaxBytes: {} === ",
         li.m_version, li.m_unicode, max_len
     );
+
+    match ENGINES.lock() {
+        Ok(mut engines) => {
+            if engines.is_none() {
+                *engines = Some(std::sync::Arc::new(InjectEngines::new()));
+                #[cfg(debug_assertions)]
+                info!("LoadDll() : InjectEngines container initialized successfully.");
+            }
+        }
+        Err(e) => {
+            error!("LoadDll() : failed to lock ENGINES to initialize: {}", e);
+            let mut engines = e.into_inner();
+            if engines.is_none() {
+                *engines = Some(std::sync::Arc::new(InjectEngines::new()));
+                warn!("LoadDll() : InjectEngines initialized after lock recovery.");
+            }
+        }
+    }
 
     // Check minimum mIRC version if needed
     if li.m_version < 700 {
@@ -163,6 +217,8 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
 
     info!("=== LoadDll() finished successfully ===");
 
+    LOADED.store(true, Ordering::SeqCst);
+
     #[cfg(debug_assertions)]
     info!("LoadDll() : setting m_keep = 1 to keep DLL loaded");
 
@@ -203,16 +259,7 @@ pub extern "system" fn UnloadDll(action: c_int) -> c_int {
             }
         }
 
-        match DLL_HANDLE_PTR.lock() {
-            Ok(mut handle) => {
-                *handle = None;
-            }
-            Err(e) => {
-                error!("UnloadDll() : failed to lock DLL_HANDLE_PTR for cleanup: {}", e);
-                // Attempt to recover
-                drop(e.into_inner());
-            }
-        }
+        DLL_HANDLE.store(std::ptr::null_mut(), Ordering::SeqCst);
         LOADED.store(false, Ordering::SeqCst);
         VERSION_SHOWN.store(false, Ordering::Relaxed);
         // HOOKS_INSTALLED should be false after cleanup_hooks
@@ -300,23 +347,23 @@ pub extern "C" fn FiSH11_InjectDebugInfo(
         );
     }
 
-    unsafe {
-        // Copy to output buffer safely
-        let src = c_command.as_ptr();
-        let src_len = c_command.as_bytes().len();
-        std::ptr::copy_nonoverlapping(src, data, std::cmp::min(src_len, max_bytes as usize - 1));
+    let copied_len = match write_mirc_output_buffer(
+        "FiSH11_InjectDebugInfo()",
+        data.cast(),
+        max_bytes,
+        c_command.as_ptr(),
+        c_command.as_bytes().len(),
+    ) {
+        Ok(copied_len) => copied_len,
+        Err(()) => return MIRC_HALT,
+    };
 
-        // Null terminate
-        *data.add(std::cmp::min(src_len, max_bytes as usize - 1)) = 0;
-
-        #[cfg(debug_assertions)]
-        {
-            let copied_len = std::cmp::min(src_len, max_bytes as usize - 1);
-            debug!(
-                "[DLL_INTERFACE DEBUG] FiSH11_InjectDebugInfo() : copied {} bytes to mIRC data buffer, null-terminated.",
-                copied_len
-            );
-        }
+    #[cfg(debug_assertions)]
+    {
+        debug!(
+            "[DLL_INTERFACE DEBUG] FiSH11_InjectDebugInfo() : copied {} bytes to mIRC data buffer, null-terminated.",
+            copied_len
+        );
     }
 
     // Return as mIRC command to execute
@@ -363,38 +410,39 @@ pub extern "system" fn FiSH11_InjectVersion(
         );
     }
 
-    unsafe {
-        if !data.is_null() {
-            let max_bytes = *MAX_MIRC_RETURN_BYTES.lock().unwrap();
-            let src = data_str.as_ptr();
-            let src_len = data_str.as_bytes_with_nul().len();
-            let copy_len = std::cmp::min(src_len, max_bytes as usize - 1);
+    let max_bytes = *MAX_MIRC_RETURN_BYTES.lock().unwrap();
+    let src_len = data_str.as_bytes_with_nul().len();
 
-            #[cfg(debug_assertions)]
-            {
-                debug!(
-                    "[DLL_INTERFACE DEBUG] FiSH11_InjectVersion() : MAX_MIRC_RETURN_BYTES : {}, src_len: {}, copy_len: {}",
-                    max_bytes, src_len, copy_len
-                );
-            }
-
-            std::ptr::copy_nonoverlapping(src, data, copy_len);
-            *data.add(copy_len) = 0;
-
-            #[cfg(debug_assertions)]
-            {
-                debug!(
-                    "[DLL_INTERFACE DEBUG] FiSH11_InjectVersion() : copied {} bytes to mIRC data buffer, null-terminated.",
-                    copy_len
-                );
-            }
-
-            info!("FiSH11_InjectVersion() : returned version info (len {})", copy_len);
-        } else {
-            error!("FiSH11_InjectVersion() : data buffer pointer is null.");
-            return MIRC_HALT;
-        }
+    #[cfg(debug_assertions)]
+    {
+        debug!(
+            "[DLL_INTERFACE DEBUG] FiSH11_InjectVersion() : MAX_MIRC_RETURN_BYTES : {}, src_len: {}, copy_len: {}",
+            max_bytes,
+            src_len,
+            std::cmp::min(src_len, max_bytes.saturating_sub(1))
+        );
     }
+
+    let copy_len = match write_mirc_output_buffer(
+        "FiSH11_InjectVersion()",
+        data,
+        max_bytes,
+        data_str.as_ptr(),
+        src_len,
+    ) {
+        Ok(copy_len) => copy_len,
+        Err(()) => return MIRC_HALT,
+    };
+
+    #[cfg(debug_assertions)]
+    {
+        debug!(
+            "[DLL_INTERFACE DEBUG] FiSH11_InjectVersion() : copied {} bytes to mIRC data buffer, null-terminated.",
+            copy_len
+        );
+    }
+
+    info!("FiSH11_InjectVersion() : returned version info (len {})", copy_len);
 
     MIRC_IDENTIFIER
 }

@@ -17,13 +17,14 @@
 //! - Display key expiration status to users in the UI
 //! - Determine if a new key exchange is needed
 
+use std::ffi::c_char;
+use std::os::raw::c_int;
+
 use crate::config::key_management::get_key_ttl;
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::normalize_nick;
 use crate::{buffer_utils, dll_function_identifier, log_debug};
-use std::ffi::c_char;
-use std::os::raw::c_int;
 
 dll_function_identifier!(FiSH11_GetKeyTTL, data, {
     // 1. Parse input: <nickname>
@@ -34,6 +35,7 @@ dll_function_identifier!(FiSH11_GetKeyTTL, data, {
         return Err(DllError::MissingParameter("nickname".to_string()));
     }
 
+    #[cfg(debug_assertions)]
     log_debug!("Getting key TTL for nickname: {}", nickname);
 
     // 2. Get the TTL from the config.

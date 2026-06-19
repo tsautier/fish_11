@@ -1,23 +1,60 @@
-use crate::crypto::MessageCipher;
-use crate::error::{FishError, Result};
-use crate::utils::{base64_decode, base64_encode, generate_random_bytes};
+use std::any::Any;
+use std::sync::Mutex;
+use std::time::Duration as StdDuration;
+
 use base64::Engine as _;
 use base64::engine::general_purpose;
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
-use chrono::Utc;
 use fish_11_core::globals::MAX_MESSAGE_SIZE;
 use hkdf::Hkdf;
 use lru_time_cache::LruCache;
 use sha2::{Digest, Sha256};
-use std::any::Any;
-use std::fs::OpenOptions;
-use std::io::Write;
-use std::sync::Mutex;
-use std::time::Duration as StdDuration;
+
+use crate::crypto::MessageCipher;
+use crate::error::{FishError, Result};
+use crate::utils::{base64_decode, base64_encode, generate_random_bytes};
 
 const MAX_CIPHERTEXT_SIZE: usize = MAX_MESSAGE_SIZE + 16 + 12; // message + auth tag + nonce
 const NONCE_SIZE_BYTES: usize = 12; // ChaCha20-Poly1305 standard nonce size (96 bits)
+
+pub struct ChaCha20Poly1305Cipher;
+
+impl MessageCipher for ChaCha20Poly1305Cipher {
+    fn encrypt(
+        &self,
+        key: &[u8],
+        message: &str,
+        recipient: Option<&str>,
+        associated_data: Option<&[u8]>,
+    ) -> Result<String> {
+        let key_array: [u8; 32] = key
+            .try_into()
+            .map_err(|_| FishError::InvalidInput("Key must be 32 bytes".to_string()))?;
+        encrypt_message(&key_array, message, recipient, associated_data)
+    }
+
+    fn decrypt(
+        &self,
+        key: &[u8],
+        encrypted_data: &str,
+        associated_data: Option<&[u8]>,
+    ) -> Result<String> {
+        let key_array: [u8; 32] = key
+            .try_into()
+            .map_err(|_| FishError::InvalidInput("Key must be 32 bytes".to_string()))?;
+        decrypt_message(&key_array, encrypted_data, associated_data)
+    }
+
+    fn generate_key(&self) -> Result<Vec<u8>> {
+        let key = generate_symmetric_key()?;
+        Ok(key.to_vec())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
 
 // Global nonce cache for anti-replay protection
 lazy_static::lazy_static! {
@@ -66,44 +103,6 @@ pub fn mark_nonce_seen(nonce: &[u8]) -> Result<()> {
 
     cache.insert(nonce_array, ());
     Ok(())
-}
-
-pub struct ChaCha20Poly1305Cipher;
-
-impl MessageCipher for ChaCha20Poly1305Cipher {
-    fn encrypt(
-        &self,
-        key: &[u8],
-        message: &str,
-        recipient: Option<&str>,
-        associated_data: Option<&[u8]>,
-    ) -> Result<String> {
-        let key_array: [u8; 32] = key
-            .try_into()
-            .map_err(|_| FishError::InvalidInput("Key must be 32 bytes".to_string()))?;
-        encrypt_message(&key_array, message, recipient, associated_data)
-    }
-
-    fn decrypt(
-        &self,
-        key: &[u8],
-        encrypted_data: &str,
-        associated_data: Option<&[u8]>,
-    ) -> Result<String> {
-        let key_array: [u8; 32] = key
-            .try_into()
-            .map_err(|_| FishError::InvalidInput("Key must be 32 bytes".to_string()))?;
-        decrypt_message(&key_array, encrypted_data, associated_data)
-    }
-
-    fn generate_key(&self) -> Result<Vec<u8>> {
-        let key = generate_symmetric_key()?;
-        Ok(key.to_vec())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
 }
 
 /// Generate a new 32-byte symmetric key for ChaCha20-Poly1305
@@ -162,14 +161,15 @@ pub fn encrypt_message(
 
         let msg_hash = base64_encode(&hasher.finalize()[0..8]);
 
+        #[cfg(debug_assertions)]
         log_audit(&format!("Encrypt for {} - {}", rec, msg_hash));
 
         // Log sensitive content if DEBUG flag is enabled for sensitive content
         #[cfg(debug_assertions)]
-        if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-            log::debug!("Crypto: encrypting message for '{}': '{}'", rec, message);
-        }
+        log::debug!("Crypto: encrypting message for '{}': '{}'", rec, message);
     }
+
+    crate::config::increment_encryption_counter();
 
     // Base64 encode the result
     Ok(base64_encode(&result))
@@ -201,10 +201,6 @@ pub fn decrypt_message(
     // The rest is ciphertext
     let ciphertext = &data[NONCE_SIZE_BYTES..];
 
-    // Note: Replay protection is now handled by the caller (fish11_decryptmsg.rs)
-    // using check_nonce_freshness and mark_nonce_seen.
-    // This allows trying multiple keys without consuming the nonce on failure.
-
     // Create cipher
     let chacha_key = Key::from(*key);
     let cipher = ChaCha20Poly1305::new(&chacha_key);
@@ -229,13 +225,13 @@ pub fn decrypt_message(
 
     log_audit(&format!("Decrypt - {}", msg_hash));
 
-    // Log sensitive content if DEBUG flag is enabled for sensitive content
     #[cfg(debug_assertions)]
-    if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-        if let Ok(plaintext_str) = std::str::from_utf8(&plaintext) {
-            log::debug!("Crypto: decrypted message content: '{}'", plaintext_str);
-        }
+    if let Ok(plaintext_str) = std::str::from_utf8(&plaintext) {
+        log::debug!("Crypto: decrypted message content: '{}'", plaintext_str);
     }
+
+    // Increment decryption counter
+    crate::config::increment_decryption_counter();
 
     // Convert to string
     String::from_utf8(plaintext)
@@ -255,6 +251,7 @@ pub fn advance_ratchet_key(
     let hkdf = Hkdf::<Sha256>::new(Some(nonce), &temp_current);
 
     let mut next_key = [0u8; 32];
+
     let info = format!("FCEP-1-RATCHET:{}", channel_name);
 
     hkdf.expand(info.as_bytes(), &mut next_key).map_err(|e| {
@@ -333,11 +330,6 @@ fn log_audit(event: &str) {
     // Use the standard debug logging
     #[cfg(debug_assertions)]
     log::debug!("[AUDIT] {}", event);
-
-    // Also log to the specialized audit log file
-    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("fish11.audit.log") {
-        let _ = writeln!(file, "[{}] {}", Utc::now(), event);
-    }
 }
 
 #[cfg(test)]

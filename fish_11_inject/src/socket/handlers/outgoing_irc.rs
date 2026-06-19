@@ -1,7 +1,6 @@
-use log::{debug, trace, warn};
-
 use crate::socket::info::SocketInfo;
 use crate::socket::state::{SocketError, SocketState};
+use log::{debug, trace, warn};
 
 impl SocketInfo {
     pub fn on_sending(&self, data: &[u8]) -> Result<(), SocketError> {
@@ -45,6 +44,8 @@ impl SocketInfo {
                     // Append to line buffer
                     match self.outgoing_line_buffer.try_lock() {
                         Some(mut line_buf) => {
+                            // Reserve capacity before extending to avoid reallocations
+                            line_buf.reserve(data_str.len());
                             line_buf.push_str(data_str);
 
                             // Early return if no complete lines to process

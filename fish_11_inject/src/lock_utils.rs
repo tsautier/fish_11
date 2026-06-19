@@ -19,6 +19,10 @@ pub const DEFAULT_LOCK_TIMEOUT: Duration = Duration::from_millis(100);
 /// Extended timeout for operations that may take longer (500ms)
 pub const EXTENDED_LOCK_TIMEOUT: Duration = Duration::from_millis(500);
 
+/// Timeout when uninstalling hooks during DLL unload (`uninstall_*_hooks`).
+/// Longer than [`EXTENDED_LOCK_TIMEOUT`] so a handler can finish, but bounded to avoid hanging forever.
+pub const UNINSTALL_HOOK_LOCK_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// Result type for try_lock operations
 pub type TryLockResult<'a, T> = Result<MutexGuard<'a, T>, TryLockError>;
 

@@ -4,6 +4,8 @@ pub use self::x25519::*;
 pub mod chacha20;
 pub use self::chacha20::*;
 use crate::error::Result;
+pub mod blowfish;
+pub mod dh1080;
 
 /// Trait for message encryption and decryption
 pub trait MessageCipher: Any + Send + Sync {

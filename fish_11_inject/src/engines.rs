@@ -40,6 +40,7 @@ pub struct FishInjectEngine {
 // Rust wrapper for safe handling of engine callbacks and data
 #[derive(Clone)]
 pub struct SafeEngine {
+    engine_addr: usize,
     pub version: u32,
     pub engine_name: String,
     pub is_postprocessor: bool,
@@ -88,6 +89,7 @@ impl SafeEngine {
         // if engine_ref.on_outgoing_irc_line.is_null() || ...
 
         Some(SafeEngine {
+            engine_addr: engine as usize,
             version: engine_ref.version,
             engine_name: name,
             is_postprocessor: engine_ref.is_postprocessor,
@@ -260,11 +262,17 @@ impl InjectEngines {
         // Add to the appropriate engine list based on postprocessor flag
         if safe_engine.is_postprocessor {
             let mut post = self.post_engines.write();
+
+            #[cfg(debug_assertions)]
             info!("Registering POST-processor engine: {}", safe_engine.engine_name);
+
             post.push(safe_engine);
         } else {
             let mut pre = self.pre_engines.write();
+
+            #[cfg(debug_assertions)]
             info!("Registering PRE-processor engine: {}", safe_engine.engine_name);
+
             pre.push(safe_engine);
         }
 
@@ -281,6 +289,7 @@ impl InjectEngines {
 
         // Lock pointers map to check existence and remove
         let mut ptrs = self.registered_ptrs.lock();
+
         let engine_name = match ptrs.remove(&engine_addr) {
             Some(name) => name,
             None => {
@@ -295,37 +304,15 @@ impl InjectEngines {
 
         info!("Unregistering engine: {}", engine_name);
 
-        // Remove from both lists (safer than checking is_postprocessor again)
-        // Note : this assumes engine names are unique identifiers *after* registration check.
-        // If names are not unique, this logic would need refinement (e.g., storing more info).
-        let mut removed_count = 0;
-
-        self.pre_engines.write().retain(|e| e as *const _ as usize != engine_addr);
-
-        self.post_engines.write().retain(|e| {
-            if e.engine_name == engine_name {
-                removed_count += 1;
-                false // Remove
-            } else {
-                true /* Keep */
-            }
-        });
-
-        // TODO: FIX NEEDED - The unregister logic is inconsistent: it removes from pre_engines using pointer address
-        // but from post_engines using engine name. This can cause issues where an engine might not be properly
-        // removed if it's in the wrong list, leading to test failures.
-        // Better approach: consistently use pointer address for both lists:
-        /*
         let pre_len_before = self.pre_engines.read().len();
         let post_len_before = self.post_engines.read().len();
 
-        self.pre_engines.write().retain(|e| e as *const _ as usize != engine_addr);
-        self.post_engines.write().retain(|e| e as *const _ as usize != engine_addr);
+        self.pre_engines.write().retain(|e| e.engine_addr != engine_addr);
+        self.post_engines.write().retain(|e| e.engine_addr != engine_addr);
 
         let pre_len_after = self.pre_engines.read().len();
         let post_len_after = self.post_engines.read().len();
         let removed_count = (pre_len_before - pre_len_after) + (post_len_before - post_len_after);
-        */
 
         if removed_count == 0 {
             warn!(
@@ -372,6 +359,7 @@ impl InjectEngines {
 
     /// Notify all engines that a socket has closed
     pub fn on_socket_closed(&self, socket: u32) {
+        #[cfg(debug_assertions)]
         trace!("Notifying engines about closure of socket {}", socket);
 
         let pre = self.pre_engines.read();
@@ -473,7 +461,7 @@ pub extern "C" fn UnregisterEngine(engine: *const FishInjectEngine) -> i32 {
 #[no_mangle]
 pub unsafe extern "C" fn GetNetworkName(socket_id: u32) -> *mut std::ffi::c_char {
     use crate::ACTIVE_SOCKETS;
-    // DashMap - no lock needed, just get() returns a Ref guard
+
     if let Some(socket_info) = ACTIVE_SOCKETS.get(&socket_id) {
         let network_name_guard = socket_info.network_name.read();
         if let Some(network_name) = &*network_name_guard {
@@ -620,10 +608,9 @@ mod tests {
         let register_result = engines.register(&engine);
         assert!(register_result);
 
-        // Note: Due to the inconsistent implementation in unregister() (see TODO comment),
-        // the result might be false even if registration succeeded
-        // This test currently just validates that no panic occurs during the process
-        let _unregister_result = engines.unregister(&engine);
+        let unregister_result = engines.unregister(&engine);
+        assert!(unregister_result);
+        assert_eq!(engines.get_engines().len(), 0);
     }
 
     #[test]

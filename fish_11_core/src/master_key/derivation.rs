@@ -92,11 +92,6 @@ pub fn derive_config_kek(master_key: &[u8; 32]) -> [u8; 32] {
     derive_subkey(master_key, "config")
 }
 
-/// Derive the logs KEK from master key
-pub fn derive_logs_kek(master_key: &[u8; 32]) -> [u8; 32] {
-    derive_subkey(master_key, "logs")
-}
-
 /// Derive the export KEK from master key
 pub fn derive_export_kek(master_key: &[u8; 32]) -> [u8; 32] {
     derive_subkey(master_key, "export")
@@ -106,12 +101,6 @@ pub fn derive_export_kek(master_key: &[u8; 32]) -> [u8; 32] {
 pub fn derive_channel_key(config_kek: &[u8; 32], channel: &str, generation: u32) -> [u8; 32] {
     let context = format!("channel:{}:gen:{}", channel, generation);
     derive_subkey(config_kek, &context)
-}
-
-/// Derive a log file-specific key from logs KEK
-pub fn derive_log_key(logs_kek: &[u8; 32], log_path: &str) -> [u8; 32] {
-    let context = format!("log:{}", log_path);
-    derive_subkey(logs_kek, &context)
 }
 
 #[cfg(test)]
@@ -162,13 +151,10 @@ mod tests {
 
         // Verify that fish11: prefix is used
         let config_kek = derive_config_kek(&master_key);
-        let logs_kek = derive_logs_kek(&master_key);
         let export_kek = derive_export_kek(&master_key);
 
-        // All KEKs should be different
-        assert_ne!(config_kek, logs_kek);
+        // Distinct contexts should produce distinct KEKs
         assert_ne!(config_kek, export_kek);
-        assert_ne!(logs_kek, export_kek);
     }
 
     #[test]

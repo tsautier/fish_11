@@ -3,19 +3,17 @@
 //! This module provides a comprehensive, standardized error handling approach
 //! for the entire DLL, replacing fragmented error types with a single unified system.
 
-use crate::buffer_utils;
-use crate::buffer_utils::BufferError;
-use crate::dll_interface::{MIRC_COMMAND, MIRC_HALT};
-use fish_11_core::globals::MAX_MESSAGE_SIZE;
 use std::error::Error;
 use std::ffi::{NulError, c_char};
 use std::os::raw::c_int;
+
+use fish_11_core::globals::MAX_MESSAGE_SIZE;
 use thiserror::Error;
 
-// Re-export for convenience
+use crate::buffer_utils;
+use crate::buffer_utils::BufferError;
+use crate::dll_interface::{MIRC_COMMAND, MIRC_HALT};
 pub use crate::error::FishError;
-
-//use winapi::shared::windef::HWND;
 
 /// Unified error type for all DLL operations
 ///
@@ -25,6 +23,11 @@ pub use crate::error::FishError;
 /// Uses `thiserror` for automatic Display and Error trait implementations.
 #[derive(Error, Debug)]
 pub enum DllError {
+    // ===== Legacy Compatibility Errors =====
+    /// Legacy FiSH 10 compatibility error
+    #[error("legacy FiSH 10 error: {context} - {cause}")]
+    LegacyError { context: String, cause: String },
+
     // ===== Configuration Errors =====
     /// Configuration file not found or inaccessible
     #[error("configuration file not found: {0}")]
@@ -232,23 +235,24 @@ impl DllError {
     pub unsafe fn to_mirc_response(self, data: *mut c_char) -> c_int {
         // Handle null pointer case specially (cannot write error message)
         if let DllError::NullPointer { .. } = self {
-            log::error!("DLL Error: null pointer provided, cannot write error message");
+            log_error!("DLL Error: null pointer provided, cannot write error message");
             return MIRC_HALT;
         }
 
         if data.is_null() {
-            log::error!("DLL Error: {}, but buffer pointer is null", self);
+            log_error!("DLL Error: {}, but buffer pointer is null", self);
             return MIRC_HALT;
         }
 
         // Log the error with its full source chain for debugging
         if let Some(source) = self.source() {
-            log::error!("DLL Error: {} (caused by: {})", self, source);
+            log_error!("DLL Error: {} (caused by: {})", self, source);
 
             // Log sensitive content if DEBUG flag is enabled for sensitive content
             #[cfg(debug_assertions)]
             if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                log::debug!(
+                #[cfg(debug_assertions)]
+                log_debug!(
                     "Unified_Error: detailed error context - Error: {}, Source: {}",
                     self,
                     source
@@ -259,27 +263,31 @@ impl DllError {
             let mut current_source = source.source();
             let mut depth = 1;
             while let Some(src) = current_source {
-                log::error!("  [{}] caused by: {}", depth, src);
+                log_error!("  [{}] caused by: {}", depth, src);
                 current_source = src.source();
                 depth += 1;
             }
         } else {
-            log::error!("DLL Error: {}", self);
+            log_error!("DLL error: {}", self);
 
             // Log sensitive content if DEBUG flag is enabled for sensitive content
             #[cfg(debug_assertions)]
             if fish_11_core::globals::LOG_DECRYPTED_CONTENT {
-                log::debug!("Unified_Error: error details - Error: {}", self);
+                #[cfg(debug_assertions)]
+                log_debug!("Unified_Error: error details - Error: {}", self);
             }
         }
 
         // Special handling for KeyExpired to trigger re-exchange
         if let DllError::KeyExpired { nickname } = self {
             // Log the expiration event for security monitoring
-            log::info!("Key expiration detected for user: {}", nickname);
+            #[cfg(debug_assertions)]
+            log_debug!("Key expiration detected for user: {}", nickname);
+
             // Return a simple, parseable identifier instead of a full command.
             // The mIRC script will be responsible for handling this output.
             let mirc_identifier = format!("KEY_EXPIRED {}", nickname);
+
             if let Ok(cstring) = std::ffi::CString::new(mirc_identifier) {
                 let buf_size = crate::dll_interface::get_buffer_size();
                 let _ = buffer_utils::write_cstring_to_buffer(data, buf_size, &cstring);
@@ -400,6 +408,12 @@ impl From<&str> for DllError {
     }
 }
 
+impl From<String> for DllError {
+    fn from(err: String) -> Self {
+        DllError::InvalidInput { param: "data".to_string(), reason: err }
+    }
+}
+
 /// Result type for DLL operations
 pub type DllResult<T> = Result<T, DllError>;
 
@@ -463,6 +477,7 @@ macro_rules! dll_function {
                 };
 
                 // Bind the identifier expected by existing function bodies
+                #[allow(unused_variables)]
                 let $data = input_ptr;
                 $body
             }
@@ -473,10 +488,16 @@ macro_rules! dll_function {
                             Ok(s) => s,
                             Err(e) => return DllError::from(e).to_mirc_response($data),
                         };
+
                         // Use the runtime-determined buffer size to avoid overwriting caller memory
                         let buf_size = $crate::dll_interface::get_buffer_size();
                         $crate::buffer_utils::write_cstring_to_buffer($data, buf_size, &cstring)
                             .ok();
+
+                        // SECURITY: Zeroize the buffer after use
+                        use zeroize::Zeroize;
+                        let mut bytes = cstring.into_bytes_with_nul();
+                        bytes.zeroize();
                     }
                     $crate::dll_interface::MIRC_COMMAND
                 }
@@ -512,6 +533,7 @@ macro_rules! dll_function_identifier {
             _nopause: *mut BOOL,
         ) -> c_int {
             use $crate::unified_error::DllResult;
+            use zeroize::Zeroize;
             // See comment in dll_function! — ensure inner() operates on the
             // `_parms` pointer which contains the caller-supplied input.
             fn inner(_parms: *mut c_char, outbuf: *mut c_char) -> DllResult<String> {
@@ -539,6 +561,7 @@ macro_rules! dll_function_identifier {
                     }
                 };
 
+                #[allow(unused_variables)]
                 let $data = input_ptr;
                 $body
             }
@@ -549,10 +572,17 @@ macro_rules! dll_function_identifier {
                             Ok(s) => s,
                             Err(e) => return DllError::from(e).to_mirc_response($data),
                         };
+
                         // Use the runtime-determined buffer size to avoid overwriting caller memory
                         let buf_size = $crate::dll_interface::get_buffer_size();
+
                         $crate::buffer_utils::write_cstring_to_buffer($data, buf_size, &cstring)
                             .ok();
+
+                        // SECURITY: Zeroize the buffer after use to prevent plaintext/keys
+                        // from lingering in memory.
+                        let mut bytes = cstring.into_bytes_with_nul();
+                        bytes.zeroize();
                     }
                     $crate::dll_interface::MIRC_IDENTIFIER
                 }
@@ -575,6 +605,7 @@ mod tests {
             param: "message".to_string(),
             reason: "empty string".to_string(),
         };
+
         assert_eq!(err.to_string(), "invalid input for 'message': empty string");
     }
 
@@ -582,6 +613,7 @@ mod tests {
     fn test_fish_error_conversion() {
         let fish_err = FishError::KeyNotFound("bob".to_string());
         let dll_err: DllError = fish_err.into();
+
         assert!(matches!(dll_err, DllError::KeyNotFound(_)));
     }
 
@@ -589,6 +621,7 @@ mod tests {
     fn test_io_error_conversion() {
         let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "test");
         let dll_err: DllError = io_err.into();
+
         assert!(matches!(dll_err, DllError::Io(_)));
     }
 

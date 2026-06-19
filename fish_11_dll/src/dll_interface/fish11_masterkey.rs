@@ -1,10 +1,9 @@
 // Master Key Management Functions for FiSH_11
 // These functions provide secure master key initialization, unlocking, and management
+use std::ffi::c_char;
+use std::os::raw::c_int;
+use std::sync::Mutex;
 
-use crate::platform_types::{BOOL, HWND};
-use crate::unified_error::DllError;
-use crate::{buffer_utils, dll_function_identifier};
-use fish_11_core::globals::LOGGING_KEY;
 use fish_11_core::master_key::core::{
     initialize_key_system, is_key_system_unlocked, lock_key_system,
 };
@@ -14,26 +13,10 @@ use fish_11_core::master_key::password_change::change_master_password;
 use fish_11_core::master_key::password_validation::PasswordValidator;
 use once_cell::sync::Lazy;
 use sha2::{Digest, Sha256};
-use std::ffi::c_char;
-use std::os::raw::c_int;
-use std::sync::Mutex;
 
-/// Synchronize the LOGGING_KEY with the MASTER_KEY
-/// This ensures both keys are always in sync
-fn synchronize_logging_key() {
-    if let Ok(master_key_guard) = MASTER_KEY.lock() {
-        if let Some(key) = master_key_guard.as_ref() {
-            if let Ok(mut logging_key_guard) = LOGGING_KEY.lock() {
-                *logging_key_guard = Some(*key);
-            }
-        } else {
-            // If master key is None, clear logging key too
-            if let Ok(mut logging_key_guard) = LOGGING_KEY.lock() {
-                *logging_key_guard = None;
-            }
-        }
-    }
-}
+use crate::platform_types::{BOOL, HWND};
+use crate::unified_error::DllError;
+use crate::{buffer_utils, dll_function_identifier};
 
 static MASTER_KEY: Lazy<Mutex<Option<[u8; 32]>>> = Lazy::new(|| Mutex::new(None));
 
@@ -67,8 +50,10 @@ dll_function_identifier!(FiSH11_MasterKeyInit, data, {
 
             // Create password verifier : SHA-256 hash of the derived key
             use sha2::{Digest, Sha256};
+
             let mut hasher = Sha256::new();
             hasher.update(&key);
+
             let verifier = format!("{:x}", hasher.finalize());
             keystore.set_password_verifier(&verifier);
 
@@ -126,14 +111,11 @@ dll_function_identifier!(FiSH11_MasterKeyUnlock, data, {
                         *key_guard = Some(key);
                     }
 
-                    // Also update the LOGGING_KEY for encrypted logging
-                    if let Ok(mut logging_key_guard) = LOGGING_KEY.lock() {
-                        *logging_key_guard = Some(key);
-                    }
-
                     // Save the salt to keystore for future use
                     let mut keystore = Keystore::new();
                     keystore.set_master_salt(&salt);
+
+                    #[cfg(debug_assertions)]
                     if let Err(e) = keystore.save() {
                         log::warn!("Failed to save keystore: {}", e);
                     }
@@ -189,9 +171,6 @@ dll_function_identifier!(FiSH11_MasterKeyUnlock, data, {
                 };
                 *key_guard = Some(key);
             }
-
-            // Synchronize the logging key
-            synchronize_logging_key();
 
             Ok("1".to_string())
         }
@@ -283,20 +262,20 @@ dll_function_identifier!(FiSH11_MasterKeyChangePassword, data, {
                         *key_guard = Some(new_key);
                     }
 
-                    // Synchronize the logging key
-                    synchronize_logging_key();
-
                     // Save the new salt and password verifier to keystore
                     let mut new_keystore = Keystore::new();
                     new_keystore.set_master_salt(&new_salt);
 
                     // Create new password verifier for the new key
                     use sha2::{Digest, Sha256};
+
                     let mut hasher = Sha256::new();
                     hasher.update(&new_key);
+
                     let new_verifier = format!("{:x}", hasher.finalize());
                     new_keystore.set_password_verifier(&new_verifier);
 
+                    #[cfg(debug_assertions)]
                     if let Err(e) = new_keystore.save() {
                         log::warn!("Failed to save updated keystore: {}", e);
                     }

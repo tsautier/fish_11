@@ -1,8 +1,7 @@
+use chrono::{DateTime, Local};
 use std::cell::RefCell;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
-
-use chrono::{DateTime, Local};
 
 thread_local!(static CONTEXT: RefCell<Option<LogContext>> = RefCell::new(None));
 
@@ -92,6 +91,7 @@ fn get_thread_id() -> u64 {
     use std::hash::{Hash, Hasher};
 
     let mut hasher = DefaultHasher::new();
+
     id.hash(&mut hasher);
     hasher.finish()
 }

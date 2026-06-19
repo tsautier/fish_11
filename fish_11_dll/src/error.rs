@@ -1,5 +1,4 @@
 //! Error handling for FiSH 11
-
 use std::error::Error;
 use std::{fmt, io};
 

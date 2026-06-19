@@ -1,10 +1,11 @@
+use std::ffi::{CStr, c_char};
+use std::os::raw::c_int;
+use std::ptr;
+
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::DllError;
 use crate::utils::base64_decode;
 use crate::{buffer_utils, config, dll_function_identifier, log_debug};
-use std::ffi::{CStr, c_char};
-use std::os::raw::c_int;
-use std::ptr;
 
 // Sets a manual encryption key for a channel.
 //
@@ -61,6 +62,7 @@ dll_function_identifier!(FiSH11_SetManualChannelKey, data, {
     // Set the manual channel key (this will encrypt it and store it in the config file)
     config::set_manual_channel_key(channel_name, &key_array, true)?;
 
+    #[cfg(debug_assertions)]
     log_debug!("Successfully set manual channel key for {}", channel_name);
 
     Ok(format!("Manual channel key set for {}", channel_name))
@@ -75,6 +77,7 @@ pub fn call_set_manual_channel_key(input: &str, buffer_size: usize) -> (c_int, S
     if !input.is_empty() {
         let bytes = input.as_bytes();
         let copy_len = std::cmp::min(bytes.len(), buffer.len());
+
         unsafe {
             std::ptr::copy_nonoverlapping(bytes.as_ptr(), buffer.as_mut_ptr() as *mut u8, copy_len);
         }
@@ -120,6 +123,7 @@ mod tests {
         let input = format!("invalid {}", key_b64);
 
         let (code, msg) = call_set_manual_channel_key(&input, 256);
+
         assert_eq!(code, MIRC_COMMAND);
         assert!(msg.to_lowercase().contains("channel name must start with"));
     }
@@ -131,6 +135,7 @@ mod tests {
         let input = format!("#test {}", key_b64);
 
         let (code, msg) = call_set_manual_channel_key(&input, 256);
+
         assert_eq!(code, MIRC_COMMAND);
         assert!(msg.to_lowercase().contains("key must be 32 bytes"));
     }

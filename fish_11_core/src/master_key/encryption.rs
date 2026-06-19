@@ -21,9 +21,7 @@
 //!
 //! ## Current Implementation
 //!
-//! - **Log encryption** ([fish11_logencrypt.rs](../../fish_11_dll/src/dll_interface/fish11_logencrypt.rs)):
-//!   Uses `ChaCha20Poly1305::generate_nonce(&mut OsRng)` for random nonces
-//! - **Config encryption**: Would use the same random nonce strategy
+//! - **Config encryption**: uses the same random nonce strategy when ChaCha20-Poly1305 is used
 //!
 //! If your use case requires deterministic, sequential nonces (e.g., for audit trails or
 //! message ordering), use the `NonceManager` functions below.

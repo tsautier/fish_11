@@ -1,16 +1,15 @@
+use crate::logging::config::LogConfig;
+use crate::logging::context::LogContext;
+use crate::logging::errors::LogError;
+use crate::logging::formatter;
+use log::Record;
+use rand::Rng;
+use scopeguard;
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-
-use log::Record;
-use rand::Rng;
-use scopeguard;
-
-use crate::logging::context::LogContext;
-use crate::logging::errors::LogError;
-use crate::logging::formatter;
 
 pub struct FileWriter {
     file: Arc<Mutex<BufWriter<File>>>,
@@ -42,8 +41,7 @@ impl FileWriter {
         &self,
         record: &Record,
         context: &LogContext,
-        mask_sensitive: bool,
-        context_enabled: bool,
+        config: &LogConfig,
     ) -> Result<(), LogError> {
         // Create a timeout mechanism for write operations
         let start_time = std::time::Instant::now();
@@ -58,8 +56,7 @@ impl FileWriter {
             match self.file.try_lock() {
                 Ok(mut guard) => {
                     // Format the log record using the centralized formatter
-                    let formatted =
-                        formatter::format_record(record, context, mask_sensitive, context_enabled);
+                    let formatted = formatter::format_record(record, context, config);
 
                     // Check size before writing
                     let current_size = self.current_size.load(std::sync::atomic::Ordering::Relaxed);
@@ -161,7 +158,6 @@ impl FileWriter {
     fn rotate_files(&self) -> Result<(), LogError> {
         use std::fs;
         use std::io::Write;
-        use std::time::{SystemTime, UNIX_EPOCH};
 
         // Clean up any stale lock files from previous crashes
         self.cleanup_stale_lock_files()?;
@@ -183,7 +179,7 @@ impl FileWriter {
                                 // 5 minutes
                                 // Stale lock, remove it and proceed
                                 let _ = fs::remove_file(&rotation_lock_path);
-                                rotation_lock = OpenOptions::new()
+                                let _new_lock = OpenOptions::new()
                                     .create_new(true)
                                     .write(true)
                                     .open(&rotation_lock_path)?;

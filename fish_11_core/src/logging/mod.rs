@@ -13,16 +13,14 @@ pub mod writers;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use config::LogConfig;
+use config::{LogConfig, LoggingProfile};
 // Global logger instance
-use log::LevelFilter;
 use unified_logger::UnifiedLogger;
 
 static LOGGER_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 pub fn init_logging(config: LogConfig) -> Result<(), errors::LogError> {
-    if LOGGER_INITIALIZED.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err()
-    {
+    if LOGGER_INITIALIZED.load(Ordering::SeqCst) {
         // Already initialized
         return Ok(());
     }
@@ -31,8 +29,23 @@ pub fn init_logging(config: LogConfig) -> Result<(), errors::LogError> {
     let logger = UnifiedLogger::new(config)?;
 
     log::set_boxed_logger(Box::new(logger))
-        .map(|()| log::set_max_level(max_level))
+        .map(|()| {
+            log::set_max_level(max_level);
+            LOGGER_INITIALIZED.store(true, Ordering::SeqCst);
+        })
         .map_err(|_| errors::LogError::InitializationFailed)
+}
+
+pub fn init_logging_for_profile(profile: LoggingProfile) -> Result<(), errors::LogError> {
+    init_logging(LogConfig::for_profile(profile))
+}
+
+pub fn init_inject_logging() -> Result<(), errors::LogError> {
+    init_logging_for_profile(LoggingProfile::Inject)
+}
+
+pub fn init_dll_logging() -> Result<(), errors::LogError> {
+    init_logging_for_profile(LoggingProfile::Dll)
 }
 
 pub fn is_initialized() -> bool {

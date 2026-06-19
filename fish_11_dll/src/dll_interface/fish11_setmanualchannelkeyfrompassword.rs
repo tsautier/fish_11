@@ -1,8 +1,9 @@
+use std::ffi::c_char;
+use std::os::raw::c_int;
+
 use crate::platform_types::{BOOL, HWND};
 use crate::unified_error::{DllError, DllResult};
 use crate::{buffer_utils, config, dll_function_identifier, log_debug};
-use std::ffi::c_char;
-use std::os::raw::c_int;
 
 // Sets a manual channel key from a password or short key.
 // This function accepts keys of any length and securely expands them to 32 bytes
@@ -40,6 +41,7 @@ dll_function_identifier!(FiSH11_SetManualChannelKeyFromPassword, data, {
     // Set the manual channel key (this will encrypt it and store it in the config file)
     config::set_manual_channel_key(channel_name, &derived_key, true)?;
 
+    #[cfg(debug_assertions)]
     log_debug!("Successfully set manual channel key for {} from password", channel_name);
 
     Ok(format!("Manual channel key set for {}", channel_name))
@@ -47,33 +49,16 @@ dll_function_identifier!(FiSH11_SetManualChannelKeyFromPassword, data, {
 
 /// Derives a 32-byte cryptographic key from password/short key material using HKDF
 fn derive_key_from_password(password: &str) -> DllResult<[u8; 32]> {
-    use hkdf::Hkdf;
-    use sha2::Sha256;
-
-    // Use channel name as salt to prevent rainbow table attacks
-    // In a real implementation, we'd use a random salt stored with the key
-    let salt = b"FiSH11-ChannelKey";
-
-    // Use the password as IKM (input key material)
-    let ikm = password.as_bytes();
-
-    // Derive a 32-byte key using HKDF-SHA256
-    let hkdf = Hkdf::<Sha256>::new(Some(salt), ikm);
-    let mut output = [0u8; 32];
-    hkdf.expand(b"channel-key-expansion", &mut output).map_err(|e| DllError::InvalidInput {
-        param: "password".to_string(),
-        reason: format!("HKDF key derivation failed: {}", e),
-    })?;
-
-    Ok(output)
+    crate::utils::key_derivation::derive_key_from_password(password)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::dll_interface::MIRC_COMMAND;
     use std::ffi::CStr;
     use std::ptr;
+
+    use super::*;
+    use crate::dll_interface::MIRC_COMMAND;
 
     fn call_set_manual_channel_key_from_password(
         input: &str,
@@ -85,6 +70,7 @@ mod tests {
         if !input.is_empty() {
             let bytes = input.as_bytes();
             let copy_len = std::cmp::min(bytes.len(), buffer.len());
+
             unsafe {
                 std::ptr::copy_nonoverlapping(
                     bytes.as_ptr(),
@@ -117,6 +103,7 @@ mod tests {
     fn test_set_manual_channel_key_from_password_short() {
         let input = "#test mypassword";
         let (code, msg) = call_set_manual_channel_key_from_password(&input, 256);
+
         assert_eq!(code, crate::dll_interface::MIRC_IDENTIFIER);
         assert!(msg.to_lowercase().contains("manual channel key set"));
     }
@@ -126,6 +113,7 @@ mod tests {
         let long_password = "This is a very long password that is definitely longer than 32 bytes";
         let input = format!("#test {}", long_password);
         let (code, msg) = call_set_manual_channel_key_from_password(&input, 256);
+
         assert_eq!(code, crate::dll_interface::MIRC_IDENTIFIER);
         assert!(msg.to_lowercase().contains("manual channel key set"));
     }
@@ -134,6 +122,7 @@ mod tests {
     fn test_set_manual_channel_key_from_password_invalid_channel() {
         let input = "invalid mypassword";
         let (code, msg) = call_set_manual_channel_key_from_password(&input, 256);
+
         assert_eq!(code, MIRC_COMMAND);
         assert!(msg.to_lowercase().contains("channel name must start with"));
     }
