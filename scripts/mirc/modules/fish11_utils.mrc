@@ -200,7 +200,7 @@ alias fish11_debug {
 
   var %f1 = fishdebug
   var %f2 = $rand(0,9999)
-  var %x = $iif($isfile(%Fish11DllFile),$dll(%Fish11DllFile,FiSH11_SetKey,$+($network,%f1,%f2,HelloWorld)),MISSING_DLL)
+  noop $iif($isfile(%Fish11DllFile),$dll(%Fish11DllFile,FiSH11_SetKey,$+($network,%f1,%f2,HelloWorld)))
 
   if (!$window(%w)) {
     window -a %w -1 -1 550 300 Courier New 12
@@ -247,8 +247,7 @@ alias fish11_debug {
   %a << Reading back key, you should see a 'HelloWorld' on the next line.
   %a !! FileGetKey: $iif($dll(%Fish11DllFile,FiSH11_FileGetKey, $+($network," ",%f1," ",%f2)),$v1,NotFound)
   %a << Deleting key from config
-
-  var %delkey = $dll(%Fish11DllFile,FiSH11_FileDelKey,$+($network," ",%f1," ",%f2))
+  noop $dll(%Fish11DllFile,FiSH11_FileDelKey,$+($network," ",%f1," ",%f2))
 }
 
 

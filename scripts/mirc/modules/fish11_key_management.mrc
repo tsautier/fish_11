@@ -277,8 +277,6 @@ alias fkeyttl { fish11_keyttl $1 }
 
 ; === LIST ALL KEYS ===
 alias fish11_file_list_keys {
-  var %keys
-
   ; Check the DLL exists before trying to call it
   if (!$isfile(%Fish11DllFile)) {
     echo $color(Mode text) -at *** FiSH ERROR- DLL not found: %Fish11DllFile
@@ -288,9 +286,6 @@ alias fish11_file_list_keys {
   echo $color(Mode text) -at *** FiSH: listing keys...
   ; Ensure MIRCDIR is set (should already be set at startup, but be safe)
   noop $dll(%Fish11DllFile, FiSH11_SetMircDir, $mircdir)
-  
-  ; Initialize the buffer variable
-  var %keys
   
   ; Call DLL function using proper syntax for data return
   echo $color(Mode text) -at *** FiSH: about to call FiSH11_FileListKeys...
@@ -314,7 +309,7 @@ alias fish11_file_list_keys {
 
 
 ; Helper function to safely display multi-line text from DLL
-alias fish11_display_multiline_result {
+alias -l fish11_display_multiline_result {
   var %text = $1-
   var %line_count = 0
   var %max_lines = 100
