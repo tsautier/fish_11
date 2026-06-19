@@ -4,8 +4,7 @@ use crate::{buffer_utils, log_debug, log_error, log_warn};
 pub mod key_derivation;
 use std::ffi::{CString, c_char};
 
-use base64;
-use base64::Engine;
+use base64::{self, Engine};
 use rand::Rng;
 use rand::rngs::OsRng;
 
@@ -309,6 +308,15 @@ fn validate_nick_basic(nick: &str) -> Result<(), crate::error::FishError> {
     Ok(())
 }
 
+/// Helper to write an error message to the mIRC buffer
+fn write_error(data: *mut c_char, buffer_size: usize, msg: &str) {
+    if let Ok(cstring) = CString::new(msg) {
+        unsafe {
+            let _ = buffer_utils::write_cstring_to_buffer(data, buffer_size, &cstring);
+        }
+    }
+}
+
 /// Validate nickname according to IRC RFC 1459
 pub fn validate_nickname(
     nickname: &str,
@@ -317,84 +325,32 @@ pub fn validate_nickname(
     trace_id: &str,
 ) -> bool {
     #[cfg(debug_assertions)]
-    log_debug!("FiSH11_ExchangeKey[{}]: validating nickname: '{}'", trace_id, nickname); // Check if nickname is empty
+    log_debug!("FiSH11_ExchangeKey[{}]: validating nickname: '{}'", trace_id, nickname);
 
     if nickname.is_empty() {
         log_warn!("FiSH11_ExchangeKey[{}]: empty nickname provided", trace_id);
-
-        match CString::new("Usage: /dll fish_11.dll FiSH11_ExchangeKey <nickname>") {
-            Ok(error_msg) => unsafe {
-                let _ = buffer_utils::write_cstring_to_buffer(data, buffer_size, &error_msg);
-            },
-            Err(_) => {
-                // This shouldn't happen since our string is static, but we handle it anyway
-                log_error!("FiSH11_ExchangeKey[{}]: CString::new failed unexpectedly", trace_id);
-            }
-        }
+        write_error(data, buffer_size, "Usage: /dll fish_11.dll FiSH11_ExchangeKey <nickname>");
         return false;
     }
 
     // Basic validation first
     if let Err(_) = validate_nick_basic(nickname) {
-        /*log_error!(
-            "FiSH11_ExchangeKey[{}]: nickname contains invalid characters: {}",
-            trace_id,
-            nickname
-        );*/
-
         log_error!("FiSH11_ExchangeKey[{}]: nickname contains invalid characters", trace_id);
-
-        match CString::new("Error: nickname contains invalid characters") {
-            Ok(error_msg) => unsafe {
-                let _ = buffer_utils::write_cstring_to_buffer(data, buffer_size, &error_msg);
-            },
-            Err(_) => {
-                // This shouldn't happen since our string is static, but we handle it anyway
-                log_error!(
-                    "FiSH11_ExchangeKey[{}]: CString::new failed for error message",
-                    trace_id
-                );
-            }
-        }
+        write_error(data, buffer_size, "Error: nickname contains invalid characters");
         return false;
     }
 
     // RFC 1459 compliant validation
     if !NICK_VALIDATOR.is_match(nickname) {
-        /*  log_error!(
-            "FiSH11_ExchangeKey[{}]: invalid nickname format: {} (must be 1-16 chars, start with letter/special, contain only valid IRC chars)",
-            trace_id,
-            nickname
-        );*/
         log_error!(
             "FiSH11_ExchangeKey[{}]: invalid nickname format. It must be 1-16 chars, start with letter/special, contain only valid IRC chars.",
             trace_id,
         );
-
-        // Safe CString creation with fallback
-        match CString::new(
+        write_error(
+            data,
+            buffer_size,
             "Error: nickname must be 1-16 characters, start with letter/[\\]`_^{|}, contain only valid IRC characters",
-        ) {
-            Ok(msg) => unsafe {
-                let _ = buffer_utils::write_cstring_to_buffer(data, buffer_size, &msg);
-            },
-            Err(_) => {
-                // Try fallback message if primary fails
-                match CString::new("Error: invalid nickname format") {
-                    Ok(fallback_msg) => unsafe {
-                        let _ =
-                            buffer_utils::write_cstring_to_buffer(data, buffer_size, &fallback_msg);
-                    },
-                    Err(_) => {
-                        // Even fallback failed - log error but can't write to buffer
-                        log_error!(
-                            "FiSH11_ExchangeKey[{}]: Both error messages failed CString::new",
-                            trace_id
-                        );
-                    }
-                }
-            }
-        }
+        );
         return false;
     }
     true
