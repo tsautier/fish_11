@@ -15,7 +15,6 @@ on *:INPUT:*: {
   
   ; Don't process if message starts with plain prefix
   if ($left($1-, $len(%plain_prefix)) == %plain_prefix) {
-    var %plain_msg = $right($1-, $calc($len($1-) - $len(%plain_prefix)))
     return
   }
   
@@ -148,5 +147,5 @@ alias fish11_test_crypt {
 
   echo -s *** FiSH_11 :: TestCrypt -> call DLL with $qt(%msg)
   .dll %Fish11DllFile FiSH11_TestCrypt %msg
-  echo -s *** FiSH_11 :: TestCrypt -> retour DLL
+  echo -s *** FiSH_11 :: TestCrypt -> DLL returned
 }

@@ -45,12 +45,22 @@ alias fish11_UpdateStatusIndicator {
 
 
 ; === INI CONFIG HELPERS ===
+; For string values (plain_prefix, mark_encrypted, encryption_prefix)
 alias fish11_GetIniValue {
   return $dll(%Fish11DllFile, INI_GetString, $1 $2-)
 }
 
 alias fish11_SetIniValue {
   noop $dll(%Fish11DllFile, INI_SetString, $1 $2-)
+}
+
+; For boolean/integer values (process_outgoing, process_incoming, encrypt_notice, etc.)
+alias fish11_GetIniBoolValue {
+  return $dll(%Fish11DllFile, INI_GetBool, $1 $2-)
+}
+
+alias fish11_SetIniIntValue {
+  noop $dll(%Fish11DllFile, INI_SetInt, $1 $2-)
 }
 
 alias fish11_GetChannelIniValue {
@@ -188,9 +198,6 @@ alias fish11_debug {
   var %f1 = fishdebug
   var %f2 = $rand(0,9999)
   var %x = $iif($isfile(%Fish11DllFile),$dll(%Fish11DllFile,FiSH11_SetKey,$+($network,%f1,%f2,HelloWorld)),MISSING_DLL)
-
-  var %f11dll = $+(",$nofile($mircexe),fish_11.dll")
-  var %f11config = %fish_config_file
 
   if (!$window(%w)) {
     window -a %w -1 -1 550 300 Courier New 12

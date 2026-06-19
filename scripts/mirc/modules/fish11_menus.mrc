@@ -199,16 +199,16 @@ menu status,channel,nicklist,query {
   ..Disable :set %autokeyx [Off]
   .Misc config
   ..Encrypt outgoing [Status]
-  ...Enable :{ fish11_SetIniValue process_outgoing 1 | echo $color(Mode text) -at *** FiSH: outgoing message encryption enabled }
-  ...Disable :{ fish11_SetIniValue process_outgoing 0 | echo $color(Mode text) -at *** FiSH: outgoing message encryption disabled }
+  ...Enable :{ fish11_SetIniIntValue process_outgoing 1 | echo $color(Mode text) -at *** FiSH: outgoing message encryption enabled }
+  ...Disable :{ fish11_SetIniIntValue process_outgoing 0 | echo $color(Mode text) -at *** FiSH: outgoing message encryption disabled }
   ..Decrypt incoming [Status]
-  ...Enable :{ fish11_SetIniValue process_incoming 1 | echo $color(Mode text) -at *** FiSH: incoming message decryption enabled }
-  ...Disable :{ fish11_SetIniValue process_incoming 0 | echo $color(Mode text) -at *** FiSH: incoming message decryption disabled }
+  ...Enable :{ fish11_SetIniIntValue process_incoming 1 | echo $color(Mode text) -at *** FiSH: incoming message decryption enabled }
+  ...Disable :{ fish11_SetIniIntValue process_incoming 0 | echo $color(Mode text) -at *** FiSH: incoming message decryption disabled }
   ..-
   ..Crypt-mark (Incoming)
-  ...Prefix :{ fish11_SetIniValue mark_position 2 | echo $color(Mode text) -at *** FiSH: encryption mark set to prefix }
-  ...Suffix :{ fish11_SetIniValue mark_position 1 | echo $color(Mode text) -at *** FiSH: encryption mark set to suffix }
-  ...Disable :{ fish11_SetIniValue mark_position 0 | echo $color(Mode text) -at *** FiSH: encryption mark disabled }
+  ...Prefix :{ fish11_SetIniIntValue mark_position 2 | echo $color(Mode text) -at *** FiSH: encryption mark set to prefix }
+  ...Suffix :{ fish11_SetIniIntValue mark_position 1 | echo $color(Mode text) -at *** FiSH: encryption mark set to suffix }
+  ...Disable :{ fish11_SetIniIntValue mark_position 0 | echo $color(Mode text) -at *** FiSH: encryption mark disabled }
   ..Crypt-mark (Outgoing) $+ $chr(32) $+ %mark_outgoing
   ...Enable :set %mark_outgoing [On]
   ...Disable :set %mark_outgoing [Off]
@@ -232,14 +232,14 @@ menu status,channel,nicklist,query {
   ...Enable :{ set %NickTrack [On] | echo $color(Mode text) -at *** FiSH: nick tracking enabled }
   ...Disable :{ set %NickTrack [Off] | echo $color(Mode text) -at *** FiSH: nick tracking disabled }
   ..Encrypt NOTICE [Status]
-  ...Enable :{ fish11_SetIniValue encrypt_notice 1 | echo $color(Mode text) -at *** FiSH: NOTICE encryption enabled }
-  ...Disable :{ fish11_SetIniValue encrypt_notice 0 | echo $color(Mode text) -at *** FiSH: NOTICE encryption disabled }
+  ...Enable :{ fish11_SetIniIntValue encrypt_notice 1 | echo $color(Mode text) -at *** FiSH: NOTICE encryption enabled }
+  ...Disable :{ fish11_SetIniIntValue encrypt_notice 0 | echo $color(Mode text) -at *** FiSH: NOTICE encryption disabled }
   ..Encrypt ACTION [Status]
-  ...Enable :{ fish11_SetIniValue encrypt_action 1 | echo $color(Mode text) -at *** FiSH: ACTION encryption enabled }
-  ...Disable :{ fish11_SetIniValue encrypt_action 0 | echo $color(Mode text) -at *** FiSH: ACTION encryption disabled }
+  ...Enable :{ fish11_SetIniIntValue encrypt_action 1 | echo $color(Mode text) -at *** FiSH: ACTION encryption enabled }
+  ...Disable :{ fish11_SetIniIntValue encrypt_action 0 | echo $color(Mode text) -at *** FiSH: ACTION encryption disabled }
   ..No legacy FiSH 10 [Status]
-  ...Enable :{ fish11_SetIniValue no_fish10_legacy 1 | echo $color(Mode text) -at *** FiSH: legacy FiSH 10 compatibility disabled }
-  ...Disable :{ fish11_SetIniValue no_fish10_legacy 0 | echo $color(Mode text) -at *** FiSH: legacy FiSH 10 compatibility enabled }
+  ...Enable :{ fish11_SetIniIntValue no_fish10_legacy 1 | echo $color(Mode text) -at *** FiSH: legacy FiSH 10 compatibility disabled }
+  ...Disable :{ fish11_SetIniIntValue no_fish10_legacy 0 | echo $color(Mode text) -at *** FiSH: legacy FiSH 10 compatibility enabled }
   ..-
   ..Open config file :fish11_ViewIniFile
   ..-
