@@ -137,6 +137,15 @@ alias fish11_help {
   echo $color(Mode text) -at *** FCEP-1 automatically decrypts incoming channel messages
   echo $color(Mode text) -at *** Channel names are case-insensitive (#Secret = #secret)
 
+  ; Add incoming decryption help
+  echo $color(Mode text) -at $chr(160)
+  echo $color(Mode text) -at *** FiSH_11 Incoming Decryption:
+  echo $color(Mode text) -at *** Incoming messages are decrypted automatically by fish_11_inject.dll
+  echo $color(Mode text) -at *** If inject DLL is not loaded, fallback handlers will attempt decryption
+  echo $color(Mode text) -at *** /fish11_decrypt_msg <sender> <encrypted_message> - Manually decrypt a message
+  echo $color(Mode text) -at ***   Shorthand: /fdec
+  echo $color(Mode text) -at *** Configure incoming decryption in fish_11.ini: process_incoming = 1
+
   ; Add plaintext topic commands
   echo $color(Mode text) -at $chr(160)
   echo $color(Mode text) -at *** FiSH_11 Plaintext Topic commands:
