@@ -11,12 +11,13 @@ use log::{LevelFilter, SetLoggerError};
 use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Once};
 use std::time::Duration;
 
 // Ensure initialization happens only once
 static LOGGER_INIT: Once = Once::new();
-static mut LOGGER_INITIALIZED: bool = false;
+static LOGGER_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 /// A simple logger that writes to a file, with automatic recreation if deleted
 pub struct FileLogger {
@@ -193,77 +194,77 @@ pub fn get_log_file_path() -> io::Result<PathBuf> {
 /// Initialize the logger
 pub fn init_logger(level: LevelFilter) -> Result<(), SetLoggerError> {
     // Use thread-safe initialization
-    unsafe {
-        let mut result = Ok(());
+    let mut result = Ok(());
 
-        // If the runtime requests debug logging via env var, promote the level
-        // Force DEBUG level for troubleshooting
-        let effective_level = LevelFilter::Debug;
+    // If the runtime requests debug logging via env var, promote the level
+    // Force DEBUG level for troubleshooting
+    let effective_level = LevelFilter::Debug;
 
-        LOGGER_INIT.call_once(|| {
-            if LOGGER_INITIALIZED {
-                return;
-            }
+    LOGGER_INIT.call_once(|| {
+        if LOGGER_INITIALIZED.load(Ordering::Relaxed) {
+            return;
+        }
 
-            match get_log_file_path() {
-                Ok(log_path) => {
-                    match OpenOptions::new().create(true).append(true).open(&log_path) {
-                        Ok(log_file) => {
-                            let logger = Box::new(FileLogger::new(effective_level, log_path.clone(), log_file));
+        match get_log_file_path() {
+            Ok(log_path) => {
+                match OpenOptions::new().create(true).append(true).open(&log_path) {
+                    Ok(log_file) => {
+                        let logger = Box::new(FileLogger::new(effective_level, log_path.clone(), log_file));
 
-                            match log::set_boxed_logger(logger) {
-                                Ok(_) => {
-                                    log::set_max_level(level);                                    LOGGER_INITIALIZED = true;
-                                    // If effective level differs from requested, set max level accordingly
-                                    log::set_max_level(effective_level);
+                        match log::set_boxed_logger(logger) {
+                            Ok(_) => {
+                                log::set_max_level(level);
+                                LOGGER_INITIALIZED.store(true, Ordering::Relaxed);
+                                // If effective level differs from requested, set max level accordingly
+                                log::set_max_level(effective_level);
 
-                                    // Log to file only, no console output
-                                    log_info!("*********** *********** FiSH_11 : core dll logger initialized *************** ***********");
+                                // Log to file only, no console output
+                                log_info!("*********** *********** FiSH_11 : core dll logger initialized *************** ***********");
 
-                                    // Log the initialization
-                                    log_info!(
-                                        "Logger initialized - writing to: {}",
-                                        log_path.display()
-                                    );
+                                // Log the initialization
+                                log_info!(
+                                    "Logger initialized - writing to: {}",
+                                    log_path.display()
+                                );
 
-                                    // Log current working directory in the log file too
-                                    if let Ok(cwd) = std::env::current_dir() {
-                                        log_info!("Current working directory: {}", cwd.display());
-                                    }
-                                    log_info!("FiSH_11 DLL version: {}", BUILD_VERSION);
-
-                                    log_info!(
-                                        "Build date: {}, Build time: {}",
-                                        BUILD_DATE.as_str(),
-                                        BUILD_TIME.as_str()
-                                    );
+                                // Log current working directory in the log file too
+                                if let Ok(cwd) = std::env::current_dir() {
+                                    log_info!("Current working directory: {}", cwd.display());
                                 }
+                                log_info!("FiSH_11 DLL version: {}", BUILD_VERSION);
 
-                                Err(e) => {
-                                    // Don't output to console, just return error
-                                    result = Err(e);
-                                }
+                                log_info!(
+                                    "Build date: {}, Build time: {}",
+                                    BUILD_DATE.as_str(),
+                                    BUILD_TIME.as_str()
+                                );
                             }
-                        }                        Err(_) => {
-                            // Log to file only, initialization errors are handled silently
-                            // to avoid console output
+
+                            Err(e) => {
+                                // Don't output to console, just return error
+                                result = Err(e);
+                            }
                         }
                     }
-                }
-                Err(_) => {
-                    // Log to file only, initialization errors are handled silently
-                    // to avoid console output
+                    Err(_) => {
+                        // Log to file only, initialization errors are handled silently
+                        // to avoid console output
+                    }
                 }
             }
-        });
+            Err(_) => {
+                // Log to file only, initialization errors are handled silently
+                // to avoid console output
+            }
+        }
+    });
 
-        result
-    }
+    result
 }
 
 /// Check if the logger has been initialized
 pub fn is_logger_initialized() -> bool {
-    unsafe { LOGGER_INITIALIZED }
+    LOGGER_INITIALIZED.load(Ordering::Relaxed)
 }
 
 /// Log a module initialization event
