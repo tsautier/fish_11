@@ -48,16 +48,28 @@ on *:INPUT:*: {
     %message = $2-
   }
   
-  ; Determine which encryption system to use: FiSH 10 (legacy) or FiSH 11
-  var %has_legacy_key = $dll(%Fish11DllFile, FiSH10_HasKey, %target)
+  ; Determine which encryption system to use
+  ; Check for: FCEP-1 channel key, manual channel key, legacy key, or private key
   
-  if (%has_legacy_key == 1) {
-    ; Use FiSH 10 legacy encryption (Blowfish)
-    %encrypted = $dll(%Fish11DllFile, FiSH10_EncryptMsg, %target %message)
+  var %encrypted = $null
+  
+  ; Check if target is a channel with FCEP-1 or manual key
+  if ($left(%target, 1) == # || $left(%target, 1) == &) {
+    ; Channel target - try FiSH 11 encryption (handles both manual and FCEP-1 keys)
+    %encrypted = $dll(%Fish11DllFile, FiSH11_EncryptMsg, %target %message)
   }
   else {
-    ; Use FiSH 11 encryption (ChaCha20-Poly1305)
-    %encrypted = $dll(%Fish11DllFile, FiSH11_EncryptMsg, %target %message)
+    ; Private message - check for legacy key first
+    var %has_legacy_key = $dll(%Fish11DllFile, FiSH10_HasKey, %target)
+    
+    if (%has_legacy_key == 1) {
+      ; Use FiSH 10 legacy encryption (Blowfish)
+      %encrypted = $dll(%Fish11DllFile, FiSH10_EncryptMsg, %target %message)
+    }
+    else {
+      ; Use FiSH 11 encryption (ChaCha20-Poly1305)
+      %encrypted = $dll(%Fish11DllFile, FiSH11_EncryptMsg, %target %message)
+    }
   }
   
   ; Only process if encryption was successful

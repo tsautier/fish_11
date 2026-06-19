@@ -85,24 +85,11 @@ alias fish11_prefix {
 
 
 ; === BACKUP FUNCTIONALITY ===
+; Note: FiSH11_BackupKeys/RestoreKeys not yet implemented in DLL
+; This is a placeholder for future implementation
 alias fish11_ScheduleBackup {
-  var %backup_dir = $+(fish_11\backups\)
-  
-  ; Create directory if it doesn't exist
-  if (!$isdir(%backup_dir)) {
-    mkdir $+(",$mircdir,%backup_dir,")
-  }
-  
-  ; Create timestamped filename
-  var %filename = $+(%backup_dir,fish_keys_,$asctime(yyyy-mm-dd_HH-nn),\.bak)
-  
-  ; Perform backup
-  if ($dll(%Fish11DllFile, FiSH11_BackupKeys, %filename)) {
-    echo $color(Mode text) -at *** FiSH: scheduled backup created: %filename
-  }
-  else {
-    echo $color(Error) -at *** FiSH: scheduled backup failed
-  }
+  echo $color(Error) -at *** FiSH: backup functionality not yet implemented in DLL
+  echo $color(Mode text) -at *** FiSH: use /fish11_file_list_keys to export keys manually
 }
 
 
@@ -125,6 +112,13 @@ alias fish11_help {
   echo $color(Mode text) -at *** /fish11_masterkey_status - Show master key status
   echo $color(Mode text) -at ***   When unlocked: configuration and logs are encrypted with Argon2id + ChaCha20-Poly1305
   echo $color(Mode text) -at ***   When locked: configuration and logs are stored in plaintext
+
+  ; Add Key TTL help
+  echo $color(Mode text) -at $chr(160)
+  echo $color(Mode text) -at *** FiSH_11 Key TTL (Expiration):
+  echo $color(Mode text) -at *** /fish11_keyttl <nickname> - Show remaining lifetime of exchange key
+  echo $color(Mode text) -at ***   Shorthand: /fkeyttl
+  echo $color(Mode text) -at ***   Exchange keys expire after 24 hours; manually set keys never expire
 
   ; Add FCEP-1 help
   echo $color(Mode text) -at $chr(160)

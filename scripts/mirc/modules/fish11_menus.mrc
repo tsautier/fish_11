@@ -246,25 +246,9 @@ menu status,channel,nicklist,query {
   ..FiSH_11 - secure IRC encryption :shell -o https://github.com/ggielly/fish_11
   .Backup and restore
   ..Create backup now :fish11_ScheduleBackup
-  ..Restore from backup :{
-    var %file = $sfile($+(",$mircdir,fish_11\backups\"),Restore FiSH keys from:,*.bak)
-    if (%file) {
-      if ($dll(%Fish11DllFile, FiSH11_RestoreKeys, %file)) {
-        echo $color(Mode text) -at *** FiSH: keys successfully restored from %file
-      }
-      else {
-        echo $color(Error) -at *** FiSH: failed to restore keys from %file
-      }
-    }
-  }
-  ..Schedule daily backup :{
-    .timer.fish11.DailyBackup 0 86400 fish11_ScheduleBackup
-    echo $color(Mode text) -at *** FiSH: daily key backup scheduled
-  }
-  ..Stop scheduled backups :{
-    .timers.fish11.DailyBackup off
-    echo $color(Mode text) -at *** FiSH: scheduled key backups stopped
-  }
+  ..Restore from backup :echo $color(Error) -at *** FiSH: restore functionality not yet implemented in DLL
+  ..Schedule daily backup :echo $color(Error) -at *** FiSH: scheduled backup not yet implemented in DLL
+  ..Stop scheduled backups :echo $color(Error) -at *** FiSH: scheduled backup not yet implemented in DLL
   .Debug
   ..Show debug info :fish11_debug
   ..View INI file :fish11_ViewIniFile

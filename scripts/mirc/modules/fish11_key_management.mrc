@@ -241,6 +241,40 @@ alias fish11_setkey_safe {
 }
 
 
+; === KEY TTL (EXPIRATION) ===
+; Show the remaining lifetime of an exchange key
+; Exchange keys have a 24-hour TTL from creation time
+; Usage: /fish11_keyttl <nickname>
+alias fish11_keyttl {
+  if ($1 == $null) {
+    echo 4 -a Syntax: /fish11_keyttl <nickname>
+    return
+  }
+  
+  var %nickname = $1
+  var %ttl = $dll(%Fish11DllFile, FiSH11_GetKeyTTL, %nickname)
+  
+  if (%ttl == EXPIRED) {
+    echo $color(Error) -at *** FiSH_11: key for %nickname has EXPIRED
+    echo $color(Mode text) -at *** FiSH_11: use /fish11_X25519_INIT %nickname to establish a new key
+  }
+  else if (%ttl == NO_TTL) {
+    echo $color(Mode text) -at *** FiSH_11: key for %nickname has no expiration (manually set key)
+  }
+  else if (%ttl isnum) {
+    var %hours = $int($calc(%ttl / 3600))
+    var %mins = $int($calc((%ttl % 3600) / 60))
+    echo $color(Mode text) -at *** FiSH_11: key for %nickname expires in %hours hours %mins minutes
+  }
+  else {
+    echo $color(Error) -at *** FiSH_11: could not get key TTL for %nickname
+  }
+}
+
+; Short alias for key TTL
+alias fkeyttl { fish11_keyttl $1 }
+
+
 ; === LIST ALL KEYS ===
 alias fish11_file_list_keys {
   var %keys
