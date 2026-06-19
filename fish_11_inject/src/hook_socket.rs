@@ -43,7 +43,7 @@ const MAXIMUM_PREVIEW_SIZE: usize = 64;
 /// Copy the trampoline (original API) out of a detour. Callers must **drop the hook mutex**
 /// before invoking the returned pointer, or same-thread re-entry into the hook deadlocks on a
 /// non-reentrant `std::sync::Mutex`. (`GenericDetour::trampoline` is `&()`; transmute needs a
-/// concrete function type — see `retour` tests.)
+/// concrete function type : see `retour` tests.)
 #[inline]
 unsafe fn recv_detour_original(hook: &GenericDetour<RecvFn>) -> RecvFn {
     std::mem::transmute(hook.trampoline())

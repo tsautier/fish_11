@@ -77,7 +77,7 @@ pub use fish_11_core::globals::{
 /// terminating NUL that mIRC reserves). Falls back to [`MIRC_BUFFER_SIZE`] when [`LOAD_INFO`](crate::dll_interface::core::LOAD_INFO) is unset.
 ///
 /// Note: [`crate::buffer_utils::write_cstring_to_buffer`] still caps each **copied** result string
-/// to [`MIRC_DLL_RESULT_PAYLOAD_CAP`] bytes including NUL — see the buffer module docs.
+/// to [`MIRC_DLL_RESULT_PAYLOAD_CAP`] bytes including NUL : see the buffer module docs.
 pub(crate) fn get_buffer_size() -> usize {
     use self::core::LOAD_INFO;
 

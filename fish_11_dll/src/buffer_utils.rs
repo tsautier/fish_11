@@ -41,8 +41,8 @@ impl std::fmt::Display for BufferError {
 /// # Safely writes a CString to a mIRC DLL result buffer.
 ///
 /// The copied payload (including NUL) is capped at [`MIRC_DLL_RESULT_PAYLOAD_CAP`]. The `buffer_size`
-/// argument should be the caller’s usable size (typically from [`get_buffer_size`]); we clear that full
-/// span but only copy up to the cap — see the [module-level contract](self).
+/// argument should be the caller's usable size (typically from [`get_buffer_size`]); we only clear
+/// the span we actually write to : see the [module-level contract](self).
 ///
 /// # Safety
 /// `data` must point to at least `buffer_size` writable bytes.
@@ -62,12 +62,12 @@ pub unsafe fn write_cstring_to_buffer(
     let bytes = message.as_bytes_with_nul();
     let copy_len = bytes.len().min(buffer_size);
 
-    // Only clear/write what we actually need, not the entire reported buffer size
-    // This prevents writing beyond the actual allocated buffer in tests
+    // Cap at mIRC payload limit to prevent overflows
     let safe_len = copy_len.min(MIRC_DLL_RESULT_PAYLOAD_CAP);
 
-    // Clear the entire buffer to prevent garbage data
-    ptr::write_bytes(data as *mut u8, 0, buffer_size);
+    // Only clear the bytes we will actually write, not the entire buffer
+    // This prevents writing beyond the actual allocated buffer
+    ptr::write_bytes(data as *mut u8, 0, safe_len);
 
     // Copy data
     ptr::copy_nonoverlapping(bytes.as_ptr(), data as *mut u8, safe_len);

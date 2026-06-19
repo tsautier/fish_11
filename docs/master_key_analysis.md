@@ -321,25 +321,25 @@ zxcvbn = "2.2"
 
 ## 📋 Plan d'implémentation (phases)
 
-### Phase 1 — Core cryptographique (2-3 jours)
+### Phase 1 : Core cryptographique (2-3 jours)
 
 - [ ] `derivation.rs` : Argon2id + HKDF avec séparation stricte
 - [ ] `encryption.rs` : ChaCha20-Poly1305 + gestion nonces/compteurs
 - [ ] Tests unitaires complets
 
-### Phase 2 — Key management (2-3 jours)
+### Phase 2 : Key management (2-3 jours)
 
 - [ ] `keystore.rs` : lecture/écriture avec métadonnées
 - [ ] `rotation.rs` : logique de rotation automatique
 - [ ] `migration.rs` : migration depuis format clair
 
-### Phase 3 — Interface DLL (1-2 jours)
+### Phase 3 : Interface DLL (1-2 jours)
 
 - [ ] Fonctions `FiSH11_MasterKey*` pour mIRC
 - [ ] Intégration avec commandes existantes
 - [ ] Documentation utilisateur
 
-### Phase 4 — Logs et finalisation (1 jour)
+### Phase 4 : Logs et finalisation (1 jour)
 
 - [ ] Chiffrement automatique des logs
 - [ ] Export/import backup

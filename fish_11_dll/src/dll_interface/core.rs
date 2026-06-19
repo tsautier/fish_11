@@ -276,7 +276,7 @@ pub extern "stdcall" fn LoadDll(load: *mut LOADINFO) -> BOOL {
             Err(()) => return 0,
         }
         log::warn!(
-            "LoadDll called with null LOADINFO pointer — synthetic LOADINFO installed (m_bytes={}, unicode_mode={}, m_keep not set on client struct)",
+            "LoadDll called with null LOADINFO pointer : synthetic LOADINFO installed (m_bytes={}, unicode_mode={}, m_keep not set on client struct)",
             buffer_size,
             unicode_mode
         );
@@ -389,7 +389,7 @@ pub extern "C" fn LoadDll(load: *mut LOADINFO) -> BOOL {
             Err(()) => return 0,
         }
         log::warn!(
-            "LoadDll called with null LOADINFO pointer — synthetic LOADINFO installed (m_bytes={}, m_keep not set on client struct)",
+            "LoadDll called with null LOADINFO pointer : synthetic LOADINFO installed (m_bytes={}, m_keep not set on client struct)",
             buffer_size
         );
     }

@@ -534,7 +534,7 @@ macro_rules! dll_function_identifier {
         ) -> c_int {
             use $crate::unified_error::DllResult;
             use zeroize::Zeroize;
-            // See comment in dll_function! — ensure inner() operates on the
+            // See comment in dll_function! : ensure inner() operates on the
             // `_parms` pointer which contains the caller-supplied input.
             fn inner(_parms: *mut c_char, outbuf: *mut c_char) -> DllResult<String> {
                 let input_ptr: *mut c_char = unsafe {
