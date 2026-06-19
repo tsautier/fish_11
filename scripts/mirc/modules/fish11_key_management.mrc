@@ -195,9 +195,24 @@ alias fish11_showkey {
 
   var %theKey = $dll(%Fish11DllFile, FiSH11_FileGetKey, %cur_contact)
   if (%theKey != $null) {
-    window -dCo +l @FiSH-Key -1 -1 500 80
+    window -dCo +l @FiSH-Key -1 -1 500 120
     aline @FiSH-Key Key for %cur_contact :
     aline -p @FiSH-Key %theKey
+    
+    ; Show key TTL (expiration) if available
+    var %ttl = $dll(%Fish11DllFile, FiSH11_GetKeyTTL, %cur_contact)
+    if (%ttl == EXPIRED) {
+      aline @FiSH-Key Status: EXPIRED - use /fish11_X25519_INIT %cur_contact to renew
+    }
+    else if (%ttl == NO_TTL) {
+      aline @FiSH-Key Status: No expiration (manually set key)
+    }
+    else if (%ttl isnum) {
+      var %hours = $int($calc(%ttl / 3600))
+      var %mins = $int($calc((%ttl % 3600) / 60))
+      aline @FiSH-Key Status: Expires in %hours hours %mins minutes
+    }
+    
     unset %theKey
   }
   else {
@@ -432,6 +447,7 @@ alias fish_encrypt11 { return $fish11_encrypt($1, $2-) }
 alias fish_decrypt11 { return $fish11_decrypt($1, $2-) }
 alias fish_keyx11 { fish11_X25519_INIT $1 }
 alias fish_keyp11 { fish11_ProcessPublicKey $1 $2- }
+alias fish_keyttl11 { fish11_keyttl $1 }
 alias fish_test11 { fish11_test_crypt $1- }
 alias fish_help11 { fish11_help }
 alias fish_version11 { fish11_version }
