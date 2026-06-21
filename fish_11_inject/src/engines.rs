@@ -53,7 +53,13 @@ pub struct SafeEngine {
     get_network_name_ptr: unsafe extern "C" fn(u32) -> *mut i8,
 }
 
-// Allow sending across threads if InjectEngines is shared via Arc/Mutex/RwLock
+// SAFETY: SafeEngine stores raw function pointers from external DLLs (engines).
+// These pointers are valid as long as the engine DLL is loaded, which is guaranteed
+// by the engine lifecycle management in InjectEngines. The engine DLLs are loaded
+// via LoadLibraryA and unloaded via FreeLibrary only when all references are dropped.
+// All callback invocations go through SafeEngine wrappers that validate pointers
+// before calling. The engine registration API requires engines to provide valid
+// function pointers at registration time, and version compatibility is verified.
 unsafe impl Send for SafeEngine {}
 unsafe impl Sync for SafeEngine {}
 
@@ -353,6 +359,33 @@ impl InjectEngines {
             }
         }
         drop(post); // Release read lock
+
+        modified
+    }
+
+    /// Process an incoming line through all registered engines
+    pub fn on_incoming_irc_line(&self, socket: u32, line: &mut String) -> bool {
+        let mut modified = false;
+
+        // Run pre-processors
+        let pre = self.pre_engines.read();
+
+        for engine in pre.iter() {
+            if engine.on_incoming_irc_line(socket, line) {
+                modified = true;
+            }
+        }
+        drop(pre);
+
+        // Run post-processors
+        let post = self.post_engines.read();
+
+        for engine in post.iter() {
+            if engine.on_incoming_irc_line(socket, line) {
+                modified = true;
+            }
+        }
+        drop(post);
 
         modified
     }

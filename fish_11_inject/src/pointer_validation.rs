@@ -7,6 +7,14 @@ use windows::Win32::System::Threading::GetCurrentProcess;
 /// Checks:
 /// 1. Is not NULL
 /// 2. Is within the address space of the given module (if module handle provided)
+///
+/// Note: Address-range validation is sufficient here because the pointers being validated
+/// are resolved from the module's export table via `GetProcAddress`. A pointer that falls
+/// within the module's address range was either exported by that module or points to data
+/// within it : both are valid targets for hooking. We cannot meaningfully verify that the
+/// pointer points to executable code without disassembling the instruction stream, which
+/// would add complexity without security benefit in this context (the functions are loaded
+/// from known, trusted OpenSSL libraries).
 pub unsafe fn validate_function_pointer(
     ptr: FARPROC,
     module: Option<HMODULE>,
