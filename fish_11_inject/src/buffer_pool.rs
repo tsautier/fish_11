@@ -24,11 +24,11 @@ pub struct BufferPool {
 
 /// Statistics about buffer pool usage
 #[derive(Debug, Clone, Default)]
-struct BufferPoolStats {
-    allocations: usize,
-    reuses: usize,
-    current_pool_size: usize,
-    max_pool_size: usize,
+pub struct BufferPoolStats {
+    pub allocations: usize,
+    pub reuses: usize,
+    pub current_pool_size: usize,
+    pub max_pool_size: usize,
 }
 
 impl BufferPool {
@@ -196,8 +196,13 @@ impl SmartBuffer {
 
 impl Drop for SmartBuffer {
     fn drop(&mut self) {
-        // Automatically return the buffer to the pool when dropped
-        self.pool.release(self.buffer.clone());
+        // Take ownership of the buffer without cloning, then release it to the pool.
+        // Using clone() here would create a duplicate : the original would be dropped
+        // normally while the clone is returned to the pool, wasting memory.
+        let buffer = std::mem::take(&mut self.buffer);
+        if !buffer.is_empty() || buffer.capacity() > 0 {
+            self.pool.release(buffer);
+        }
     }
 }
 
