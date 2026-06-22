@@ -16,7 +16,7 @@ regex = "1.11.1"
 log = { version = "0.4", features = ["std"] }
 chrono = { version = "0.4", features = ["serde"] }
 lazy_static = "1.4"
-rand = "0.8.5"
+rand = "0.8.6"
 scopeguard = "1.2.0"
 argon2 = "0.5"
 chacha20poly1305 = "0.10"
