@@ -2,17 +2,17 @@
 //!
 //! Handles persistent storage of sensitive data like salts, nonce counters, etc.
 
-use base64::{Engine as _, engine::general_purpose};
-use chacha20poly1305::{
-    ChaCha20Poly1305, Key, Nonce,
-    aead::{Aead, KeyInit},
-};
+use std::collections::HashMap;
+use std::path::PathBuf;
+
+use base64::Engine as _;
+use base64::engine::general_purpose;
+use chacha20poly1305::aead::{Aead, KeyInit};
+use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use configparser::ini::Ini;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
-use std::path::PathBuf;
 
 /// Metadata associated with keys
 #[derive(Debug, Clone, Serialize, Deserialize)]

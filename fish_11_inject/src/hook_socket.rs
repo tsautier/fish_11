@@ -1,21 +1,23 @@
 //! This module contains the hooks for Winsock functions
 //! It includes the hooks for recv, send, connect, and closesocket
 
-use crate::socket::handlers::protocol_detection;
-use crate::socket::info::SocketInfo;
-use crate::socket::state::SocketState;
-use crate::{ACTIVE_SOCKETS, DISCARDED_SOCKETS, ENGINES, InjectEngines};
+use std::ffi::c_int;
+use std::sync::{Arc, Mutex as StdMutex};
+
 use fish_11_core::globals::{
     CMD_JOIN, CMD_NOTICE, CMD_PRIVMSG, KEY_EXCHANGE_INIT, KEY_EXCHANGE_PUBKEY,
 };
 use log::{debug, error, info, trace, warn};
 use retour::{Function, GenericDetour};
 use sha2::{Digest, Sha256};
-use std::ffi::c_int;
-use std::sync::{Arc, Mutex as StdMutex};
 use windows::Win32::Networking::WinSock::{
     SOCKADDR, SOCKET, SOCKET_ERROR, WSAEINTR, WSAEINVAL, WSAGetLastError, WSASetLastError,
 };
+
+use crate::socket::handlers::protocol_detection;
+use crate::socket::info::SocketInfo;
+use crate::socket::state::SocketState;
+use crate::{ACTIVE_SOCKETS, DISCARDED_SOCKETS, ENGINES, InjectEngines};
 
 /// Return [`SOCKET_ERROR`] and set a Winsock error for callers (`WSAGetLastError`).
 #[inline]
@@ -44,18 +46,26 @@ const MAXIMUM_PREVIEW_SIZE: usize = 64;
 /// before invoking the returned pointer, or same-thread re-entry into the hook deadlocks on a
 /// non-reentrant `std::sync::Mutex`. (`GenericDetour::trampoline` is `&()`; transmute needs a
 /// concrete function type : see `retour` tests.)
+///
+/// # Safety
+/// - The `hook` must be a valid, installed detour created by `retour::detour`
+/// - The returned function pointer is valid only while the detour is installed
+/// - The caller must not call the returned function while holding the hook mutex
 #[inline]
 unsafe fn recv_detour_original(hook: &GenericDetour<RecvFn>) -> RecvFn {
     std::mem::transmute(hook.trampoline())
 }
+/// SAFETY: Same constraints as `recv_detour_original` above.
 #[inline]
 unsafe fn send_detour_original(hook: &GenericDetour<SendFn>) -> SendFn {
     std::mem::transmute(hook.trampoline())
 }
+/// SAFETY: Same constraints as `recv_detour_original` above.
 #[inline]
 unsafe fn connect_detour_original(hook: &GenericDetour<ConnectFn>) -> ConnectFn {
     std::mem::transmute(hook.trampoline())
 }
+/// SAFETY: Same constraints as `recv_detour_original` above.
 #[inline]
 unsafe fn closesocket_detour_original(hook: &GenericDetour<ClosesocketFn>) -> ClosesocketFn {
     std::mem::transmute(hook.trampoline())
@@ -174,11 +184,37 @@ pub unsafe extern "system" fn hooked_recv(
 
         // Safety: ensure len is non-negative before casting
         let safe_len = if len > 0 { len as usize } else { 0 };
-        let bytes_to_copy = std::cmp::min(safe_len, processed_buffer.len());
+
+        // Only copy complete lines (ending with \r\n) to avoid returning truncated
+        // IRC messages to mIRC, which would corrupt the protocol display.
+        // Find the last \r\n boundary within the mIRC buffer size limit.
+        let boundary = processed_buffer[..std::cmp::min(safe_len, processed_buffer.len())]
+            .windows(2)
+            .rposition(|w| w == b"\r\n")
+            .map(|pos| pos + 2)
+            .unwrap_or(0);
+
+        let bytes_to_copy = boundary;
 
         if bytes_to_copy > 0 {
             let target_buf = std::slice::from_raw_parts_mut(buf, bytes_to_copy);
             target_buf.copy_from_slice(&processed_buffer[..bytes_to_copy]);
+
+            // Return remaining bytes (incomplete trailing data) to the processed buffer
+            // so they survive for the next recv() call.
+            if bytes_to_copy < processed_buffer.len() {
+                let mut remaining = socket_info.processed_incoming_buffer.lock();
+                let leftover = &processed_buffer[bytes_to_copy..];
+                remaining.clear();
+                remaining.extend(leftover);
+
+                #[cfg(debug_assertions)]
+                debug!(
+                    "[RECV DEBUG] socket {}: preserved {} bytes of incomplete trailing data",
+                    s.0,
+                    leftover.len()
+                );
+            }
 
             #[cfg(debug_assertions)]
             {
@@ -189,7 +225,6 @@ pub unsafe extern "system" fn hooked_recv(
                     processed_buffer.len()
                 );
 
-                // Log what we're actually returning
                 if let Ok(text) = std::str::from_utf8(&processed_buffer[..bytes_to_copy]) {
                     info!("[RECV] {}: returning to mIRC: {}", s.0, text.trim_end());
                 } else {
@@ -202,7 +237,7 @@ pub unsafe extern "system" fn hooked_recv(
             }
         }
 
-        // After reading, clear the processed buffer for the next round.
+        // Clear processed buffer — any incomplete trailing data was already preserved above.
         socket_info.clear_processed_buffer();
 
         return bytes_to_copy as c_int;
@@ -509,10 +544,7 @@ unsafe fn uninstall_one_winsock_hook<T: Copy + Function>(
     ) {
         Ok(g) => g,
         Err(e) => {
-            error!(
-                "uninstall_socket_hooks: timed out acquiring {} mutex: {}",
-                hook_label, e
-            );
+            error!("uninstall_socket_hooks: timed out acquiring {} mutex: {}", hook_label, e);
             return;
         }
     };

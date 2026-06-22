@@ -46,7 +46,9 @@ pub fn init_logger(level: LevelFilter) -> Result<(), LogError> {
     fish_11_core::logging::init_logging(config)?;
 
     if is_logger_initialized() {
-        log_info!("*********** *********** FiSH_11 : core dll logger initialized *************** ***********");
+        log_info!(
+            "*********** *********** FiSH_11 : core dll logger initialized *************** ***********"
+        );
         log_info!("Logger initialized - writing to: {}", log_path.display());
 
         if let Ok(cwd) = std::env::current_dir() {
@@ -54,11 +56,7 @@ pub fn init_logger(level: LevelFilter) -> Result<(), LogError> {
         }
 
         log_info!("FiSH_11 DLL version: {}", BUILD_VERSION);
-        log_info!(
-            "Build date: {}, Build time: {}",
-            BUILD_DATE.as_str(),
-            BUILD_TIME.as_str()
-        );
+        log_info!("Build date: {}, Build time: {}", BUILD_DATE.as_str(), BUILD_TIME.as_str());
     }
 
     Ok(())

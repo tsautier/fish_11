@@ -18,6 +18,9 @@ use crate::legacy::fish10_message_detection;
 type GetNetworkNameFn = unsafe extern "C" fn(u32) -> *mut c_char;
 static GET_NETWORK_NAME_FN: OnceCell<GetNetworkNameFn> = OnceCell::new();
 
+type FreeStringFn = unsafe extern "C" fn(*mut c_char);
+static GET_FREE_STRING_FN: OnceCell<FreeStringFn> = OnceCell::new();
+
 // C-style struct for engine registration
 #[repr(C)]
 pub struct FishInjectEngine {
@@ -960,6 +963,21 @@ pub fn register_engine() {
             }
         }
 
+        let free_string_fn_name = CString::new("FreeString").unwrap();
+        let free_string_fn =
+            GetProcAddress(h_module, PCSTR(free_string_fn_name.as_ptr() as *const u8));
+
+        if free_string_fn.is_none() {
+            #[cfg(debug_assertions)]
+            log_warn!("FreeString function not found in fish_11_inject.dll.");
+        } else {
+            let free_string_fn_ptr: FreeStringFn = std::mem::transmute(free_string_fn.unwrap());
+            if let Err(_) = GET_FREE_STRING_FN.set(free_string_fn_ptr) {
+                #[cfg(debug_assertions)]
+                log_error!("FreeString function already set, this should not happen.");
+            }
+        }
+
         let register_fn_name = CString::new("RegisterEngine").unwrap();
         let register_fn = GetProcAddress(h_module, PCSTR(register_fn_name.as_ptr() as *const u8));
 
@@ -988,11 +1006,17 @@ pub fn get_network_name_from_inject(socket_id: u32) -> Option<String> {
             let c_char_ptr = get_network_name_fn(socket_id);
 
             if !c_char_ptr.is_null() {
-                let c_string = CString::from_raw(c_char_ptr);
+                // Use CStr::from_ptr to borrow the string, then copy it to a Rust String,
+                // and free via the inject DLL's FreeString to respect the API contract.
+                // Using CString::from_raw would take ownership and free with the wrong allocator.
+                let c_str = std::ffi::CStr::from_ptr(c_char_ptr);
+                let rust_string = c_str.to_string_lossy().into_owned();
 
-                if let Ok(rust_string) = c_string.into_string() {
-                    return Some(rust_string);
+                if let Some(free_string_fn) = GET_FREE_STRING_FN.get() {
+                    free_string_fn(c_char_ptr);
                 }
+
+                return Some(rust_string);
             }
         }
     }

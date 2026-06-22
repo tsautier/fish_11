@@ -1,17 +1,19 @@
+use std::ffi::{CString, c_int, c_void};
+use std::sync::Mutex as StdMutex;
+
+use log::{debug, error, info, trace, warn};
+use once_cell::sync::Lazy;
+use retour::{Function, GenericDetour};
+use windows::Win32::Foundation::FARPROC;
+use windows::Win32::Networking::WinSock::SOCKET;
+use windows::Win32::System::LibraryLoader::{GetModuleHandleA, GetProcAddress, LoadLibraryA};
+use windows::core::PCSTR;
+
 use crate::helpers_inject::handle_poison;
 use crate::hook_socket::get_or_create_socket;
 use crate::pointer_validation::validate_function_pointer;
 use crate::socket::state::SocketState;
 use crate::ssl_mapping::SslSocketMapping;
-use log::{debug, error, info, trace, warn};
-use once_cell::sync::Lazy;
-use retour::{Function, GenericDetour};
-use std::ffi::{CString, c_int, c_void};
-use std::sync::Mutex as StdMutex;
-use windows::Win32::Foundation::FARPROC;
-use windows::Win32::Networking::WinSock::SOCKET;
-use windows::Win32::System::LibraryLoader::{GetModuleHandleA, GetProcAddress, LoadLibraryA};
-use windows::core::PCSTR;
 
 // SSL structure (opaque)
 #[repr(C)]
@@ -23,14 +25,29 @@ pub struct SSLWrapper {
     pub ssl: *mut SSL,
 }
 
+// SAFETY: SSLWrapper is used to track SSL connections across threads.
+// The raw pointer is managed by OpenSSL which provides its own threading guarantees
+// when properly initialized (SSL_library_init / OPENSSL_init_ssl).
+// The pointer is only used for identity comparison and mapping, never dereferenced
+// directly from Rust code - actual SSL operations go through the original SSL_read/SSL_write.
 unsafe impl Send for SSLWrapper {}
 unsafe impl Sync for SSLWrapper {}
 
+// SAFETY: SSL is an opaque OpenSSL structure. We only hold raw pointers to it for
+// socket-to-SSL mapping purposes. All actual SSL operations (read/write/free) are
+// performed through the original OpenSSL function pointers, never through Rust.
+// OpenSSL's threading model (when properly initialized) allows pointer storage across threads.
 unsafe impl Send for SSL {}
 unsafe impl Sync for SSL {}
 
 pub type SslReadFn = unsafe extern "C" fn(*mut SSL, *mut u8, c_int) -> c_int;
 
+/// Extract the original SSL_read function pointer from a detour.
+///
+/// # Safety
+/// - The `hook` must be a valid, installed detour created by `retour::detour`
+/// - The returned function pointer is valid only while the detour is installed
+/// - The caller must not call the returned function while holding the hook mutex
 #[inline]
 unsafe fn ssl_read_detour_original(hook: &GenericDetour<SslReadFn>) -> SslReadFn {
     std::mem::transmute(hook.trampoline())
@@ -58,20 +75,20 @@ pub static SSL_GET_FD: Lazy<StdMutex<Option<SslGetFdFn>>> = Lazy::new(|| StdMute
 pub static SSL_FREE_HOOK: Lazy<StdMutex<Option<GenericDetour<SslFreeFn>>>> =
     Lazy::new(|| StdMutex::new(None));
 pub static SSL_HOOKS_INSTALLED: Lazy<StdMutex<bool>> = Lazy::new(|| StdMutex::new(false));
-pub static ORIGINAL_SSL_READ: Lazy<StdMutex<Option<SslReadFn>>> =
-    Lazy::new(|| StdMutex::new(None));
+pub static ORIGINAL_SSL_READ: Lazy<StdMutex<Option<SslReadFn>>> = Lazy::new(|| StdMutex::new(None));
 pub static ORIGINAL_SSL_WRITE: Lazy<StdMutex<Option<SslWriteFn>>> =
     Lazy::new(|| StdMutex::new(None));
 pub static ORIGINAL_SSL_CONNECT: Lazy<StdMutex<Option<SslConnectFn>>> =
     Lazy::new(|| StdMutex::new(None));
 pub static ORIGINAL_SSL_NEW: Lazy<StdMutex<Option<SslNewFn>>> = Lazy::new(|| StdMutex::new(None));
-pub static ORIGINAL_SSL_FREE: Lazy<StdMutex<Option<SslFreeFn>>> =
+pub static ORIGINAL_SSL_FREE: Lazy<StdMutex<Option<SslFreeFn>>> = Lazy::new(|| StdMutex::new(None));
+
+static SSL_SET_FD_HOOK: Lazy<StdMutex<Option<GenericDetour<SslSetFdFn>>>> =
     Lazy::new(|| StdMutex::new(None));
 
-static SSL_SET_FD_HOOK: StdMutex<Option<GenericDetour<SslSetFdFn>>> = StdMutex::new(None);
-
 unsafe extern "C" fn hooked_ssl_set_fd(ssl: *mut SSL, fd: c_int) -> c_int {
-    static ORIGINAL_SSL_SET_FD: StdMutex<Option<SslSetFdFn>> = StdMutex::new(None);
+    static ORIGINAL_SSL_SET_FD: Lazy<StdMutex<Option<SslSetFdFn>>> =
+        Lazy::new(|| StdMutex::new(None));
     trace!("SSL_set_fd() called with ssl: {:p}, fd: {}", ssl, fd);
 
     let original_fn = {
@@ -329,11 +346,36 @@ pub unsafe extern "C" fn hooked_ssl_read(ssl: *mut SSL, buf: *mut u8, num: c_int
     let processed_buffer = socket_info.get_processed_buffer();
 
     let safe_len = if num > 0 { num as usize } else { 0 };
-    let bytes_to_copy = std::cmp::min(safe_len, processed_buffer.len());
+
+    // Only copy complete lines (ending with \r\n) to avoid returning truncated
+    // IRC messages to the application, which would corrupt the protocol.
+    let boundary = processed_buffer[..std::cmp::min(safe_len, processed_buffer.len())]
+        .windows(2)
+        .rposition(|w| w == b"\r\n")
+        .map(|pos| pos + 2)
+        .unwrap_or(0);
+
+    let bytes_to_copy = boundary;
 
     if bytes_to_copy > 0 {
         let target_buf = std::slice::from_raw_parts_mut(buf, bytes_to_copy);
         target_buf.copy_from_slice(&processed_buffer[..bytes_to_copy]);
+
+        // Return remaining bytes (incomplete trailing data) to the processed buffer
+        // so they survive for the next SSL_read call.
+        if bytes_to_copy < processed_buffer.len() {
+            let mut remaining = socket_info.processed_incoming_buffer.lock();
+            let leftover = &processed_buffer[bytes_to_copy..];
+            remaining.clear();
+            remaining.extend(leftover);
+
+            #[cfg(debug_assertions)]
+            debug!(
+                "[SSL_read] socket {}: preserved {} bytes of incomplete trailing data",
+                socket_id,
+                leftover.len()
+            );
+        }
 
         #[cfg(debug_assertions)]
         {
@@ -503,8 +545,7 @@ pub unsafe fn install_ssl_hooks(
     let mut original_ssl_read = ORIGINAL_SSL_READ.lock().unwrap_or_else(handle_poison);
     let mut original_ssl_write = ORIGINAL_SSL_WRITE.lock().unwrap_or_else(handle_poison);
     let mut ssl_get_fd_slot = SSL_GET_FD.lock().unwrap_or_else(handle_poison);
-    let mut ssl_is_init_finished_slot =
-        SSL_IS_INIT_FINISHED.lock().unwrap_or_else(handle_poison);
+    let mut ssl_is_init_finished_slot = SSL_IS_INIT_FINISHED.lock().unwrap_or_else(handle_poison);
 
     *original_ssl_read = Some(ssl_read);
     *original_ssl_write = Some(ssl_write);
@@ -589,10 +630,7 @@ unsafe fn uninstall_one_ssl_detour<T: Copy + Function>(
     ) {
         Ok(g) => g,
         Err(e) => {
-            error!(
-                "uninstall_ssl_hooks: timed out acquiring {} mutex: {}",
-                hook_label, e
-            );
+            error!("uninstall_ssl_hooks: timed out acquiring {} mutex: {}", hook_label, e);
             return;
         }
     };
@@ -605,15 +643,10 @@ unsafe fn uninstall_one_ssl_detour<T: Copy + Function>(
 }
 
 fn clear_ssl_slot<T>(label: &'static str, mutex: &StdMutex<T>, value: T) {
-    match crate::lock_utils::try_lock_timeout(
-        mutex,
-        crate::lock_utils::UNINSTALL_HOOK_LOCK_TIMEOUT,
-    ) {
+    match crate::lock_utils::try_lock_timeout(mutex, crate::lock_utils::UNINSTALL_HOOK_LOCK_TIMEOUT)
+    {
         Ok(mut g) => *g = value,
-        Err(e) => error!(
-            "uninstall_ssl_hooks: timed out clearing {}: {}",
-            label, e
-        ),
+        Err(e) => error!("uninstall_ssl_hooks: timed out clearing {}: {}", label, e),
     }
 }
 

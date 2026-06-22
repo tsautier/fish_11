@@ -1,6 +1,7 @@
+use log::{debug, info, trace};
+
 use crate::socket::info::SocketInfo;
 use crate::socket::state::{SocketError, SocketState};
-use log::{debug, info, trace};
 
 impl SocketInfo {
     /// Handle the first data sent on a connection to identify protocol

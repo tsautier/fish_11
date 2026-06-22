@@ -1,13 +1,14 @@
 //! Keystore encryption module
 //! Provides functions to encrypt and decrypt keystore data
 
-use crate::master_key::keystore::Keystore;
-use base64::{Engine as _, engine::general_purpose};
-use chacha20poly1305::{
-    ChaCha20Poly1305, Key, Nonce,
-    aead::{Aead, KeyInit},
-};
 use std::path::PathBuf;
+
+use base64::Engine as _;
+use base64::engine::general_purpose;
+use chacha20poly1305::aead::{Aead, KeyInit};
+use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
+
+use crate::master_key::keystore::Keystore;
 
 /// Header for encrypted keystore files
 const ENCRYPTED_KEYSTORE_HEADER: &str = "# FiSH_11_ENCRYPTED_KEYSTORE_V1\n";
@@ -460,9 +461,11 @@ pub fn load_encrypted_keystore_from_path_with_key(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::fs;
+
     use tempfile::NamedTempFile;
+
+    use super::*;
 
     #[test]
     fn test_encrypt_decrypt_roundtrip() {

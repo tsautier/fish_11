@@ -1,5 +1,6 @@
-use crate::socket::info::SocketInfo;
 use log::info;
+
+use crate::socket::info::SocketInfo;
 
 pub fn is_network_info(line: &str) -> bool {
     line.contains(" 005 ")

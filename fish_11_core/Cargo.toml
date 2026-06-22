@@ -16,7 +16,7 @@ regex = "1.11.1"
 log = { version = "0.4", features = ["std"] }
 chrono = { version = "0.4", features = ["serde"] }
 lazy_static = "1.4"
-rand = "0.8.5"
+rand = "0.8.6"
 scopeguard = "1.2.0"
 argon2 = "0.5"
 chacha20poly1305 = "0.10"
@@ -33,20 +33,3 @@ tempfile = "3.24.0"
 [build-dependencies]
 vergen = { version = "9.0.6", features = ["build", "cargo", "rustc", "si"] }
 
-[profile.dev]
-opt-level = 0      # No optimization for faster compilation
-debug = 2          # Full debug information (maximum)
-strip = false      # Keep all symbols
-panic = "unwind"   # Full stack traces for debugging
-incremental = true # Faster recompilation
-lto = false        # Faster compilation
-
-[profile.release]
-opt-level = "z"   # Optimize for size
-lto = true        # Link Time Optimization
-codegen-units = 1 # Maximum optimization
-panic = "abort"   # Remove unwinding code
-strip = true      # Remove symbols
-
-[profile.release.package."*"]
-codegen-units = 1

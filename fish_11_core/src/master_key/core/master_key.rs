@@ -1,9 +1,10 @@
 // Master Key Core - Primary key that protects all other keys
 
+use std::sync::{Arc, Mutex};
+
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key};
 use sha2::{Digest, Sha256};
-use std::sync::{Arc, Mutex};
 
 /// Primary Master Key - protects all other keys in the system
 #[derive(Debug, Clone)]

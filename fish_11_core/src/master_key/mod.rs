@@ -22,8 +22,8 @@ pub mod password_validation;
 pub mod rotation;
 // New core system exports
 pub use core::{
-    ConfigKey, ConfigKeyGuard, MasterKey, MasterKeyGuard, get_config_key,
-    initialize_key_system, is_key_system_unlocked, lock_key_system, rotate_all_keys,
+    ConfigKey, ConfigKeyGuard, MasterKey, MasterKeyGuard, get_config_key, initialize_key_system,
+    is_key_system_unlocked, lock_key_system, rotate_all_keys,
 };
 
 // Legacy system exports (to be deprecated)

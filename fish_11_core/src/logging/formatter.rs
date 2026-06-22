@@ -1,7 +1,8 @@
+use log::Record;
+
 use crate::logging::config::LogConfig;
 use crate::logging::context::LogContext;
 use crate::logging::security;
-use log::Record;
 
 pub fn format_record(record: &Record, context: &LogContext, config: &LogConfig) -> String {
     let mut message = format!("{}", record.args());
@@ -29,11 +30,8 @@ pub fn format_record(record: &Record, context: &LogContext, config: &LogConfig) 
         metadata.push(format!("{}:{}", file, line));
     }
 
-    let metadata = metadata
-        .into_iter()
-        .map(|segment| format!("[{}]", segment))
-        .collect::<Vec<_>>()
-        .join(" ");
+    let metadata =
+        metadata.into_iter().map(|segment| format!("[{}]", segment)).collect::<Vec<_>>().join(" ");
 
     format!("[{}] {} {}\n", timestamp, metadata, message)
 }
@@ -44,8 +42,9 @@ fn add_context(message: &str, context: &LogContext) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use log::{Level, Record};
+
+    use super::*;
 
     #[test]
     fn inject_profile_formats_with_source_location() {

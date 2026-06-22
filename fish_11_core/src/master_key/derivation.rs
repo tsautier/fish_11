@@ -3,7 +3,8 @@
 //! Handles the derivation of the master key from a password using Argon2id,
 //! and derivation of subkeys using HKDF with proper context separation.
 
-use argon2::{Algorithm, Argon2, Params, PasswordHasher, Version, password_hash::SaltString};
+use argon2::password_hash::SaltString;
+use argon2::{Algorithm, Argon2, Params, PasswordHasher, Version};
 use hkdf::Hkdf;
 use sha2::Sha256;
 

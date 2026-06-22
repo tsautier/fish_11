@@ -24,16 +24,17 @@ mod pointer_validation;
 pub mod socket;
 mod ssl_detection;
 pub mod ssl_mapping;
+use std::ffi::c_void;
+use std::ptr::null_mut;
+use std::sync::atomic::{AtomicBool, AtomicPtr};
+use std::sync::{Arc, Mutex};
+
 use buffer_pool::BufferPool;
 use dashmap::DashMap;
 use engines::InjectEngines;
 use fish_11_core::globals::{MIRC_HALT, MIRC_IDENTIFIER};
 use once_cell::sync::Lazy;
 use socket::info::SocketInfo;
-use std::ffi::c_void;
-use std::ptr::null_mut;
-use std::sync::atomic::{AtomicBool, AtomicPtr};
-use std::sync::{Arc, Mutex};
 use windows::Win32::Foundation::HMODULE;
 
 /// Global buffer pool for efficient memory management
@@ -43,8 +44,7 @@ pub static BUFFER_POOL: Lazy<Arc<BufferPool>> = Lazy::new(|| BufferPool::new());
 pub static ACTIVE_SOCKETS: Lazy<DashMap<u32, Arc<SocketInfo>>> = Lazy::new(DashMap::new);
 
 pub(crate) static DISCARDED_SOCKETS: Lazy<Mutex<Vec<u32>>> = Lazy::new(|| Mutex::new(Vec::new()));
-pub(crate) static ENGINES: Lazy<Mutex<Option<Arc<InjectEngines>>>> =
-    Lazy::new(|| Mutex::new(None));
+pub(crate) static ENGINES: Lazy<Mutex<Option<Arc<InjectEngines>>>> = Lazy::new(|| Mutex::new(None));
 pub(crate) static DLL_HANDLE: AtomicPtr<c_void> = AtomicPtr::new(null_mut());
 pub(crate) static MAX_MIRC_RETURN_BYTES: Lazy<Mutex<usize>> = Lazy::new(|| Mutex::new(4096));
 

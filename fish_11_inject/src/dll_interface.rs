@@ -1,17 +1,19 @@
+use std::ffi::{CString, c_char, c_int};
+use std::sync::atomic::Ordering;
+
+use fish_11_core::globals::{
+    BUILD_DATE, BUILD_NUMBER, BUILD_TIME, BUILD_VERSION, MIRC_RETURN_DATA_COMMAND,
+};
+use log::{debug, error, info, warn};
+use windows::Win32::Foundation::{HMODULE, HWND};
+use windows::Win32::UI::WindowsAndMessaging::{MB_ICONEXCLAMATION, MB_OK, MessageBoxW};
+
+use crate::engines::InjectEngines;
 use crate::helpers_inject::{cleanup_hooks, init_logger, install_hooks};
 use crate::{
     ACTIVE_SOCKETS, DISCARDED_SOCKETS, DLL_HANDLE, ENGINES, LOADED, MAX_MIRC_RETURN_BYTES,
     MIRC_HALT, MIRC_IDENTIFIER, VERSION_SHOWN,
 };
-use crate::engines::InjectEngines;
-use fish_11_core::globals::{
-    BUILD_DATE, BUILD_NUMBER, BUILD_TIME, BUILD_VERSION, MIRC_RETURN_DATA_COMMAND,
-};
-use log::{debug, error, info, warn};
-use std::ffi::{CString, c_char, c_int};
-use std::sync::atomic::Ordering;
-use windows::Win32::Foundation::{HMODULE, HWND};
-use windows::Win32::UI::WindowsAndMessaging::{MB_ICONEXCLAMATION, MB_OK, MessageBoxW};
 
 fn write_mirc_output_buffer(
     context: &str,
@@ -51,6 +53,7 @@ pub struct LOADINFO {
     pub m_unicode: i32, // mUnicode (BOOL)
     pub m_beta: u32,    // mBeta (DWORD)
     pub m_bytes: u32,   // mBytes (DWORD)
+    pub m_extra: u32,   // mExtra (DWORD) - reserved for future use
 }
 
 #[no_mangle]
@@ -130,11 +133,18 @@ pub extern "stdcall" fn LoadDll(loadinfo: *mut LOADINFO) -> c_int {
             }
         }
         Err(e) => {
-            error!("LoadDll() : failed to lock ENGINES to initialize: {}", e);
+            error!("LoadDll() : failed to lock ENGINES: {}", e);
+            // Poison recovery: the mutex was poisoned by a panic in another thread.
+            // We attempt to recover by using the inner value, but log a warning
+            // as this may indicate corrupted state.
             let mut engines = e.into_inner();
             if engines.is_none() {
                 *engines = Some(std::sync::Arc::new(InjectEngines::new()));
-                warn!("LoadDll() : InjectEngines initialized after lock recovery.");
+                warn!(
+                    "LoadDll() : InjectEngines initialized after poison recovery. State may be unreliable."
+                );
+            } else {
+                warn!("LoadDll() : reusing existing InjectEngines after poison recovery.");
             }
         }
     }
@@ -461,6 +471,7 @@ mod tests {
             m_keep: 0,
             m_bytes: 4096,
             m_beta: 0,
+            m_extra: 0,
         };
 
         // Test that we can create a LOADINFO struct (compile-time check)
