@@ -1,6 +1,7 @@
+use log::{debug, trace, warn};
+
 use crate::socket::info::SocketInfo;
 use crate::socket::state::{SocketError, SocketState};
-use log::{debug, trace, warn};
 
 impl SocketInfo {
     pub fn on_sending(&self, data: &[u8]) -> Result<(), SocketError> {

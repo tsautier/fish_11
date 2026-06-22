@@ -4,14 +4,13 @@
 //! acquiring locks, especially important for hook functions that may be
 //! called during DLL unload or from multiple threads.
 
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use log::{error, warn};
 
 use crate::ENGINES;
 use crate::engines::InjectEngines;
-use std::sync::Arc;
 
 /// Default timeout for lock acquisition (100ms)
 pub const DEFAULT_LOCK_TIMEOUT: Duration = Duration::from_millis(100);

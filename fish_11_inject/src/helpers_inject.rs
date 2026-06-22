@@ -1,3 +1,13 @@
+use std::io;
+use std::sync::PoisonError;
+
+use fish_11_core::logging;
+use log::{error, info, warn};
+use retour::GenericDetour;
+use windows::Win32::Foundation::FARPROC;
+use windows::Win32::System::LibraryLoader::{GetModuleHandleA, GetProcAddress};
+use windows::core::PCSTR;
+
 use crate::hook_socket::{
     CLOSESOCKET_HOOK, CONNECT_HOOK, ClosesocketFn, ConnectFn, RECV_HOOK, RecvFn, SEND_HOOK, SendFn,
     hooked_closesocket, hooked_connect, hooked_recv, hooked_send, uninstall_socket_hooks,
@@ -7,14 +17,6 @@ use crate::hook_ssl::{
     uninstall_ssl_hooks,
 };
 use crate::pointer_validation::validate_function_pointer;
-use fish_11_core::logging;
-use log::{error, info, warn};
-use retour::GenericDetour;
-use std::io;
-use std::sync::PoisonError;
-use windows::Win32::Foundation::FARPROC;
-use windows::Win32::System::LibraryLoader::{GetModuleHandleA, GetProcAddress};
-use windows::core::PCSTR;
 
 /// Initialize the logger
 pub fn init_logger() {

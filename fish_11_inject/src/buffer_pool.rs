@@ -3,11 +3,12 @@
 //! This module provides a thread-safe buffer pool to reduce memory allocations
 //! and improve performance for socket data processing.
 
+use std::collections::VecDeque;
+use std::sync::Arc;
+
 use bytes::{Bytes, BytesMut};
 use log::{debug, trace};
 use parking_lot::Mutex;
-use std::collections::VecDeque;
-use std::sync::Arc;
 
 /// Maximum buffer size to keep in the pool (in bytes)
 const MAX_POOL_BUFFER_SIZE: usize = 16 * 1024; // 16KB

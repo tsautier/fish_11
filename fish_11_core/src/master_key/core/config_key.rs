@@ -1,10 +1,12 @@
 // Configuration Key - Specialized key for encrypting/decrypting configuration
 
-use super::master_key::MasterKey;
+use std::sync::{Arc, Mutex};
+
 use base64::Engine;
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key};
-use std::sync::{Arc, Mutex};
+
+use super::master_key::MasterKey;
 
 /// Configuration Key - derived from MasterKey for config encryption
 #[derive(Debug, Clone)]

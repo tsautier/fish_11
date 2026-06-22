@@ -3,9 +3,10 @@
 //! This module provides buffer management functions that are independent of
 //! platform-specific interfaces. The actual buffer I/O will be handled by
 //! wrapper crates (fish_11_dll, fish_11_lib).
-use crate::globals::MIRC_DLL_RESULT_PAYLOAD_CAP;
 use std::ffi::{CStr, CString, c_char};
 use std::ptr;
+
+use crate::globals::MIRC_DLL_RESULT_PAYLOAD_CAP;
 
 /// Result type for buffer operations
 pub type BufferResult<T> = Result<T, BufferError>;

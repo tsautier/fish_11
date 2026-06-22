@@ -26,13 +26,12 @@
 //! If your use case requires deterministic, sequential nonces (e.g., for audit trails or
 //! message ordering), use the `NonceManager` functions below.
 
-use chacha20poly1305::{
-    ChaCha20Poly1305, Key, Nonce,
-    aead::{Aead, KeyInit},
-};
-use once_cell::sync::Lazy;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
+
+use chacha20poly1305::aead::{Aead, KeyInit};
+use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
+use once_cell::sync::Lazy;
 
 /// Nonce manager for counter-based nonce generation
 static NONCE_MANAGER: Lazy<Mutex<NonceManager>> = Lazy::new(|| Mutex::new(NonceManager::new()));

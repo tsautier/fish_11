@@ -4,10 +4,11 @@
 //! This module provides atomic operations for associating SSL* pointers with
 //! socket IDs, ensuring thread-safe access without risk of race conditions.
 
-use crate::hook_ssl::{SSL, SSLWrapper};
 use dashmap::DashMap;
 use log::{debug, error, trace, warn};
 use once_cell::sync::Lazy;
+
+use crate::hook_ssl::{SSL, SSLWrapper};
 
 /// Global thread-safe mapping from SSL pointer (as usize) to socket ID
 static SSL_TO_SOCKET: Lazy<DashMap<usize, u32>> = Lazy::new(DashMap::new);

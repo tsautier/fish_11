@@ -1,21 +1,23 @@
 //! This module contains the hooks for Winsock functions
 //! It includes the hooks for recv, send, connect, and closesocket
 
-use crate::socket::handlers::protocol_detection;
-use crate::socket::info::SocketInfo;
-use crate::socket::state::SocketState;
-use crate::{ACTIVE_SOCKETS, DISCARDED_SOCKETS, ENGINES, InjectEngines};
+use std::ffi::c_int;
+use std::sync::{Arc, Mutex as StdMutex};
+
 use fish_11_core::globals::{
     CMD_JOIN, CMD_NOTICE, CMD_PRIVMSG, KEY_EXCHANGE_INIT, KEY_EXCHANGE_PUBKEY,
 };
 use log::{debug, error, info, trace, warn};
 use retour::{Function, GenericDetour};
 use sha2::{Digest, Sha256};
-use std::ffi::c_int;
-use std::sync::{Arc, Mutex as StdMutex};
 use windows::Win32::Networking::WinSock::{
     SOCKADDR, SOCKET, SOCKET_ERROR, WSAEINTR, WSAEINVAL, WSAGetLastError, WSASetLastError,
 };
+
+use crate::socket::handlers::protocol_detection;
+use crate::socket::info::SocketInfo;
+use crate::socket::state::SocketState;
+use crate::{ACTIVE_SOCKETS, DISCARDED_SOCKETS, ENGINES, InjectEngines};
 
 /// Return [`SOCKET_ERROR`] and set a Winsock error for callers (`WSAGetLastError`).
 #[inline]
@@ -542,10 +544,7 @@ unsafe fn uninstall_one_winsock_hook<T: Copy + Function>(
     ) {
         Ok(g) => g,
         Err(e) => {
-            error!(
-                "uninstall_socket_hooks: timed out acquiring {} mutex: {}",
-                hook_label, e
-            );
+            error!("uninstall_socket_hooks: timed out acquiring {} mutex: {}", hook_label, e);
             return;
         }
     };

@@ -1,17 +1,19 @@
+use std::ffi::{CString, c_int, c_void};
+use std::sync::Mutex as StdMutex;
+
+use log::{debug, error, info, trace, warn};
+use once_cell::sync::Lazy;
+use retour::{Function, GenericDetour};
+use windows::Win32::Foundation::FARPROC;
+use windows::Win32::Networking::WinSock::SOCKET;
+use windows::Win32::System::LibraryLoader::{GetModuleHandleA, GetProcAddress, LoadLibraryA};
+use windows::core::PCSTR;
+
 use crate::helpers_inject::handle_poison;
 use crate::hook_socket::get_or_create_socket;
 use crate::pointer_validation::validate_function_pointer;
 use crate::socket::state::SocketState;
 use crate::ssl_mapping::SslSocketMapping;
-use log::{debug, error, info, trace, warn};
-use once_cell::sync::Lazy;
-use retour::{Function, GenericDetour};
-use std::ffi::{CString, c_int, c_void};
-use std::sync::Mutex as StdMutex;
-use windows::Win32::Foundation::FARPROC;
-use windows::Win32::Networking::WinSock::SOCKET;
-use windows::Win32::System::LibraryLoader::{GetModuleHandleA, GetProcAddress, LoadLibraryA};
-use windows::core::PCSTR;
 
 // SSL structure (opaque)
 #[repr(C)]
@@ -73,15 +75,13 @@ pub static SSL_GET_FD: Lazy<StdMutex<Option<SslGetFdFn>>> = Lazy::new(|| StdMute
 pub static SSL_FREE_HOOK: Lazy<StdMutex<Option<GenericDetour<SslFreeFn>>>> =
     Lazy::new(|| StdMutex::new(None));
 pub static SSL_HOOKS_INSTALLED: Lazy<StdMutex<bool>> = Lazy::new(|| StdMutex::new(false));
-pub static ORIGINAL_SSL_READ: Lazy<StdMutex<Option<SslReadFn>>> =
-    Lazy::new(|| StdMutex::new(None));
+pub static ORIGINAL_SSL_READ: Lazy<StdMutex<Option<SslReadFn>>> = Lazy::new(|| StdMutex::new(None));
 pub static ORIGINAL_SSL_WRITE: Lazy<StdMutex<Option<SslWriteFn>>> =
     Lazy::new(|| StdMutex::new(None));
 pub static ORIGINAL_SSL_CONNECT: Lazy<StdMutex<Option<SslConnectFn>>> =
     Lazy::new(|| StdMutex::new(None));
 pub static ORIGINAL_SSL_NEW: Lazy<StdMutex<Option<SslNewFn>>> = Lazy::new(|| StdMutex::new(None));
-pub static ORIGINAL_SSL_FREE: Lazy<StdMutex<Option<SslFreeFn>>> =
-    Lazy::new(|| StdMutex::new(None));
+pub static ORIGINAL_SSL_FREE: Lazy<StdMutex<Option<SslFreeFn>>> = Lazy::new(|| StdMutex::new(None));
 
 static SSL_SET_FD_HOOK: Lazy<StdMutex<Option<GenericDetour<SslSetFdFn>>>> =
     Lazy::new(|| StdMutex::new(None));
@@ -545,8 +545,7 @@ pub unsafe fn install_ssl_hooks(
     let mut original_ssl_read = ORIGINAL_SSL_READ.lock().unwrap_or_else(handle_poison);
     let mut original_ssl_write = ORIGINAL_SSL_WRITE.lock().unwrap_or_else(handle_poison);
     let mut ssl_get_fd_slot = SSL_GET_FD.lock().unwrap_or_else(handle_poison);
-    let mut ssl_is_init_finished_slot =
-        SSL_IS_INIT_FINISHED.lock().unwrap_or_else(handle_poison);
+    let mut ssl_is_init_finished_slot = SSL_IS_INIT_FINISHED.lock().unwrap_or_else(handle_poison);
 
     *original_ssl_read = Some(ssl_read);
     *original_ssl_write = Some(ssl_write);
@@ -631,10 +630,7 @@ unsafe fn uninstall_one_ssl_detour<T: Copy + Function>(
     ) {
         Ok(g) => g,
         Err(e) => {
-            error!(
-                "uninstall_ssl_hooks: timed out acquiring {} mutex: {}",
-                hook_label, e
-            );
+            error!("uninstall_ssl_hooks: timed out acquiring {} mutex: {}", hook_label, e);
             return;
         }
     };
@@ -647,15 +643,10 @@ unsafe fn uninstall_one_ssl_detour<T: Copy + Function>(
 }
 
 fn clear_ssl_slot<T>(label: &'static str, mutex: &StdMutex<T>, value: T) {
-    match crate::lock_utils::try_lock_timeout(
-        mutex,
-        crate::lock_utils::UNINSTALL_HOOK_LOCK_TIMEOUT,
-    ) {
+    match crate::lock_utils::try_lock_timeout(mutex, crate::lock_utils::UNINSTALL_HOOK_LOCK_TIMEOUT)
+    {
         Ok(mut g) => *g = value,
-        Err(e) => error!(
-            "uninstall_ssl_hooks: timed out clearing {}: {}",
-            label, e
-        ),
+        Err(e) => error!("uninstall_ssl_hooks: timed out clearing {}: {}", label, e),
     }
 }
 

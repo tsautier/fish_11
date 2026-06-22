@@ -3,8 +3,9 @@
 
 pub mod config_key;
 pub mod master_key;
-use once_cell::sync::Lazy;
 use std::sync::Mutex;
+
+use once_cell::sync::Lazy;
 
 /// Global key system state
 struct KeySystemState {
@@ -57,8 +58,5 @@ pub fn rotate_all_keys() {
 }
 
 // Public exports for the core key system
-pub use config_key::ConfigKey;
-pub use master_key::MasterKey;
-
-pub use config_key::ConfigKeyGuard;
-pub use master_key::MasterKeyGuard;
+pub use config_key::{ConfigKey, ConfigKeyGuard};
+pub use master_key::{MasterKey, MasterKeyGuard};

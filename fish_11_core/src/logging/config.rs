@@ -1,5 +1,6 @@
-use log::LevelFilter;
 use std::path::PathBuf;
+
+use log::LevelFilter;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LoggingProfile {

@@ -53,9 +53,10 @@ pub fn change_master_password(
     new_password: &str,
     password_verifier: Option<&str>,
 ) -> ChangePasswordResult<String> {
+    use sha2::{Digest, Sha256};
+
     use crate::master_key::derivation::derive_master_key_with_salt;
     use crate::master_key::password_validation::PasswordValidator;
-    use sha2::{Digest, Sha256};
 
     // Validate the new password strength
     PasswordValidator::validate_password_strength(new_password)

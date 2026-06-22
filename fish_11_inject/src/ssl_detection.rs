@@ -1,9 +1,11 @@
-use crate::pointer_validation::unsafe_transmute_validated;
-use log::{debug, error};
 use std::ffi::CString;
+
+use log::{debug, error};
 use windows::Win32::Foundation::HMODULE;
 use windows::Win32::System::LibraryLoader::{GetModuleFileNameA, GetProcAddress};
 use windows::core::PCSTR;
+
+use crate::pointer_validation::unsafe_transmute_validated;
 
 #[derive(Debug, Clone)]
 pub struct OpenSslInfo {

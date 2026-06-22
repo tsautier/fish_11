@@ -3,12 +3,13 @@
 //! Provides functions for securely storing and loading configuration files
 //! using the master key encryption system.
 
-use crate::master_key::{
-    derivation::derive_config_kek,
-    encryption::{EncryptedBlob, decrypt_data, encrypt_data},
-};
-use base64::{Engine as _, engine::general_purpose};
 use std::path::PathBuf;
+
+use base64::Engine as _;
+use base64::engine::general_purpose;
+
+use crate::master_key::derivation::derive_config_kek;
+use crate::master_key::encryption::{EncryptedBlob, decrypt_data, encrypt_data};
 
 /// Header for encrypted configuration files
 const ENCRYPTED_CONFIG_HEADER: &str = "# FiSH_11_ENCRYPTED_CONFIG_V1";
